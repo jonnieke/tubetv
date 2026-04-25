@@ -94,7 +94,7 @@ const EditModal = ({
 }) => {
   const [thumbError, setThumbError] = useState(false);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
-  const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid);
+  const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName);
 
   const handleThumbUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -102,12 +102,12 @@ const EditModal = ({
 
     setIsUploadingThumb(true);
     try {
-      const success = await uploadCustomThumbnail(item.guid, file);
-      if (success) {
-        // Clear custom thumbnailUrl so it falls back to getThumbnailUrl()
-        // which now has cache-busting and will show the new image
-        setForm(f => ({ ...f, thumbnailUrl: '' }));
-        // Force an image reload by toggling error state briefly
+      const newFileName = await uploadCustomThumbnail(item.guid, file);
+      if (newFileName !== null) {
+        // Build cache-busted URL using the exact filename Bunny assigned
+        const host = import.meta.env.VITE_BUNNY_PULL_ZONE?.replace(/\/$/, '') || '';
+        const cacheBustedUrl = `https://${host}/${item.guid}/${newFileName}?t=${Date.now()}`;
+        setForm(f => ({ ...f, thumbnailUrl: cacheBustedUrl }));
         setThumbError(false);
       } else {
         alert('Failed to upload thumbnail. Please try again.');
@@ -428,11 +428,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Filter + sort
   const filtered = enriched
-    .filter(v => v.title.toLowerCase().includes(search.toLowerCase()))
     .filter(v => {
-      if (filterCat === 'All') return true;
       const mapped = bunnyVideoToVideo(v);
-      return mapped.category === filterCat || filterCat === mapped.category;
+      if (filterCat !== 'All' && mapped.category !== filterCat && filterCat !== mapped.category) {
+        return false;
+      }
+      if (!search) return true;
+      const term = search.toLowerCase();
+      const matchTitle = (mapped.title || '').toLowerCase().includes(term);
+      const matchSeries = (mapped.seriesTitle || '').toLowerCase().includes(term);
+      const matchAuthor = (mapped.author || '').toLowerCase().includes(term);
+      const matchCategory = (mapped.category || '').toLowerCase().includes(term);
+      return matchTitle || matchSeries || matchAuthor || matchCategory;
     })
     .sort((a, b) => {
       let cmp = 0;
@@ -625,7 +632,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="flex items-center gap-3">
                         <div className="relative w-20 h-12 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
                           <img 
-                            src={o?.thumbnailUrl || getThumbnailUrl(item.guid)} 
+                            src={o?.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName)} 
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform bg-zinc-800" 
                             onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
                           />

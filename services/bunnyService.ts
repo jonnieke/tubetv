@@ -111,30 +111,55 @@ export const getStreamUrl = (videoId: string): string => {
 };
 
 /** Constructs the CDN thumbnail URL for a video GUID. */
-export const getThumbnailUrl = (videoId: string): string => {
+export const getThumbnailUrl = (videoId: string, filename?: string): string => {
   const host = PULL_ZONE.replace(/\/$/, '');
+  const name = filename || 'thumbnail.jpg';
   // Add a cache-busting random string to the end so when we upload a new one, it updates instantly
-  return `https://${host}/${videoId}/thumbnail.jpg?v=${Math.floor(Date.now() / 3600000)}`;
+  return `https://${host}/${videoId}/${name}?v=${Math.floor(Date.now() / 3600000)}`;
 };
 
 /**
  * Uploads a custom thumbnail image directly to the Bunny Stream video.
- * This replaces the auto-generated one at /thumbnail.jpg
+ * Bunny's thumbnail endpoint expects the raw image binary POSTed directly.
+ * Returns the new thumbnailFileName from the refreshed video record, or null on failure.
  */
-export const uploadCustomThumbnail = async (videoId: string, file: File): Promise<boolean> => {
+export const uploadCustomThumbnail = async (videoId: string, file: File): Promise<string | null> => {
   try {
+    // Convert file to ArrayBuffer for raw binary upload
+    const arrayBuffer = await file.arrayBuffer();
+
     const response = await fetch(`${BASE_URL}/${videoId}/thumbnail`, {
       method: 'POST',
       headers: {
         'apikey': ANON_KEY,
         'Authorization': `Bearer ${ANON_KEY}`,
+        'Content-Type': file.type || 'image/jpeg',
       },
-      body: file,
+      body: arrayBuffer,
     });
-    return response.ok;
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Thumbnail upload failed:', response.status, errText);
+      return null;
+    }
+
+    // Re-fetch the video to get the updated thumbnailFileName Bunny assigned
+    const videoRes = await fetch(`${BASE_URL}/${videoId}`, {
+      headers: {
+        'apikey': ANON_KEY,
+        'Authorization': `Bearer ${ANON_KEY}`,
+      },
+    });
+    if (videoRes.ok) {
+      const videoData = await videoRes.json();
+      return videoData.thumbnailFileName || 'thumbnail.jpg';
+    }
+
+    return 'thumbnail.jpg';
   } catch (error) {
     console.error('Thumbnail upload failed:', error);
-    return false;
+    return null;
   }
 };
 
@@ -272,7 +297,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     id: activeItem.guid,
     title: cleanTitle || 'Untitled',
     description: getMeta(activeItem.metaTags, 'description'),
-    thumbnail: getMeta(activeItem.metaTags, 'thumbnailUrl') || getThumbnailUrl(activeItem.guid),
+    thumbnail: getMeta(activeItem.metaTags, 'thumbnailUrl') || getThumbnailUrl(activeItem.guid, activeItem.thumbnailFileName),
     url: getStreamUrl(activeItem.guid),
     duration: formatDuration(activeItem.length),
     views: activeItem.views ?? 0,

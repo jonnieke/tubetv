@@ -25,9 +25,10 @@ serve(async (req: Request) => {
   try {
     const url = new URL(req.url);
     const pathParts = url.pathname.split("/").filter(Boolean);
-    // The path will be /bunny-api/...
-    // We want to extract the parts after bunny-api
-    const subPath = pathParts.slice(1).join("/");
+    // Path is like: /functions/v1/bunny-api/{videoId}/thumbnail
+    // We want only the parts AFTER "bunny-api"
+    const bunnyApiIndex = pathParts.findIndex(p => p === 'bunny-api');
+    const subPath = bunnyApiIndex >= 0 ? pathParts.slice(bunnyApiIndex + 1).join("/") : '';
     
     let bunnyUrl = `https://video.bunnycdn.com/library/${LIBRARY_ID}/videos`;
     if (subPath) {
