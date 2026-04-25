@@ -3,7 +3,7 @@ import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
   ChevronDown, ChevronUp, BarChart2, Eye, Clock, Tag, User, Calendar, Info, UploadCloud
 } from 'lucide-react';
-import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, getStreamUrl, uploadCustomThumbnail } from '../services/bunnyService';
+import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, getStreamUrl, uploadCustomThumbnail, updateVideoMetadata } from '../services/bunnyService';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { NavItem, Video } from '../types';
@@ -402,14 +402,51 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const saveEdit = async () => {
     if (!editingItem) return;
     setSaving(true);
-    // Persist to localStorage (optimistic — no backend write yet)
-    const overrides = getOverrides();
-    overrides[editingItem.guid] = { ...editForm };
-    localStorage.setItem('tube_content_overrides', JSON.stringify(overrides));
+    
+    try {
+      // 1. Prepare the updated metadata
+      // Strip out old values for the keys we are about to update, then append our new values
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailUrl', 'trailerUrl', 'productionYear', 'isPremium', 'tags', 'season', 'episode', 'seriesTitle'];
+      const filteredMetaTags = (editingItem.metaTags || []).filter(
+        t => !keysToUpdate.includes(t.property.toLowerCase())
+      );
+      
+      const newMetaTags = [
+        ...filteredMetaTags,
+        ...Object.entries(editForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) }))
+      ];
 
-    setSavedIds(prev => new Set(prev).add(editingItem.guid));
-    setSaving(false);
-    setEditingItem(null);
+      // 2. Save to Bunny CDN via Supabase Proxy
+      const updatePayload = {
+        title: editForm.title,
+        metaTags: newMetaTags
+      };
+      
+      const result = await updateVideoMetadata(editingItem.guid, updatePayload);
+      
+      if (result) {
+        // 3. Update the item in our local state to reflect the change immediately
+        const updatedItem = { ...editingItem, title: editForm.title, metaTags: newMetaTags };
+        setItems(prev => prev.map(item => item.guid === editingItem.guid ? updatedItem : item));
+        
+        // Remove from local overrides if it was there, since it's now permanently saved
+        const overrides = getOverrides();
+        if (overrides[editingItem.guid]) {
+          delete overrides[editingItem.guid];
+          localStorage.setItem('tube_content_overrides', JSON.stringify(overrides));
+        }
+
+        setSavedIds(prev => new Set(prev).add(editingItem.guid));
+      } else {
+        alert('Failed to save changes to the server. Please try again.');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('An error occurred while saving.');
+    } finally {
+      setSaving(false);
+      setEditingItem(null);
+    }
   };
 
   // Merge overrides into display items

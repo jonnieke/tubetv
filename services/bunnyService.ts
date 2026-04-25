@@ -79,6 +79,30 @@ export const createVideoEntry = async (title: string): Promise<{ guid: string } 
 };
 
 /**
+ * Updates video metadata (like title and metaTags) in Bunny.net.
+ */
+export const updateVideoMetadata = async (
+  videoId: string,
+  payload: { title?: string; metaTags?: { property: string; value: string }[] }
+): Promise<any> => {
+  try {
+    const response = await fetch(`${BASE_URL}/${videoId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Failed to update video: ${response.statusText} - ${err}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Bunny Update Error:', error);
+    return null;
+  }
+};
+
+/**
  * Uploads a video file using XMLHttpRequest so we can track progress.
  */
 export const uploadVideoFile = (
