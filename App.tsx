@@ -36,14 +36,14 @@ const ICON_MAP: Record<string, any> = {
 const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.HOME, label: 'Home', labelKey: 'nav.home', iconName: 'Home', icon: Home },
   { id: ViewState.ORIGINALS, label: 'Originals', labelKey: 'nav.originals', iconName: 'Clapperboard', icon: Clapperboard },
-  { id: ViewState.SHORTS, label: 'Shorts', labelKey: 'nav.trending', iconName: 'Smartphone', icon: Smartphone },
-  { id: ViewState.EDUCATION, label: 'Education', labelKey: 'nav.gaming', iconName: 'GraduationCap', icon: GraduationCap },
-  { id: ViewState.FARMERS, label: 'Farmers', labelKey: 'nav.gaming', iconName: 'Sprout', icon: Sprout },
-  { id: ViewState.FAITH, label: 'Faith', labelKey: 'nav.gaming', iconName: 'Heart', icon: Heart },
-  { id: ViewState.KIDS, label: 'Kids', labelKey: 'nav.gaming', iconName: 'Baby', icon: PlayCircle },
-  { id: ViewState.DIASPORA, label: 'Diaspora', labelKey: 'nav.gaming', iconName: 'Globe', icon: Globe },
+  { id: ViewState.SHORTS, label: 'Shorts', labelKey: 'nav.shorts', iconName: 'Smartphone', icon: Smartphone },
+  { id: ViewState.EDUCATION, label: 'Education', labelKey: 'nav.education', iconName: 'GraduationCap', icon: GraduationCap },
+  { id: ViewState.FARMERS, label: 'Farmers', labelKey: 'nav.farmers', iconName: 'Sprout', icon: Sprout },
+  { id: ViewState.FAITH, label: 'Faith', labelKey: 'nav.faith', iconName: 'Heart', icon: Heart },
+  { id: ViewState.KIDS, label: 'Kids', labelKey: 'nav.kids', iconName: 'Baby', icon: PlayCircle },
+  { id: ViewState.DIASPORA, label: 'Diaspora', labelKey: 'nav.diaspora', iconName: 'Globe', icon: Globe },
   { id: ViewState.LIVE, label: 'Live', labelKey: 'nav.live', iconName: 'Radio', icon: PlayCircle },
-  { id: ViewState.WATCH_LATER, label: 'Watch List', labelKey: 'nav.home', iconName: 'Clock', icon: Clock },
+  { id: ViewState.WATCH_LATER, label: 'Watch List', labelKey: 'nav.watchlist', iconName: 'Clock', icon: Clock },
 ];
 
 const App: React.FC = () => {

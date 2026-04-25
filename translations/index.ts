@@ -14,6 +14,13 @@ export const translations = {
     'nav.settings': 'Settings',
     'nav.logout': 'Logout',
     'nav.login': 'Login',
+    'nav.shorts': 'Shorts',
+    'nav.education': 'Education',
+    'nav.farmers': 'Farmers',
+    'nav.faith': 'Faith',
+    'nav.kids': 'Kids',
+    'nav.diaspora': 'Diaspora',
+    'nav.watchlist': 'Watch List',
 
     // Live Section
     'live.now': 'Live Now',
@@ -61,6 +68,13 @@ export const translations = {
     'nav.settings': 'Mipangilio',
     'nav.logout': 'Ondoka',
     'nav.login': 'Ingia',
+    'nav.shorts': 'Shorts',
+    'nav.education': 'Elimu',
+    'nav.farmers': 'Wakulima',
+    'nav.faith': 'Imani',
+    'nav.kids': 'Watoto',
+    'nav.diaspora': 'Diaspora',
+    'nav.watchlist': 'Orodha Yangu',
 
     // Live Section
     'live.now': 'Moja kwa Moja Sasa',

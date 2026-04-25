@@ -1,9 +1,9 @@
 // 🔒 SECURED: Calls are now proxied through Supabase Edge Functions
 // The sensitive BUNNY_ACCESS_KEY is now stored in Supabase Secrets.
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const BASE_URL = `${SUPABASE_URL}/functions/v1/bunny-api`;
-const PULL_ZONE = import.meta.env.VITE_BUNNY_PULL_ZONE as string;
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const BASE_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/bunny-api` : '';
+const PULL_ZONE = (import.meta.env.VITE_BUNNY_PULL_ZONE as string) || '';
+const ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
 
 const getHeaders = (extra = {}) => ({
   'Content-Type': 'application/json',
@@ -112,7 +112,7 @@ export const getStreamUrl = (videoId: string): string => {
 
 /** Constructs the CDN thumbnail URL for a video GUID. */
 export const getThumbnailUrl = (videoId: string, filename?: string): string => {
-  const host = PULL_ZONE.replace(/\/$/, '');
+  const host = PULL_ZONE ? PULL_ZONE.replace(/\/$/, '') : 'vz-0fe79b1a-8ad.b-cdn.net';
   const name = filename || 'thumbnail.jpg';
   // Add a cache-busting random string to the end so when we upload a new one, it updates instantly
   return `https://${host}/${videoId}/${name}?v=${Math.floor(Date.now() / 3600000)}`;
