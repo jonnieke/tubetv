@@ -150,6 +150,15 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('tube_nav_items');
       if (saved) {
         const parsed = JSON.parse(saved);
+        
+        // Fix for the 'multiple Gaming icons' glitch:
+        // If more than one item has the 'nav.gaming' key, it's corrupted state from the old version.
+        const gamingCount = parsed.filter((item: any) => item.labelKey === 'nav.gaming').length;
+        if (gamingCount > 1) {
+          localStorage.removeItem('tube_nav_items');
+          return INITIAL_NAV_ITEMS;
+        }
+
         // Re-attach icon components based on iconName string
         return parsed.map((item: NavItem) => ({
           ...item,
