@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import VideoCard from './components/VideoCard';
 import VideoCarousel from './components/VideoCarousel';
@@ -127,6 +127,22 @@ const App: React.FC = () => {
     loadVideos();
     return () => { cancelled = true; };
   }, []);
+
+  // Derive real shorts from the videos library (tagged with 'Shorts' category)
+  const realShorts = useMemo(() => {
+    const fromVideos = videos
+      .filter(v => v.category === 'Shorts')
+      .map(v => ({
+        id: v.id,
+        url: v.thumbnail,
+        author: v.author,
+        description: v.description || v.title,
+        likes: Math.floor(v.views / 10) + 12,
+        comments: Math.floor(v.views / 100) + 2,
+        videoUrl: v.url
+      }));
+    return fromVideos.length > 0 ? fromVideos : MOCK_SHORTS;
+  }, [videos]);
 
   // Dynamic Navigation State
   const [navItems, setNavItems] = useState<NavItem[]>(() => {
@@ -410,7 +426,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case ViewState.SHORTS:
-        return <ShortsPlayer />;
+        return <ShortsPlayer shorts={realShorts} />;
       case ViewState.LIVE:
         return <LiveSection isAuthenticated={isAuthenticated} />;
       case ViewState.SETTINGS:
@@ -544,7 +560,7 @@ const App: React.FC = () => {
             {/* Shorts Shelf (Vertical Video Carousel) - Only on Home */}
             {currentView === ViewState.HOME && !searchQuery && (
               <ShortsShelf
-                shorts={MOCK_SHORTS}
+                shorts={realShorts}
                 onShortClick={() => setCurrentView(ViewState.SHORTS)}
               />
             )}

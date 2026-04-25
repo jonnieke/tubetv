@@ -61,6 +61,7 @@ export interface ShortVideo {
   likes: number;
   comments: number;
   isAd?: boolean;
+  videoUrl?: string;
 }
 
 export interface AnalyticsMetric {

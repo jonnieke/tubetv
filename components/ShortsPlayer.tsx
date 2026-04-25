@@ -11,7 +11,11 @@ const SAMPLE_VIDEOS = [
   "https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
 ];
 
-const ShortsPlayer: React.FC = () => {
+interface ShortsPlayerProps {
+  shorts?: ShortVideo[];
+}
+
+const ShortsPlayer: React.FC<ShortsPlayerProps> = ({ shorts = MOCK_SHORTS }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -39,10 +43,10 @@ const ShortsPlayer: React.FC = () => {
 
   // Set initial active ID if none
   useEffect(() => {
-    if (!activeId && MOCK_SHORTS.length > 0) {
-      setActiveId(MOCK_SHORTS[0].id);
+    if (!activeId && shorts.length > 0) {
+      setActiveId(shorts[0].id);
     }
-  }, [activeId]);
+  }, [activeId, shorts]);
 
   return (
     <div className="h-[calc(100vh-64px)] md:h-screen w-full flex justify-center bg-black overflow-hidden relative">
@@ -50,12 +54,12 @@ const ShortsPlayer: React.FC = () => {
         ref={containerRef}
         className="h-full w-full md:w-[450px] overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
       >
-        {MOCK_SHORTS.map((short, index) => (
+        {shorts.map((short, index) => (
           <ShortItem 
             key={short.id} 
             short={short} 
             isActive={activeId === short.id}
-            videoSrc={SAMPLE_VIDEOS[index % SAMPLE_VIDEOS.length]}
+            videoSrc={short.videoUrl || SAMPLE_VIDEOS[index % SAMPLE_VIDEOS.length]}
           />
         ))}
       </div>
@@ -135,7 +139,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc }) => {
             <video
                 ref={videoRef}
                 src={videoSrc}
-                className="absolute inset-0 w-full h-full object-cover"
+                className="absolute inset-0 w-full h-full object-contain"
                 loop
                 muted={isMuted}
                 playsInline

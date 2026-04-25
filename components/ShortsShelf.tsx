@@ -46,8 +46,8 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
                 <div className="absolute inset-0 z-10 animate-in fade-in duration-500 bg-black">
                     <video
                         ref={videoRef}
-                        src={PREVIEW_VIDEO}
-                        className="w-full h-full object-cover opacity-80"
+                        src={short.videoUrl || PREVIEW_VIDEO}
+                        className="w-full h-full object-contain opacity-80"
                         autoPlay
                         muted
                         loop
@@ -63,7 +63,7 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
                 <img 
                     src={short.url} 
                     alt={short.description} 
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 absolute inset-0 z-0"
+                    className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110 absolute inset-0 z-0"
                 />
              )}
             

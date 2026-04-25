@@ -21,6 +21,7 @@ interface AdminDashboardProps {
 const CATEGORIES = [
   'Movies',
   'Series',
+  'Shorts',
   'Farmers',
   'Education',
   'Faith',
