@@ -36,6 +36,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const [isBuffering, setIsBuffering] = useState(false);
   const [isHoverPlay, setIsHoverPlay] = useState(false);
   const hoverTimerRef = useRef<any>(null);
+  const lastClickTimeRef = useRef<number>(0);
   
   // Caption States
   const [captions, setCaptions] = useState<Caption[]>([]);
@@ -201,18 +202,65 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
   };
 
-  const toggleFullScreen = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!containerRef.current) return;
+  const toggleFullScreen = async (e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) e.stopPropagation();
+    const container = containerRef.current;
+    const video = videoRef.current;
+    if (!container || !video) return;
 
     try {
-      if (!document.fullscreenElement) {
-        await containerRef.current.requestFullscreen();
+      // Standard API
+      if (!document.fullscreenElement && 
+          !(document as any).webkitFullscreenElement && 
+          !(document as any).mozFullScreenElement && 
+          !(document as any).msFullscreenElement) {
+        
+        if (container.requestFullscreen) {
+          await container.requestFullscreen();
+        } else if ((container as any).webkitRequestFullscreen) {
+          await (container as any).webkitRequestFullscreen();
+        } else if ((container as any).mozRequestFullScreen) {
+          await (container as any).mozRequestFullScreen();
+        } else if ((container as any).msRequestFullscreen) {
+          await (container as any).msRequestFullscreen();
+        } else if (video.webkitEnterFullscreen) {
+          // Critical fallback for iOS Safari which only supports fullscreen on the video element
+          video.webkitEnterFullscreen();
+        }
       } else {
-        await document.exitFullscreen();
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozCancelFullScreen) {
+          await (document as any).mozCancelFullScreen();
+        } else if ((document as any).msExitFullscreen) {
+          await (document as any).msExitFullscreen();
+        }
       }
     } catch (error) {
-      console.error("Fullscreen failed:", error);
+      console.error("Fullscreen toggle failed:", error);
+    }
+  };
+
+  const handleVideoClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const now = Date.now();
+    const DOUBLE_CLICK_DELAY = 300;
+
+    if (now - lastClickTimeRef.current < DOUBLE_CLICK_DELAY) {
+      // Double click detected
+      toggleFullScreen();
+      lastClickTimeRef.current = 0; // Reset
+    } else {
+      // Single click - toggle play
+      lastClickTimeRef.current = now;
+      if (isPremiumLocked) {
+        onSubscribeRequest?.();
+      } else {
+        setIsPlaying(!isPlaying);
+      }
     }
   };
 
@@ -410,7 +458,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 setIsPlaying(false);
                 setIsHoverPlay(false);
               }}
-              onClick={togglePlay}
+              onClick={handleVideoClick}
               muted={isHoverPlay && !isPlaying}
               autoPlay
               loop={isHoverPlay && !isPlaying}
