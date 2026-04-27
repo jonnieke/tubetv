@@ -82,3 +82,12 @@ export interface Caption {
   end: number;
   text: string;
 }
+
+export interface ShortComment {
+  id: string;
+  author: string;
+  text: string;
+  timestamp: string;
+  likes: number;
+  avatar?: string;
+}

@@ -3,6 +3,7 @@ import { Heart, MessageCircle, Share2, MoreHorizontal, Music2, ExternalLink, Vol
 import { ShortVideo } from '../types';
 import { MOCK_SHORTS } from '../constants';
 import Hls from 'hls.js';
+import ShortsComments from './ShortsComments';
 
 // Sample vertical-friendly videos for demo purposes
 const SAMPLE_VIDEOS = [
@@ -84,6 +85,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
     const [liked, setLiked] = useState(false);
     const [isMuted, setIsMuted] = useState(true); // Default to muted for better autoplay support
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isCommentsOpen, setIsCommentsOpen] = useState(false);
     const videoRef = useRef<HTMLVideoElement>(null);
     const hlsRef = useRef<Hls | null>(null);
 
@@ -168,7 +170,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
 
     const handleComment = (e: React.MouseEvent) => {
         e.stopPropagation();
-        alert('Comments section coming soon!');
+        setIsCommentsOpen(true);
     };
 
     return (
@@ -279,6 +281,14 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
                     )}
                 </div>
             </div>
+
+            {/* Comments Overlay */}
+            <ShortsComments 
+                isOpen={isCommentsOpen} 
+                onClose={() => setIsCommentsOpen(false)} 
+                shortId={short.id}
+                commentCount={short.comments}
+            />
         </div>
     );
 };
