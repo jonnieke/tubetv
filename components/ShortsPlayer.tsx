@@ -14,9 +14,13 @@ const SAMPLE_VIDEOS = [
 
 interface ShortsPlayerProps {
   shorts?: ShortVideo[];
+  onLoginRequest?: () => void;
 }
 
-const ShortsPlayer: React.FC<ShortsPlayerProps> = ({ shorts = MOCK_SHORTS }) => {
+const ShortsPlayer: React.FC<ShortsPlayerProps> = ({ 
+  shorts = MOCK_SHORTS,
+  onLoginRequest 
+}) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -56,12 +60,13 @@ const ShortsPlayer: React.FC<ShortsPlayerProps> = ({ shorts = MOCK_SHORTS }) => 
         className="h-full w-full md:w-[450px] overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
       >
         {shorts.map((short, index) => (
-          <ShortItem 
-            key={short.id} 
-            short={short} 
-            isActive={activeId === short.id}
-            videoSrc={short.videoUrl || SAMPLE_VIDEOS[index % SAMPLE_VIDEOS.length]}
-          />
+            <ShortItem 
+              key={short.id} 
+              short={short} 
+              isActive={activeId === short.id}
+              videoSrc={short.videoUrl || SAMPLE_VIDEOS[index % SAMPLE_VIDEOS.length]}
+              onLoginRequest={onLoginRequest}
+            />
         ))}
       </div>
     </div>
@@ -72,9 +77,10 @@ interface ShortItemProps {
     short: ShortVideo;
     isActive: boolean;
     videoSrc: string;
+    onLoginRequest?: () => void;
 }
 
-const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc }) => {
+const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLoginRequest }) => {
     const [liked, setLiked] = useState(false);
     const [isMuted, setIsMuted] = useState(true); // Default to muted for better autoplay support
     const [isPlaying, setIsPlaying] = useState(false);
@@ -143,6 +149,28 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc }) => {
         }
     };
 
+    const handleShare = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const shareData = {
+            title: 'Watch this on Tube TV',
+            text: short.description,
+            url: window.location.href,
+        };
+
+        if (navigator.share) {
+            navigator.share(shareData).catch(console.error);
+        } else {
+            // Fallback: Copy to clipboard
+            navigator.clipboard.writeText(window.location.href);
+            alert('Link copied to clipboard!');
+        }
+    };
+
+    const handleComment = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        alert('Comments section coming soon!');
+    };
+
     return (
         <div 
             className="short-item-wrapper snap-start h-full w-full relative bg-zinc-900 border-b border-zinc-800 flex items-center justify-center overflow-hidden"
@@ -201,13 +229,13 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc }) => {
                     </div>
 
                     <div className="flex flex-col items-center gap-1">
-                        <button onClick={(e) => e.stopPropagation()} className="p-3 rounded-full bg-zinc-800/50 backdrop-blur-md text-white hover:bg-zinc-700/50 transition-colors">
+                        <button onClick={handleComment} className="p-3 rounded-full bg-zinc-800/50 backdrop-blur-md text-white hover:bg-zinc-700/50 transition-colors pointer-events-auto">
                             <MessageCircle className="w-8 h-8" />
                         </button>
                         <span className="text-xs font-medium">{short.comments}</span>
                     </div>
 
-                    <button onClick={(e) => e.stopPropagation()} className="p-3 rounded-full bg-zinc-800/50 backdrop-blur-md text-white hover:bg-zinc-700/50 transition-colors">
+                    <button onClick={handleShare} className="p-3 rounded-full bg-zinc-800/50 backdrop-blur-md text-white hover:bg-zinc-700/50 transition-colors pointer-events-auto">
                         <Share2 className="w-8 h-8" />
                     </button>
 
@@ -223,7 +251,14 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc }) => {
                             {short.author[1].toUpperCase()}
                         </div>
                         <h3 className="font-bold text-lg hover:underline cursor-pointer">{short.author}</h3>
-                        {!short.isAd && <button className="text-xs bg-white text-black px-3 py-1 rounded-full font-bold ml-2">Subscribe</button>}
+                        {!short.isAd && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onLoginRequest?.(); }}
+                                className="text-xs bg-white text-black px-3 py-1 rounded-full font-bold ml-2 pointer-events-auto"
+                            >
+                                Subscribe
+                            </button>
+                        )}
                     </div>
                     
                     <p className="text-sm md:text-base text-zinc-100 line-clamp-2">

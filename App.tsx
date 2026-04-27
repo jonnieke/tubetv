@@ -446,7 +446,7 @@ const App: React.FC = () => {
             </div>
           );
         }
-        return <ShortsPlayer shorts={realShorts} />;
+        return <ShortsPlayer shorts={realShorts} onLoginRequest={() => setShowLogin(true)} />;
       case ViewState.LIVE:
         return <LiveSection isAuthenticated={isAuthenticated} />;
       case ViewState.SETTINGS:
