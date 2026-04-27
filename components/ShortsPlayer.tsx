@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Heart, MessageCircle, Share2, MoreHorizontal, Music2, ExternalLink, Volume2, VolumeX, Play } from 'lucide-react';
 import { ShortVideo } from '../types';
 import { MOCK_SHORTS } from '../constants';
+import Hls from 'hls.js';
 
 // Sample vertical-friendly videos for demo purposes
 const SAMPLE_VIDEOS = [
@@ -78,36 +79,49 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc }) => {
     const [isMuted, setIsMuted] = useState(true); // Default to muted for better autoplay support
     const [isPlaying, setIsPlaying] = useState(false);
     const videoRef = useRef<HTMLVideoElement>(null);
+    const hlsRef = useRef<Hls | null>(null);
 
     // Sync play/pause with active state
     useEffect(() => {
+        if (!videoRef.current) return;
+
         if (isActive) {
-            const playPromise = videoRef.current?.play();
-            if (playPromise !== undefined) {
-                playPromise
-                    .then(() => {
-                        setIsPlaying(true);
-                    })
-                    .catch((error) => {
-                        console.log("Autoplay prevented:", error);
-                        // If autoplay prevented, ensure muted and try again
-                        if (videoRef.current) {
-                            videoRef.current.muted = true;
-                            setIsMuted(true);
-                            videoRef.current.play()
-                                .then(() => setIsPlaying(true))
-                                .catch(e => console.error("Playback failed even after mute:", e));
-                        }
-                    });
+            // Initialize HLS if needed
+            if (Hls.isSupported() && videoSrc.endsWith('.m3u8')) {
+                if (hlsRef.current) hlsRef.current.destroy();
+                
+                const hls = new Hls();
+                hls.loadSource(videoSrc);
+                hls.attachMedia(videoRef.current);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    videoRef.current?.play().then(() => setIsPlaying(true)).catch(e => console.error("HLS Play failed:", e));
+                });
+                hlsRef.current = hls;
+            } else if (!videoRef.current.src || videoRef.current.src !== videoSrc) {
+                // Native playback
+                videoRef.current.src = videoSrc;
+                videoRef.current.play().then(() => setIsPlaying(true)).catch(e => console.error("Native Play failed:", e));
+            } else {
+                videoRef.current.play().then(() => setIsPlaying(true)).catch(e => console.error("Resume Play failed:", e));
             }
         } else {
-            videoRef.current?.pause();
+            videoRef.current.pause();
             setIsPlaying(false);
-            if (videoRef.current) {
-                videoRef.current.currentTime = 0; // Reset loop when scrolling away
-            }
+            videoRef.current.currentTime = 0;
+            
+            // We keep HLS attached to avoid re-buffering on small scrolls, 
+            // but for shorts we might want to destroy to save resources
         }
-    }, [isActive]);
+    }, [isActive, videoSrc]);
+
+    // Cleanup HLS on unmount
+    useEffect(() => {
+        return () => {
+            if (hlsRef.current) {
+                hlsRef.current.destroy();
+            }
+        };
+    }, []);
 
     const togglePlay = () => {
         if (videoRef.current) {
@@ -138,12 +152,11 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc }) => {
             {/* Video Player */}
             <video
                 ref={videoRef}
-                src={videoSrc}
                 className="absolute inset-0 w-full h-full object-contain"
                 loop
                 muted={isMuted}
                 playsInline
-                poster={short.url} // Use the image as a poster
+                poster={short.url}
             />
 
             {/* Play/Pause Center Indicator */}

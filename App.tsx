@@ -99,7 +99,7 @@ const App: React.FC = () => {
     : false;
 
   // ─── Videos: load from Bunny CDN on mount ─────────────────────────────────
-  const [videos, setVideos] = useState<Video[]>(MOCK_VIDEOS);
+  const [videos, setVideos] = useState<Video[]>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(true);
   const [isRealContent, setIsRealContent] = useState(false);
 
@@ -141,8 +141,11 @@ const App: React.FC = () => {
         comments: Math.floor(v.views / 100) + 2,
         videoUrl: v.url
       }));
-    return fromVideos.length > 0 ? fromVideos : MOCK_SHORTS;
-  }, [videos]);
+    
+    // Only fall back to MOCK_SHORTS if we are not loading AND have no real shorts
+    if (isLoadingVideos) return [];
+    return fromVideos.length > 0 ? fromVideos : (isRealContent ? [] : MOCK_SHORTS);
+  }, [videos, isLoadingVideos, isRealContent]);
 
   // Dynamic Navigation State
   const [navItems, setNavItems] = useState<NavItem[]>(() => {
@@ -435,6 +438,14 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case ViewState.SHORTS:
+        if (isLoadingVideos) {
+          return (
+            <div className="h-screen w-full flex flex-col items-center justify-center bg-black">
+              <Loader2 className="w-12 h-12 text-red-600 animate-spin mb-4" />
+              <p className="text-zinc-400 font-medium">Loading Shorts...</p>
+            </div>
+          );
+        }
         return <ShortsPlayer shorts={realShorts} />;
       case ViewState.LIVE:
         return <LiveSection isAuthenticated={isAuthenticated} />;
@@ -583,13 +594,13 @@ const App: React.FC = () => {
               </h2>
               {isRealContent ? (
                 <span className="text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">LIVE</span>
-              ) : (
+              ) : !isLoadingVideos && (
                 <span className="text-sm text-zinc-500">({filteredVideos.length})</span>
               )}
             </div>
 
             {/* Skeleton loader while fetching from Bunny */}
-            {isLoadingVideos ? (
+            {(isLoadingVideos || (!isRealContent && videos.length === 0)) ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} className="bg-zinc-900 rounded-lg overflow-hidden animate-pulse">
