@@ -4,7 +4,6 @@ import { UploadCloud, FileVideo, CheckCircle2, Wand2, Loader2, ImageIcon, ImageP
 import { generateVideoMetadata, generateThumbnail } from '../services/geminiService';
 import { createVideoEntry, uploadVideoFile, getStreamUrl, getThumbnailUrl } from '../services/bunnyService';
 import { supabase } from '../lib/supabase';
-import { sanitizeMetadata } from '../lib/sanitize';
 import { warn } from '../lib/logger';
 import { Video } from '../types';
 
@@ -305,7 +304,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
   const uploadSingleItem = async (item: UploadItem) => {
       updateQueueItem(item.id, { status: 'uploading', progress: 0, stageInfo: 'Initializing...' });
 
-      const safeMetadata = sanitizeMetadata(item.metadata);
+      const safeMetadata = item.metadata;
 
       try {
         // 1. Create Video Entry
