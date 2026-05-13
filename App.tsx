@@ -1,31 +1,37 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import Sidebar from './components/Sidebar';
-import VideoCard from './components/VideoCard';
-import VideoCarousel from './components/VideoCarousel';
-import SeriesCarousel from './components/SeriesCarousel';
-import ShortsPlayer from './components/ShortsPlayer';
-import AnalyticsDashboard from './components/AnalyticsDashboard';
-import AdminDashboard from './components/AdminDashboard';
-import UploadSection from './components/UploadSection';
-import WatchLaterSection from './components/WatchLaterSection';
+import HomeView from './components/HomeView';
 import AuthModal from './components/AuthModal';
-import ShortsShelf from './components/ShortsShelf';
-import SettingsSection from './components/SettingsSection';
-import LiveSection from './components/LiveSection';
+
+// Landing page — shown to new / unauthenticated visitors
+const LandingPage = lazy(() => import('./components/LandingPage'));
+
+// Heavy routes — loaded on demand
+const ShortsPlayer     = lazy(() => import('./components/ShortsPlayer'));
+const AnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
+const AdminDashboard   = lazy(() => import('./components/AdminDashboard'));
+const UploadSection    = lazy(() => import('./components/UploadSection'));
+const WatchLaterSection = lazy(() => import('./components/WatchLaterSection'));
+const SettingsSection  = lazy(() => import('./components/SettingsSection'));
+const LiveSection      = lazy(() => import('./components/LiveSection'));
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
-import { MOCK_VIDEOS, MOCK_SHORTS, PAYWALL_ENABLED } from './constants';
-import { Menu, Search, Bell, X, LogIn, Sparkles, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
+import { MOCK_SHORTS } from './constants';
+import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
 import { getVideoRecommendations } from './services/geminiService';
 import { fetchBunnyVideos, bunnyVideoToVideo } from './services/bunnyService';
 import { supabase, normalizePhone } from './lib/supabase';
+import { log, warn } from './lib/logger';
+import { useToast } from './components/Toast';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useLanguage } from './contexts/LanguageContext';
 import { TranslationKey } from './translations';
 
-// Admin emails/phones — add yours here
-const ADMIN_EMAILS = ['admin@tubeKenya.co.ke'];
-const ADMIN_PHONES = ['+254724457435']; // Replace with your actual admin phone
+const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || '')
+  .split(',').map((s: string) => s.trim()).filter(Boolean);
+
+const ADMIN_PHONES = (import.meta.env.VITE_ADMIN_PHONES || '')
+  .split(',').map((s: string) => s.trim()).filter(Boolean);
 
 // Icon Map for Dynamic Rendering
 const ICON_MAP: Record<string, any> = {
@@ -48,6 +54,7 @@ const INITIAL_NAV_ITEMS: NavItem[] = [
 
 const App: React.FC = () => {
   const { t } = useLanguage();
+  const toast = useToast();
   const [currentView, setCurrentView] = useState<ViewStateOrString>(ViewState.HOME);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
@@ -59,13 +66,34 @@ const App: React.FC = () => {
       return [];
     }
   });
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- REAL AUTH: Supabase session ---
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  // --- Landing page: show to first-time / unauthenticated visitors ---
+  const [showLanding, setShowLanding] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem('tube_entered_app');
+    } catch {
+      return true;
+    }
+  });
+
+  const enterApp = useCallback(() => {
+    try { localStorage.setItem('tube_entered_app', '1'); } catch { }
+    setShowLanding(false);
+  }, []);
+
+  // Authenticated users skip the landing page automatically
+  useEffect(() => {
+    if (isAuthenticated) setShowLanding(false);
+  }, [isAuthenticated]);
 
   // Bootstrap Supabase session on mount
   useEffect(() => {
@@ -108,18 +136,19 @@ const App: React.FC = () => {
     const loadVideos = async () => {
       try {
         const bunnyItems = await fetchBunnyVideos();
-        console.log('Bunny Items Fetched:', bunnyItems.length);
+        log('Bunny Items Fetched:', bunnyItems.length);
         if (cancelled) return;
         if (bunnyItems.length > 0) {
           const mapped = bunnyItems.map(bunnyVideoToVideo) as Video[];
-          console.log('Mapped Videos (first 2):', mapped.slice(0, 2));
+          log('Mapped Videos (first 2):', mapped.slice(0, 2));
           setVideos(mapped);
           setIsRealContent(true);
         } else {
-          console.log('No Bunny items found, keeping mock data.');
+          log('No Bunny items found, keeping mock data.');
         }
       } catch (err) {
-        console.warn('Bunny load failed, showing demo content:', err);
+        warn('Bunny load failed, showing demo content:', err);
+        toast.warning('Could not load videos from server — showing demo content.');
       } finally {
         if (!cancelled) setIsLoadingVideos(false);
       }
@@ -183,15 +212,8 @@ const App: React.FC = () => {
     } catch { }
   }, [navItems]);
 
-  // Hero spotlight: cycles through top 5 videos
+  // Hero spotlight index — advance logic lives in HomeView (owns the progress bar)
   const [heroIndex, setHeroIndex] = useState(0);
-  useEffect(() => {
-    if (videos.length === 0) return;
-    const timer = setInterval(() => {
-      setHeroIndex(prev => (prev + 1) % Math.min(5, videos.length));
-    }, 8000);
-    return () => clearInterval(timer);
-  }, [videos]);
 
   const [recommendedVideos, setRecommendedVideos] = useState<Video[]>([]);
   const [isRecLoading, setIsRecLoading] = useState(false);
@@ -274,10 +296,9 @@ const App: React.FC = () => {
     }
   };
 
-  const getFilteredVideos = () => {
+  const filteredVideos = useMemo(() => {
     let filtered = videos;
 
-    // Filter by Main View Category
     if (currentView !== ViewState.HOME) {
       const viewCategoryMap: Record<string, string> = {
         [ViewState.EDUCATION]: 'Education',
@@ -295,11 +316,8 @@ const App: React.FC = () => {
       } else if (targetCategory) {
         filtered = filtered.filter(v => v.category === targetCategory);
       } else {
-        // Custom Category Handling
-        // For demo purposes, check if the video has tags matching the custom category name
         const customItem = navItems.find(i => i.id === currentView);
         if (customItem && customItem.isCustom) {
-          // Loosely match tags or category strings
           filtered = filtered.filter(v =>
             v.tags?.some(tag => tag.toLowerCase().includes(customItem.label.toLowerCase())) ||
             v.category.toLowerCase().includes(customItem.label.toLowerCase())
@@ -308,7 +326,6 @@ const App: React.FC = () => {
       }
     }
 
-    // Filter by Sub-Category Pills
     if (activeSubCategory && activeSubCategory !== 'All') {
       if (currentView === ViewState.ORIGINALS) {
         filtered = filtered.filter(v => v.category === activeSubCategory || (activeSubCategory === 'Movies' && v.category === 'Originals'));
@@ -323,7 +340,6 @@ const App: React.FC = () => {
       }
     }
 
-    // Filter by Search Query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(video =>
@@ -334,11 +350,9 @@ const App: React.FC = () => {
     }
 
     return filtered;
-  };
+  }, [videos, currentView, activeSubCategory, searchQuery, navItems]);
 
-  const filteredVideos = getFilteredVideos();
-
-  const toggleWatchLater = (id: string) => {
+  const toggleWatchLater = useCallback((id: string) => {
     setWatchLater(prev => {
       const next = prev.includes(id)
         ? prev.filter(videoId => videoId !== id)
@@ -346,7 +360,7 @@ const App: React.FC = () => {
       try { localStorage.setItem('tube_watch_later', JSON.stringify(next)); } catch { }
       return next;
     });
-  };
+  }, []);
 
   // Generate Recommendations when Watch Later changes
   useEffect(() => {
@@ -374,16 +388,21 @@ const App: React.FC = () => {
   }, [watchLater, videos]);
 
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    if (e.target.value && currentView !== ViewState.HOME) {
+  const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchInput(value);
+    if (value && currentView !== ViewState.HOME) {
       setCurrentView(ViewState.HOME);
     }
-  };
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setSearchQuery(value), 300);
+  }, [currentView]);
 
-  const clearSearch = () => {
+  const clearSearch = useCallback(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    setSearchInput('');
     setSearchQuery('');
-  };
+  }, []);
 
   const handleNavigate = (view: ViewStateOrString) => {
     // Guard: Settings and Admin require authentication
@@ -402,6 +421,10 @@ const App: React.FC = () => {
     } else {
       setCurrentView(view);
       setIsMobileMenuOpen(false);
+      // Clear any pending search so showCarousels isn't stuck false on the new view
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      setSearchInput('');
+      setSearchQuery('');
     }
   };
 
@@ -426,14 +449,21 @@ const App: React.FC = () => {
     );
   }
 
-  // Header Helper
-  const getViewTitle = () => {
-    const currentItem = navItems.find(i => i.id === currentView);
-    if (currentItem && currentView !== ViewState.HOME) {
-      return { title: currentItem.label, icon: currentItem.icon || Star };
-    }
-    return null;
-  };
+  // Show landing page for new / unauthenticated visitors
+  if (showLanding && !isAuthenticated) {
+    return (
+      <Suspense fallback={
+        <div className="bg-zinc-950 h-screen w-full flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-red-600 animate-spin" />
+        </div>
+      }>
+        <LandingPage
+          onEnterApp={enterApp}
+          onSignIn={() => { enterApp(); setShowLogin(true); }}
+        />
+      </Suspense>
+    );
+  }
 
   const renderContent = () => {
     switch (currentView) {
@@ -471,301 +501,57 @@ const App: React.FC = () => {
           />
         );
 
+      case ViewState.ANALYTICS:
+        if (!isAuthenticated) { setShowLogin(true); return null; }
+        return (
+          <AnalyticsDashboard
+            currentNavItems={navItems}
+            onAddCategory={handleAddCategory}
+            onRemoveCategory={handleRemoveCategory}
+          />
+        );
+
+      case ViewState.UPLOAD:
+        if (!isAuthenticated) { setShowLogin(true); return null; }
+        return (
+          <UploadSection
+            onUploadComplete={handleUploadComplete}
+            creatorName={userPhone || 'Creator'}
+          />
+        );
+
       // Default / Generic Grid View for Home and all Categories (System + Custom)
       default:
-        const viewHeader = getViewTitle();
-
         return (
-          <div className="p-4 md:p-8 pb-24">
-            {/* Hero Section - Only on HOME and not searching */}
-            {currentView === ViewState.HOME && !searchQuery && (() => {
-              const featuredVideos = [...videos].sort((a, b) => b.views - a.views).slice(0, 5);
-              const hero = featuredVideos[heroIndex % featuredVideos.length];
-              if (!hero) return null;
-              return (
-                <div className="w-full h-[45vh] md:h-[58vh] rounded-2xl overflow-hidden relative mb-10 group animate-in fade-in duration-700 shadow-2xl">
-                  {/* Thumbnail */}
-                  <img
-                    key={hero.id}
-                    src={hero.thumbnail}
-                    alt={hero.title}
-                    className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-105 bg-zinc-800"
-                    onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }}
-                  />
-
-                  {/* Dark overlay — stronger at bottom so text is always readable */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent" />
-
-                  {/* Content — pinned to bottom-left, max 55% width to avoid right-side overflow */}
-                  <div className="absolute bottom-0 left-0 p-5 md:p-10 w-full md:max-w-[60%]">
-                    {/* Badges row */}
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">#1 In Kenya</span>
-                      {hero.isPremium && !PAYWALL_ENABLED && (
-                        <span className="bg-purple-600/80 text-white text-[10px] font-bold px-2 py-0.5 rounded">✨ Premium</span>
-                      )}
-                      <span className="text-zinc-400 text-[10px] uppercase tracking-wide">{hero.category}</span>
-                    </div>
-
-                    {/* Title */}
-                    <h1 className="text-xl md:text-4xl font-black text-white leading-tight drop-shadow-lg line-clamp-2 mb-2">
-                      {hero.title}
-                    </h1>
-
-                    {/* Meta — single line, hidden on very small screens */}
-                    <p className="hidden sm:block text-zinc-300 text-xs md:text-sm line-clamp-1 mb-4">
-                      {hero.author} · {(hero.views / 1000).toFixed(0)}K views · {hero.duration}
-                    </p>
-
-                    {/* CTA Buttons */}
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => document.getElementById(`video-${hero.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                        className="bg-white text-black font-bold px-5 md:px-7 py-2.5 rounded-lg flex items-center gap-2 hover:bg-zinc-200 transition-colors shadow-lg text-sm"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                        Play Now
-                      </button>
-                      <button
-                        onClick={() => toggleWatchLater(hero.id)}
-                        className="bg-white/10 backdrop-blur text-white font-bold px-5 md:px-7 py-2.5 rounded-lg hover:bg-white/20 transition-colors flex items-center gap-2 border border-white/20 text-sm"
-                      >
-                        {watchLater.includes(hero.id) ? '✓ Saved' : '+ Watch Later'}
-                      </button>
-                    </div>
-
-                    {/* Dot indicators */}
-                    <div className="flex gap-1.5 mt-4">
-                      {featuredVideos.map((_, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setHeroIndex(i)}
-                          className={`h-1 rounded-full transition-all duration-500 ${i === heroIndex % featuredVideos.length ? 'w-6 bg-red-500' : 'w-1.5 bg-white/30 hover:bg-white/60'
-                            }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* View Specific Header (if not Home) */}
-            {viewHeader && (
-              <div className="mb-6 flex items-center gap-3">
-                <div className="p-3 bg-zinc-800 rounded-full">
-                  <viewHeader.icon className="w-6 h-6 text-white" />
-                </div>
-                <h1 className="text-3xl font-bold text-white">{viewHeader.title}</h1>
-              </div>
-            )}
-
-            {/* Sub-Category Pills */}
-            <div className="flex gap-3 overflow-x-auto pb-4 mb-6 no-scrollbar sticky top-0 z-10 bg-zinc-950/90 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
-              {currentSubCategories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveSubCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors border border-transparent
-                            ${activeSubCategory === cat
-                      ? 'bg-white text-black'
-                      : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-white'}`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            {/* Shorts Shelf (Vertical Video Carousel) - Only on Home */}
-            {currentView === ViewState.HOME && !searchQuery && (
-              <ShortsShelf
-                shorts={realShorts}
-                onShortClick={() => setCurrentView(ViewState.SHORTS)}
-              />
-            )}
-
-            {/* Main Grid */}
-            <div className="mb-6 flex items-center gap-2">
-              <h2 className="text-xl font-bold text-white">
-                {searchQuery ? `Results for "${searchQuery}"` :
-                  activeSubCategory !== 'All' ? activeSubCategory :
-                    currentView === ViewState.HOME ? 'Trending Now' : 'Popular Videos'}
-              </h2>
-              {isRealContent ? (
-                <span className="text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">LIVE</span>
-              ) : !isLoadingVideos && (
-                <span className="text-sm text-zinc-500">({filteredVideos.length})</span>
-              )}
-            </div>
-
-            {/* Skeleton loader while fetching from Bunny */}
-            {(isLoadingVideos || (!isRealContent && videos.length === 0)) ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="bg-zinc-900 rounded-lg overflow-hidden animate-pulse">
-                    <div className="aspect-video bg-zinc-800" />
-                    <div className="p-3 space-y-2">
-                      <div className="h-4 bg-zinc-800 rounded w-3/4" />
-                      <div className="h-3 bg-zinc-800 rounded w-1/2" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Trending' ? (
-              // Netflix-style category carousels
-              <div className="space-y-2 animate-in fade-in duration-500">
-                {/* 🔥 Trending — sorted by real view count */}
-                <VideoCarousel
-                  key="Trending"
-                  title="🔥 Trending Now"
-                  videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 20)}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={!PAYWALL_ENABLED || isAuthenticated}
-                />
-
-                {/* 📺 Series Carousel — groups episodes by seriesTitle/season */}
-                <SeriesCarousel
-                  videos={videos.filter(v => v.category === 'Series' || v.category === 'Originals')}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={!PAYWALL_ENABLED || isAuthenticated}
-                  onSubscribeRequest={() => setShowLogin(true)}
-                />
-
-                {/* Standard category carousels */}
-                {['Movies', 'Farmers', 'Education', 'Faith', 'Kids', 'Diaspora'].map(cat => {
-                  // Fallback for old "Originals" tag until all content is migrated
-                  const catVideos = videos.filter(v => v.category === cat || (cat === 'Movies' && v.category === 'Originals'));
-                  const label = cat === 'Movies' ? '🎬 Kenyan Movies' : cat;
-                  return (
-                    <VideoCarousel
-                      key={cat}
-                      title={label}
-                      videos={catVideos}
-                      watchLaterIds={watchLater}
-                      onToggleWatchLater={toggleWatchLater}
-                      isAuthenticated={!PAYWALL_ENABLED || isAuthenticated}
-                    />
-                  );
-                })}
-              </div>
-            ) : currentView === ViewState.ORIGINALS && !searchQuery ? (
-              // Nested Originals View
-              <div className="space-y-2 animate-in fade-in duration-500">
-                {activeSubCategory === 'Series' ? (
-                  <>
-                    {/* Series Carousels */}
-                    {['Swahili', 'Drama', 'Comedy', 'Thriller'].map(genre => {
-                      const genreVideos = filteredVideos.filter(v => v.genre?.includes(genre) || v.tags?.includes(genre));
-                      if (genreVideos.length === 0) return null;
-                      return (
-                        <SeriesCarousel
-                          key={genre}
-                          title={`📺 ${genre} Series`}
-                          videos={genreVideos}
-                          watchLaterIds={watchLater}
-                          onToggleWatchLater={toggleWatchLater}
-                          isAuthenticated={!PAYWALL_ENABLED || isAuthenticated}
-                          onSubscribeRequest={() => setShowLogin(true)}
-                        />
-                      );
-                    })}
-                  </>
-                ) : (
-                  <>
-                    {/* Movies Carousels */}
-                    {['Swahili', 'Drama', 'Comedy', 'Documentary', 'Action'].map(genre => {
-                      const genreVideos = filteredVideos.filter(v => v.genre?.includes(genre) || v.tags?.includes(genre));
-                      if (genreVideos.length === 0) return null;
-                      return (
-                        <VideoCarousel
-                          key={genre}
-                          title={`🎬 ${genre} Movies`}
-                          videos={genreVideos}
-                          watchLaterIds={watchLater}
-                          onToggleWatchLater={toggleWatchLater}
-                          isAuthenticated={!PAYWALL_ENABLED || isAuthenticated}
-                        />
-                      );
-                    })}
-                  </>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4 duration-500">
-                  {filteredVideos.map((video) => (
-                    <div id={`video-${video.id}`} key={video.id}>
-                      <VideoCard
-                        video={video}
-                        isWatchLater={watchLater.includes(video.id)}
-                        onToggleWatchLater={toggleWatchLater}
-                        isSubscribed={!PAYWALL_ENABLED || isAuthenticated}
-                        onSubscribeRequest={() => setShowLogin(true)}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                {/* AI Recommendations Section (Only on Home) */}
-                {currentView === ViewState.HOME && !searchQuery && watchLater.length > 0 && (
-                  <div className="mt-16 animate-in fade-in duration-700">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 bg-purple-500/20 rounded-full">
-                        <Sparkles className="w-5 h-5 text-purple-400" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-bold text-white">Recommended For You</h2>
-                        <p className="text-xs text-zinc-400">Based on your Watch List</p>
-                      </div>
-                    </div>
-
-                    {isRecLoading ? (
-                      <div className="flex items-center justify-center py-12 bg-zinc-900/30 rounded-xl border border-dashed border-zinc-800">
-                        <Loader2 className="w-8 h-8 text-purple-500 animate-spin mb-2" />
-                        <span className="ml-3 text-zinc-500 text-sm">AI is curating your feed...</span>
-                      </div>
-                    ) : recommendedVideos.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {recommendedVideos.map((video) => (
-                          <VideoCard
-                            key={`rec-${video.id}`}
-                            video={video}
-                            isWatchLater={watchLater.includes(video.id)}
-                            onToggleWatchLater={toggleWatchLater}
-                            isSubscribed={!PAYWALL_ENABLED || isAuthenticated}
-                            onSubscribeRequest={() => setShowLogin(true)}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Empty state — only if not loading and no results */}
-            {!isLoadingVideos && filteredVideos.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mb-4">
-                  <Search className="w-8 h-8 text-zinc-500" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">No videos found</h3>
-                <p className="text-zinc-500">
-                  {currentView !== ViewState.HOME ? 'No content in this category yet.' : 'Try searching for something else or change the category.'}
-                </p>
-              </div>
-            )}
-
-          </div>
+          <HomeView
+            videos={videos}
+            filteredVideos={filteredVideos}
+            realShorts={realShorts}
+            isLoadingVideos={isLoadingVideos}
+            isRealContent={isRealContent}
+            currentView={currentView}
+            heroIndex={heroIndex}
+            setHeroIndex={setHeroIndex}
+            searchQuery={searchQuery}
+            searchInput={searchInput}
+            activeSubCategory={activeSubCategory}
+            setActiveSubCategory={setActiveSubCategory}
+            currentSubCategories={currentSubCategories}
+            watchLater={watchLater}
+            toggleWatchLater={toggleWatchLater}
+            isAuthenticated={isAuthenticated}
+            recommendedVideos={recommendedVideos}
+            isRecLoading={isRecLoading}
+            navItems={navItems}
+            setCurrentView={setCurrentView}
+            setShowLogin={setShowLogin}
+          />
         );
     }
   };
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">
+    <div className="flex h-screen overflow-hidden bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">
       {/* Phone + PIN Auth Modal (overlays everything) */}
       {showLogin && !isAuthenticated && (
         <AuthModal
@@ -803,11 +589,25 @@ const App: React.FC = () => {
               <span className="font-bold text-xl tracking-tighter">Tube</span>
             </div>
 
+            {/* DEV ONLY — quick landing page preview toggle */}
+            {import.meta.env.DEV && (
+              <button
+                onClick={() => {
+                  try { localStorage.removeItem('tube_entered_app'); } catch {}
+                  setShowLanding(true);
+                }}
+                className="hidden md:flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full border border-dashed border-zinc-600 text-zinc-500 hover:border-red-500 hover:text-red-400 transition-colors flex-shrink-0"
+                title="Preview landing page (dev only)"
+              >
+                ↩ Landing
+              </button>
+            )}
+
             {/* Desktop Search Bar */}
             <div className="hidden md:flex flex-1 max-w-xl mx-8 relative">
               <input
                 type="text"
-                value={searchQuery}
+                value={searchInput}
                 onChange={handleSearch}
                 placeholder={t('common.search')}
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-full py-2 pl-10 pr-10 text-zinc-300 focus:outline-none focus:border-zinc-600 focus:bg-black transition-all"
@@ -835,9 +635,12 @@ const App: React.FC = () => {
                 {isMobileSearchOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
               </button>
 
-              <button className="relative">
-                <Bell className="w-6 h-6 text-zinc-400 hover:text-white transition-colors" />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-600 rounded-full"></span>
+              <button
+                onClick={() => handleNavigate(ViewState.SETTINGS)}
+                className="relative text-zinc-400 hover:text-white transition-colors"
+                title="Notifications"
+              >
+                <Bell className="w-6 h-6" />
               </button>
               {isAuthenticated && currentUser ? (
                 <div
@@ -867,7 +670,7 @@ const App: React.FC = () => {
               <input
                 id="mobile-search-input"
                 type="text"
-                value={searchQuery}
+                value={searchInput}
                 onChange={handleSearch}
                 placeholder="Search Tube..."
                 className="w-full bg-zinc-900 border border-zinc-700 rounded-full py-2.5 pl-10 pr-10 text-zinc-300 focus:outline-none focus:border-red-500 transition-colors"
@@ -884,7 +687,13 @@ const App: React.FC = () => {
 
         {/* Scrollable View Content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar">
-          {renderContent()}
+          <Suspense fallback={
+            <div className="h-full flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-red-600 animate-spin" />
+            </div>
+          }>
+            {renderContent()}
+          </Suspense>
         </main>
 
         {/* Mobile Bottom Nav (Simplified for common tasks) */}

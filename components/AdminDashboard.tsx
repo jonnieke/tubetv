@@ -4,6 +4,8 @@ import {
   ChevronDown, ChevronUp, BarChart2, Eye, Clock, Tag, User, Calendar, Info, UploadCloud
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, getStreamUrl, uploadCustomThumbnail, updateVideoMetadata } from '../services/bunnyService';
+import { sanitizeText } from '../lib/sanitize';
+import { error as logError } from '../lib/logger';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { NavItem, Video } from '../types';
@@ -79,6 +81,7 @@ const EditModal = ({
   form,
   setForm,
   saving,
+  saveError,
   existingSeries,
   existingAuthors,
   onSave,
@@ -88,6 +91,7 @@ const EditModal = ({
   form: EditForm;
   setForm: React.Dispatch<React.SetStateAction<EditForm>>;
   saving: boolean;
+  saveError: string | null;
   existingSeries: string[];
   existingAuthors: string[];
   onSave: () => void;
@@ -324,18 +328,23 @@ const EditModal = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-zinc-800 sticky bottom-0 bg-zinc-950">
-          <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors">
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-zinc-700 text-white text-sm font-bold flex items-center gap-2 transition-colors"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Save Changes
-          </button>
+        <div className="flex flex-col gap-2 p-6 border-t border-zinc-800 sticky bottom-0 bg-zinc-950">
+          {saveError && (
+            <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{saveError}</p>
+          )}
+          <div className="flex items-center justify-end gap-3">
+            <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-zinc-700 text-white text-sm font-bold flex items-center gap-2 transition-colors"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Save Changes
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -362,6 +371,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editForm, setEditForm] = useState<EditForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Load overrides from localStorage
   const getOverrides = useCallback((): Record<string, Partial<EditForm>> => {
@@ -397,9 +407,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       tags: saved.tags ?? getMeta(item.metaTags, 'tags'),
     });
     setEditingItem(item);
+    setSaveError(null);
   };
 
   const saveEdit = async () => {
+    setSaveError(null);
     if (!editingItem) return;
     setSaving(true);
     
@@ -411,14 +423,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
       
+      const sanitizedForm = {
+        ...editForm,
+        title: sanitizeText(editForm.title),
+        description: sanitizeText(editForm.description),
+        author: sanitizeText(editForm.author),
+        seriesTitle: sanitizeText(editForm.seriesTitle),
+        tags: sanitizeText(editForm.tags),
+      };
+
       const newMetaTags = [
         ...filteredMetaTags,
-        ...Object.entries(editForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) }))
+        ...Object.entries(sanitizedForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) }))
       ];
 
       // 2. Save to Bunny CDN via Supabase Proxy
       const updatePayload = {
-        title: editForm.title,
+        title: sanitizedForm.title,
         metaTags: newMetaTags
       };
       
@@ -438,11 +459,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         setSavedIds(prev => new Set(prev).add(editingItem.guid));
       } else {
-        alert('Failed to save changes to the server. Please try again.');
+        setSaveError('Failed to save changes to the server. Please try again.');
       }
     } catch (error) {
-      console.error(error);
-      alert('An error occurred while saving.');
+      logError(error);
+      setSaveError('An unexpected error occurred while saving.');
     } finally {
       setSaving(false);
       setEditingItem(null);
@@ -744,10 +765,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           form={editForm}
           setForm={setEditForm}
           saving={saving}
-          existingSeries={Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'seriesTitle')).filter(Boolean))).sort()}
-          existingAuthors={Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'author') || getMeta(v.metaTags, 'creator') || 'Tube Creator').filter(Boolean))).sort()}
+          saveError={saveError}
+          existingSeries={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'seriesTitle')).filter(Boolean))) as string[]).sort()}
+          existingAuthors={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'author') || getMeta(v.metaTags, 'creator') || 'Tube Creator').filter(Boolean))) as string[]).sort()}
           onSave={saveEdit}
-          onClose={() => setEditingItem(null)}
+          onClose={() => { setEditingItem(null); setSaveError(null); }}
         />
       )}
         </div>

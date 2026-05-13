@@ -44,7 +44,7 @@ export const translations = {
     'studio.overview': 'Overview',
     'studio.menu': 'Menu Manager',
     'studio.views': 'Total Views',
-    'studio.revenue': 'Revenue',
+    'studio.subscribers': 'Subscribers',
     'studio.content': 'Your Content',
     'studio.analytics': 'Analytics',
 

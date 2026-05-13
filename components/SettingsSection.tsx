@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
-import { User, Bell, Shield, CreditCard, Smartphone, Globe, Monitor, LogOut, Check, KeyRound, Eye, EyeOff, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
-import { updatePin, signOut } from '../lib/supabase';
+import React, { useState, useEffect } from 'react';
+import { User, Bell, Shield, CreditCard, Smartphone, Globe, Monitor, LogOut, KeyRound, Eye, EyeOff, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { updatePin, signOut, supabase } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useLanguage } from '../contexts/LanguageContext';
+import { error as logError } from '../lib/logger';
+
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
+
+/** Convert a VAPID base64 key to the Uint8Array format pushManager.subscribe() expects */
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
 
 interface SettingsSectionProps {
   currentUser?: SupabaseUser | null;
@@ -13,11 +24,25 @@ interface SettingsSectionProps {
 const SettingsSection: React.FC<SettingsSectionProps> = ({ currentUser, userPhone, onLogout }) => {
   const { t, language, setLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState('general');
+  // Push notification state — synced with the browser permission
+  const [pushEnabled, setPushEnabled]   = useState(false);
+  const [pushLoading, setPushLoading]   = useState(false);
+  const [pushError,   setPushError]     = useState('');
   const [notifications, setNotifications] = useState({
-    push: true,
     recommendations: false,
-    updates: true
+    updates: true,
   });
+
+  // Reflect current browser permission on mount
+  useEffect(() => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      navigator.serviceWorker.ready
+        .then((reg) => reg.pushManager.getSubscription())
+        .then((sub) => { if (sub) setPushEnabled(true); })
+        .catch(() => {});
+    }
+  }, []);
   const [preferences, setPreferences] = useState({
     autoplay: true,
     captions: false,
@@ -41,6 +66,63 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({ currentUser, userPhon
   const togglePreference = (key: keyof typeof preferences) => {
     if (typeof preferences[key] === 'boolean') {
       setPreferences(prev => ({ ...prev, [key]: !prev[key] }));
+    }
+  };
+
+  const togglePush = async () => {
+    setPushError('');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setPushError('Push notifications are not supported in this browser.');
+      return;
+    }
+    if (!VAPID_PUBLIC_KEY) {
+      setPushError('Push notifications are not configured yet (missing VITE_VAPID_PUBLIC_KEY).');
+      return;
+    }
+    if (!currentUser) {
+      setPushError('Sign in to enable push notifications.');
+      return;
+    }
+
+    setPushLoading(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+
+      if (pushEnabled) {
+        // ── Unsubscribe ────────────────────────────────────────────────────────
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          const endpoint = sub.endpoint;
+          await sub.unsubscribe();
+          await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
+        }
+        setPushEnabled(false);
+      } else {
+        // ── Subscribe ──────────────────────────────────────────────────────────
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          setPushError('Permission denied. Enable notifications in your browser settings.');
+          return;
+        }
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+        const key  = sub.getKey('p256dh');
+        const auth = sub.getKey('auth');
+        await supabase.from('push_subscriptions').upsert({
+          user_id:  currentUser.id,
+          endpoint: sub.endpoint,
+          p256dh:   key  ? btoa(String.fromCharCode(...new Uint8Array(key)))  : '',
+          auth:     auth ? btoa(String.fromCharCode(...new Uint8Array(auth))) : '',
+        }, { onConflict: 'endpoint' });
+        setPushEnabled(true);
+      }
+    } catch (err) {
+      logError('Push subscription error:', err);
+      setPushError('Something went wrong. Please try again.');
+    } finally {
+      setPushLoading(false);
     }
   };
 
@@ -86,11 +168,11 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({ currentUser, userPhon
   const displayName = currentUser?.user_metadata?.display_name || displayPhone;
 
   const tabs = [
-    { id: 'general', label: t('nav.settings'), icon: Monitor },
-    { id: 'account', label: t('nav.login'), icon: User },
-    { id: 'notifications', label: t('live.notify'), icon: Bell },
-    { id: 'billing', label: t('nav.premium'), icon: CreditCard },
-    { id: 'privacy', label: t('nav.settings'), icon: Shield },
+    { id: 'general',       label: 'General',           icon: Monitor },
+    { id: 'account',       label: 'Account',            icon: User },
+    { id: 'notifications', label: 'Notifications',      icon: Bell },
+    { id: 'billing',       label: 'Billing',            icon: CreditCard },
+    { id: 'privacy',       label: 'Privacy & Security', icon: Shield },
   ];
 
   return (
@@ -275,24 +357,65 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({ currentUser, userPhon
                     <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
                         <Bell className="text-yellow-500" /> Notification Preferences
                     </h2>
-                    
+
                     <div className="space-y-6">
+                        {/* ── Push notifications (real browser API) ───────────── */}
+                        <div className="pb-6 border-b border-zinc-800">
+                            <div className="flex items-start gap-4">
+                                <div className="mt-1">
+                                    {pushLoading ? (
+                                        <Loader2 size={20} className="animate-spin text-zinc-400" />
+                                    ) : (
+                                        <button
+                                            onClick={togglePush}
+                                            disabled={!currentUser}
+                                            className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${
+                                                pushEnabled ? 'bg-red-600' : 'bg-zinc-700'
+                                            } disabled:opacity-40`}
+                                            aria-label="Toggle push notifications"
+                                        >
+                                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${pushEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex-1">
+                                    <p className="font-medium text-white">Push Notifications</p>
+                                    <p className="text-sm text-zinc-400 mt-0.5">
+                                        Get notified about new uploads, live streams, and replies — directly on your device.
+                                    </p>
+                                    {!currentUser && (
+                                        <p className="text-xs text-zinc-500 mt-1">Sign in to enable push notifications.</p>
+                                    )}
+                                    {pushError && (
+                                        <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                                            <AlertCircle size={12} /> {pushError}
+                                        </p>
+                                    )}
+                                    {pushEnabled && (
+                                        <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                                            <CheckCircle2 size={12} /> Active on this device
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ── Simple preference toggles ────────────────────────── */}
                         {(Object.entries(notifications) as [keyof typeof notifications, boolean][]).map(([key, value]) => (
                             <div key={key} className="flex items-start gap-4 pb-6 border-b border-zinc-800 last:border-0 last:pb-0">
                                 <div className="mt-1">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={value} 
-                                        onChange={() => toggleNotification(key)}
+                                    <input
+                                        type="checkbox"
+                                        checked={value}
+                                        onChange={() => setNotifications(prev => ({ ...prev, [key]: !prev[key] }))}
                                         className="w-5 h-5 rounded border-zinc-700 bg-zinc-800 text-red-600 focus:ring-red-500 focus:ring-offset-zinc-900"
                                     />
                                 </div>
                                 <div>
                                     <p className="font-medium capitalize text-white">{(key as string).replace(/([A-Z])/g, ' $1').trim()}</p>
                                     <p className="text-sm text-zinc-400">
-                                        {key === 'push' && 'Get push notifications on your mobile device.'}
-                                        {key === 'recommendations' && 'Notify me about videos I might like based on my history.'}
-                                        {key === 'updates' && 'Important announcements about service features and policy.'}
+                                        {key === 'recommendations' && 'Notify me about videos I might like based on my watch history.'}
+                                        {key === 'updates' && 'Important announcements about service features and policy changes.'}
                                     </p>
                                 </div>
                             </div>
@@ -305,66 +428,37 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({ currentUser, userPhon
             {activeTab === 'billing' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                     {/* Current Plan */}
-                    <div className="bg-gradient-to-r from-zinc-900 to-zinc-800 border border-zinc-700 rounded-2xl p-6 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-32 bg-red-600/10 blur-3xl rounded-full pointer-events-none" />
-                        <div className="flex justify-between items-start relative z-10">
-                            <div>
-                                <p className="text-zinc-400 text-sm mb-1">Current Plan</p>
-                                <h2 className="text-3xl font-bold text-white mb-2">Free</h2>
-                                <p className="text-zinc-400 text-sm">Standard definition · With ads</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-2xl font-bold">Ksh 0<span className="text-sm text-zinc-400 font-normal">/mo</span></p>
-                            </div>
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 flex items-center justify-between">
+                        <div>
+                            <p className="text-zinc-400 text-xs uppercase tracking-wider mb-1">Current Plan</p>
+                            <h2 className="text-2xl font-bold text-white">Free — All Access</h2>
+                            <p className="text-zinc-400 text-sm mt-1">All content is free during our community-building phase.</p>
                         </div>
+                        <span className="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded-full border border-green-500/30 flex-shrink-0">
+                            ACTIVE
+                        </span>
                     </div>
 
-                    {/* Upgrade Plans */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Msingi Plan */}
-                        <div className="bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-2xl p-6 transition-colors cursor-pointer group">
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">{t('premium.msingi')}</p>
-                                    <h3 className="text-xl font-bold text-white">Basic</h3>
-                                </div>
-                                <p className="text-2xl font-black text-white">Ksh 150<span className="text-xs text-zinc-400">/mo</span></p>
+                    {/* Coming soon banner */}
+                    <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-red-900/30 to-zinc-900 border border-red-500/20 p-8 text-center">
+                        <div className="flex items-center justify-center gap-3 mb-4">
+                            <div className="p-3 bg-red-600/20 rounded-full">
+                                <CreditCard className="w-7 h-7 text-red-400" />
                             </div>
-                            <ul className="space-y-2 text-sm text-zinc-400 mb-6">
-                                <li className="flex items-center gap-2"><Check size={14} className="text-green-500 flex-shrink-0" /> HD quality · No ads</li>
-                                <li className="flex items-center gap-2"><Check size={14} className="text-green-500 flex-shrink-0" /> Full content library</li>
-                                <li className="flex items-center gap-2"><Check size={14} className="text-green-500 flex-shrink-0" /> 1 screen</li>
-                            </ul>
-                            <button className="w-full border border-zinc-600 text-white py-2.5 rounded-xl font-bold group-hover:bg-zinc-800 transition-colors">
-                                {t('premium.subscribe')}
-                            </button>
                         </div>
-
-                        {/* Ndovu Plan */}
-                        <div className="bg-gradient-to-br from-red-950/60 to-zinc-900 border border-red-500/40 rounded-2xl p-6 cursor-pointer relative overflow-hidden">
-                            <div className="absolute top-3 right-3 bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wide">Best Value</div>
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <p className="text-xs text-red-400 uppercase tracking-wider mb-1">{t('premium.ndovu')}</p>
-                                    <h3 className="text-xl font-bold text-white">Premium</h3>
-                                </div>
-                                <p className="text-2xl font-black text-white">Ksh 350<span className="text-xs text-zinc-400">/mo</span></p>
-                            </div>
-                            <ul className="space-y-2 text-sm text-zinc-400 mb-6">
-                                <li className="flex items-center gap-2"><Check size={14} className="text-green-500 flex-shrink-0" /> 4K · No ads</li>
-                                <li className="flex items-center gap-2"><Check size={14} className="text-green-500 flex-shrink-0" /> Early access to Originals</li>
-                                <li className="flex items-center gap-2"><Check size={14} className="text-green-500 flex-shrink-0" /> Offline downloads</li>
-                                <li className="flex items-center gap-2"><Check size={14} className="text-green-500 flex-shrink-0" /> 4 screens (family)</li>
-                            </ul>
-                            <button className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl font-bold transition-colors">
-                                {t('premium.subscribe')}
-                            </button>
+                        <h3 className="text-2xl font-black text-white mb-2">Subscription Plans Coming Soon</h3>
+                        <p className="text-zinc-400 text-sm max-w-md mx-auto leading-relaxed">
+                            We're building a seamless M-Pesa billing experience powered by header enrichment —
+                            subscribe with a single tap, no card required.
+                        </p>
+                        <div className="mt-6 flex flex-wrap justify-center gap-3 text-sm">
+                            {['One-tap M-Pesa', 'No card needed', 'Ksh 150 / mo', 'Cancel anytime'].map(feat => (
+                                <span key={feat} className="px-3 py-1.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">
+                                    {feat}
+                                </span>
+                            ))}
                         </div>
                     </div>
-
-                    <p className="text-zinc-600 text-xs text-center">
-                        Payments powered by M-Pesa · Charged monthly · Cancel anytime
-                    </p>
                 </div>
             )}
 

@@ -64,17 +64,10 @@ export interface ShortVideo {
   videoUrl?: string;
 }
 
-export interface AnalyticsMetric {
-  name: string;
-  value: number;
-  change: number; 
-}
 
 export interface DailyStat {
   day: string;
   views: number;
-  revenue: number;
-  subs: number;
 }
 
 export interface Caption {

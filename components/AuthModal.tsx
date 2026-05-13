@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Phone, ArrowRight, ArrowLeft, CheckCircle2, Loader2, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { X, Phone, ArrowRight, ArrowLeft, CheckCircle2, Loader2, Eye, EyeOff, AlertCircle, GraduationCap, Sprout, Tv, Radio } from 'lucide-react';
 import { signInWithPhone, signUpWithPhone, normalizePhone, isValidKenyanPhone } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 
@@ -173,7 +173,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onCancel }) => {
         {pinArr.map((digit, i) => (
           <div key={i} className="relative">
             <input
-              ref={(el) => (refs.current[i] = el)}
+              ref={(el) => { refs.current[i] = el; }}
               type={showPin ? 'text' : 'password'}
               inputMode="numeric"
               maxLength={1}
@@ -204,19 +204,96 @@ const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onCancel }) => {
     </div>
   );
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm animate-in fade-in duration-200 p-4">
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-sm relative shadow-2xl overflow-hidden">
-        {/* Top accent bar */}
-        <div className="h-1 w-full bg-gradient-to-r from-green-500 via-red-500 to-green-500" />
+  const PROMO_FEATURES = [
+    { icon: Tv,            label: 'Drama & Comedy',  desc: 'Original Kenyan series' },
+    { icon: GraduationCap, label: 'Education',        desc: 'CBC & KCSE content' },
+    { icon: Sprout,        label: 'Farming Tips',     desc: 'Agribusiness guides' },
+    { icon: Radio,         label: 'Live Streams',     desc: 'Sports, news & events' },
+  ];
 
-        {/* Close button */}
-        <button
-          onClick={onCancel}
-          className="absolute top-4 right-4 text-zinc-600 hover:text-white transition-colors z-10"
-        >
-          <X size={20} />
-        </button>
+  const PROMO_SHOWS = [
+    { initials: 'TL', label: 'The Landlord',       gradient: 'from-orange-900 to-zinc-900' },
+    { initials: 'NC', label: 'Nairobi Chronicles', gradient: 'from-blue-900 to-zinc-900' },
+    { initials: 'SS', label: 'Shamba Smart',       gradient: 'from-green-900 to-zinc-900' },
+    { initials: 'KC', label: 'KCSE Champions',     gradient: 'from-purple-900 to-zinc-900' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200 p-4">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-[800px] relative shadow-2xl overflow-hidden flex">
+
+        {/* ── Left promo panel (desktop only) ── */}
+        <div className="hidden md:flex flex-col justify-between w-[340px] flex-shrink-0 bg-gradient-to-b from-zinc-900 to-zinc-950 border-r border-zinc-800/60 p-8 relative overflow-hidden">
+          {/* Background glow */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-64 h-40 rounded-full"
+              style={{ background: 'radial-gradient(ellipse, rgba(220,38,38,0.12) 0%, transparent 70%)' }} />
+          </div>
+          {/* Subtle dot grid */}
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{
+            backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)',
+            backgroundSize: '20px 20px',
+          }} />
+
+          {/* Logo */}
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-9 h-9 bg-red-600 rounded-xl flex items-center justify-center font-black text-sm shadow-lg shadow-red-600/30">T</div>
+              <span className="text-xl font-black tracking-tight">Tube<span className="text-red-500">TV</span></span>
+            </div>
+            <h3 className="text-2xl font-black text-white leading-tight mb-2">
+              Stream Kenya,<br />
+              <span style={{
+                background: 'linear-gradient(135deg, #ef4444, #f97316)',
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+              }}>Watch Everything.</span>
+            </h3>
+            <p className="text-zinc-500 text-sm mb-6">100% Kenyan content. Completely free.</p>
+
+            {/* Features list */}
+            <div className="space-y-3">
+              {PROMO_FEATURES.map(f => (
+                <div key={f.label} className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-zinc-800/80 rounded-lg flex items-center justify-center flex-shrink-0 border border-zinc-700/50">
+                    <f.icon size={14} className="text-red-400" />
+                  </div>
+                  <div>
+                    <p className="text-white text-xs font-bold">{f.label}</p>
+                    <p className="text-zinc-600 text-[10px]">{f.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Show thumbnails grid */}
+          <div className="relative mt-6">
+            <p className="text-zinc-700 text-[10px] uppercase tracking-wider mb-2.5">Now Streaming</p>
+            <div className="grid grid-cols-2 gap-2">
+              {PROMO_SHOWS.map(s => (
+                <div key={s.initials} className={`relative aspect-video rounded-xl overflow-hidden bg-gradient-to-br ${s.gradient} border border-white/[0.06] flex items-center justify-center`}>
+                  <span className="text-white/[0.08] text-3xl font-black">{s.initials}</span>
+                  <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-black/80 to-transparent flex items-end px-1.5 pb-1">
+                    <p className="text-white/70 text-[8px] font-bold truncate">{s.label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right form panel ── */}
+        <div className="flex-1 relative">
+          {/* Top accent bar */}
+          <div className="h-0.5 w-full bg-gradient-to-r from-green-500/60 via-red-500 to-green-500/60" />
+
+          {/* Close button */}
+          <button
+            onClick={onCancel}
+            className="absolute top-4 right-4 text-zinc-600 hover:text-white transition-colors z-10 w-7 h-7 rounded-full bg-zinc-900/80 flex items-center justify-center border border-zinc-800"
+          >
+            <X size={15} />
+          </button>
 
         <div className="p-8">
 
@@ -327,7 +404,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onCancel }) => {
               )}
 
               <button
-                onClick={handleLoginSubmit}
+                onClick={() => handleLoginSubmit()}
                 disabled={isLoading || pinValue.length < 6}
                 className="w-full mt-6 bg-red-600 hover:bg-red-700 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2"
               >
@@ -448,6 +525,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onCancel }) => {
             </p>
           )}
         </div>
+        </div>{/* end right form panel */}
       </div>
     </div>
   );

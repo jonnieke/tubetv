@@ -1,23 +1,35 @@
 import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
+export default defineConfig({
+  server: {
+    port: 3000,
+    host: '0.0.0.0',
+  },
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, '.'),
+    },
+  },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Charts — large D3-based bundle, only loaded on Analytics tab
+          'vendor-recharts': ['recharts'],
+          // HLS streaming — large; loaded only when a video plays
+          'vendor-hls': ['hls.js'],
+          // Supabase client
+          'vendor-supabase': ['@supabase/supabase-js'],
+          // Icon library
+          'vendor-lucide': ['lucide-react'],
+          // Google Gemini SDK — AI features only, lazy at runtime
+          'vendor-gemini': ['@google/genai'],
+        },
       },
-      plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
-        }
-      }
-    };
+    },
+  },
 });

@@ -1,3 +1,4 @@
+import { log, error as logError } from '../lib/logger';
 // 🔒 SECURED: Calls are now proxied through Supabase Edge Functions
 // The sensitive BUNNY_ACCESS_KEY is now stored in Supabase Secrets.
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -43,6 +44,17 @@ interface BunnyVideoListResponse {
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithRetry(url: string, options: RequestInit, retries = 3): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, options);
+    if (res.ok || res.status < 500) return res;
+    if (attempt < retries) await sleep(500 * 2 ** attempt);
+  }
+  return fetch(url, options);
+}
 
 /** Formats seconds → "M:SS" or "H:MM:SS" */
 const formatDuration = (seconds: number): string => {
@@ -164,7 +176,7 @@ export const uploadCustomThumbnail = async (videoId: string, file: File): Promis
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Thumbnail upload failed:', response.status, errText);
+      logError('Thumbnail upload failed:', response.status, errText);
       return null;
     }
 
@@ -216,13 +228,13 @@ export const fetchBunnyVideos = async (): Promise<BunnyVideoItem[]> => {
 
   try {
     while (true) {
-      const res = await fetch(
+      const res = await fetchWithRetry(
         `${BASE_URL}?page=${page}&itemsPerPage=100&orderBy=date`,
         { headers: getHeaders() }
       );
 
       if (!res.ok) {
-        console.error(`Bunny library fetch failed: ${res.status} ${res.statusText}`);
+        logError(`Bunny library fetch failed: ${res.status} ${res.statusText}`);
         break;
       }
 
@@ -239,7 +251,7 @@ export const fetchBunnyVideos = async (): Promise<BunnyVideoItem[]> => {
     // Deduplicate by GUID in case of overlapping pages or CDN sync issues
     const uniqueAll = Array.from(new Map(all.map(item => [item.guid, item])).values());
 
-    console.log(`✅ Loaded ${uniqueAll.length} unique videos from Bunny library`);
+    log(`✅ Loaded ${uniqueAll.length} unique videos from Bunny library`);
     return uniqueAll;
   } catch (error) {
     console.error('fetchBunnyVideos failed:', error);
@@ -310,10 +322,12 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   const rawSeriesTitle = getMeta(activeItem.metaTags, 'seriesTitle') || getMeta(activeItem.metaTags, 'series');
 
   // Also attempt to extract S/E from title if not in metaTags
-  const seMatch = activeItem.title?.match(/^S(\d+)\s*E(\d+)\s*[-–:]?\s*/i);
+  // Strip common video file extensions left in Bunny titles
+  const titleNoExt = activeItem.title?.replace(/\.(mp4|mkv|avi|mov|webm|flv|wmv)$/i, '').trim() ?? '';
+  const seMatch = titleNoExt.match(/^S(\d+)\s*E(\d+)\s*[-–:]?\s*/i);
   const parsedSeason = rawSeason ? parseInt(rawSeason) : (seMatch ? parseInt(seMatch[1]) : undefined);
   const parsedEpisode = rawEpisode ? parseInt(rawEpisode) : (seMatch ? parseInt(seMatch[2]) : undefined);
-  const cleanTitle = seMatch ? activeItem.title.replace(seMatch[0], '').trim() : activeItem.title;
+  const cleanTitle = seMatch ? titleNoExt.replace(seMatch[0], '').trim() : titleNoExt;
 
   const productionYearRaw = getMeta(activeItem.metaTags, 'productionYear') || getMeta(activeItem.metaTags, 'year');
 

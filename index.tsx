@@ -4,6 +4,8 @@ import './index.css';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { ToastProvider } from './components/Toast';
+import { log, error as logError } from './lib/logger';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -15,7 +17,9 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <LanguageProvider>
-        <App />
+        <ToastProvider>
+          <App />
+        </ToastProvider>
       </LanguageProvider>
     </ErrorBoundary>
   </React.StrictMode>
@@ -24,9 +28,9 @@ root.render(
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((registration) => {
-      console.log('SW registered: ', registration);
+      log('SW registered: ', registration);
     }).catch((registrationError) => {
-      console.log('SW registration failed: ', registrationError);
+      logError('SW registration failed: ', registrationError);
     });
   });
 }

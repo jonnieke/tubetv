@@ -4,6 +4,8 @@ import { UploadCloud, FileVideo, CheckCircle2, Wand2, Loader2, ImageIcon, ImageP
 import { generateVideoMetadata, generateThumbnail } from '../services/geminiService';
 import { createVideoEntry, uploadVideoFile, getStreamUrl, getThumbnailUrl } from '../services/bunnyService';
 import { supabase } from '../lib/supabase';
+import { sanitizeMetadata } from '../lib/sanitize';
+import { warn } from '../lib/logger';
 import { Video } from '../types';
 
 interface UploadItem {
@@ -24,6 +26,7 @@ interface UploadItem {
 
 interface UploadSectionProps {
     onUploadComplete?: (video: Video) => void;
+    creatorName?: string;
 }
 
 const CATEGORIES = [
@@ -302,10 +305,12 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
   const uploadSingleItem = async (item: UploadItem) => {
       updateQueueItem(item.id, { status: 'uploading', progress: 0, stageInfo: 'Initializing...' });
 
+      const safeMetadata = sanitizeMetadata(item.metadata);
+
       try {
         // 1. Create Video Entry
         updateQueueItem(item.id, { stageInfo: 'Creating Entry...' });
-        const videoEntry = await createVideoEntry(item.metadata.title || item.file.name);
+        const videoEntry = await createVideoEntry(safeMetadata.title || item.file.name);
         
         if (!videoEntry || !videoEntry.guid) {
             throw new Error("Failed to create video entry");
@@ -342,16 +347,16 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
         if (onUploadComplete) {
             const newVideo: Video = {
                 id: videoId,
-                title: item.metadata.title || item.file.name,
-                description: item.metadata.description,
+                title: safeMetadata.title || item.file.name,
+                description: safeMetadata.description,
                 thumbnail: thumbnailUrl,
                 url: streamUrl,
                 duration: formatTime(item.duration),
                 views: 0,
                 isPremium: false,
                 author: creatorName,
-                category: item.metadata.category || 'New Releases',
-                tags: [item.metadata.category || 'New']
+                category: safeMetadata.category || 'New Releases',
+                tags: [safeMetadata.category || 'New']
             };
 
             // Persist to Supabase so it survives page refreshes
@@ -372,7 +377,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
 
             if (dbError) {
                 // Non-fatal: video still works in session, but won't persist
-                console.warn(
+                warn(
                     'Supabase insert skipped (table may not exist yet). ' +
                     'Run the SQL migration in supabase/migrations/001_create_videos.sql to enable persistence.\n',
                     dbError.message

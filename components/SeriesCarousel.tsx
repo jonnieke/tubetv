@@ -90,18 +90,20 @@ function groupIntoSeries(videos: Video[]): { series: SeriesGroup[]; standalone: 
 
 // ─── Series Card ─────────────────────────────────────────────────────────────
 
-const SeriesCard = ({
-  sg,
-  watchLaterIds,
-  onToggleWatchLater,
-  isAuthenticated,
-  onSubscribeRequest,
-}: {
+interface SeriesCardProps {
   sg: SeriesGroup;
   watchLaterIds: string[];
   onToggleWatchLater: (id: string) => void;
   isAuthenticated: boolean;
   onSubscribeRequest?: () => void;
+}
+
+const SeriesCard: React.FC<SeriesCardProps> = ({
+  sg,
+  watchLaterIds,
+  onToggleWatchLater,
+  isAuthenticated,
+  onSubscribeRequest,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [activeSeason, setActiveSeason] = useState<number>(
@@ -191,7 +193,6 @@ const SeriesCard = ({
                   key={ep.id}
                   className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-zinc-800/60 transition-colors group/ep cursor-pointer border-b border-zinc-800/40 last:border-0"
                   onClick={() => {
-                    if (!isAuthenticated && ep.isPremium) { onSubscribeRequest?.(); return; }
                     document.getElementById(`video-${ep.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   }}
                 >
@@ -314,4 +315,4 @@ const SeriesCarousel: React.FC<SeriesCarouselProps> = ({
   );
 };
 
-export default SeriesCarousel;
+export default React.memo(SeriesCarousel);

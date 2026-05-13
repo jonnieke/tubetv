@@ -1,13 +1,6 @@
 
-import { Video, ShortVideo, DailyStat } from './types';
+import { Video, ShortVideo } from './types';
 
-// ─── Feature Flags ────────────────────────────────────────────────────────────
-/**
- * Set to true to re-enable the premium paywall.
- * Phase 1 (Month 1): false — all content is FREE to build community.
- * Phase 2: true  — M-Pesa subscription required for locked content.
- */
-export const PAYWALL_ENABLED = false;
 
 export const MOCK_VIDEOS: Video[] = [
   // Trending / General

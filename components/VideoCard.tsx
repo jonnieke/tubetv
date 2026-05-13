@@ -1,10 +1,22 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Lock, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles } from 'lucide-react';
+import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles } from 'lucide-react';
 import { Video, Caption } from '../types';
 import { generateCaptions } from '../services/geminiService';
-import { PAYWALL_ENABLED } from '../constants';
+import { supabase } from '../lib/supabase';
 import Hls from 'hls.js';
+
+const recordView = async (videoId: string) => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from('video_views').insert({
+      video_id: videoId,
+      viewer_id: user?.id ?? null,
+    });
+  } catch {
+    // Non-fatal — analytics failure must never interrupt playback
+  }
+};
 
 interface VideoCardProps {
   video: Video;
@@ -170,7 +182,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
       onSubscribeRequest?.();
       return;
     }
-    setIsPlaying(!isPlaying);
+    const starting = !isPlaying;
+    setIsPlaying(starting);
+    // Record a view the first time the user intentionally plays
+    if (starting) recordView(video.id);
   };
 
   const handleWhatsAppShare = (e: React.MouseEvent) => {
@@ -223,9 +238,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
           await (container as any).mozRequestFullScreen();
         } else if ((container as any).msRequestFullscreen) {
           await (container as any).msRequestFullscreen();
-        } else if (video.webkitEnterFullscreen) {
+        } else if ((video as any).webkitEnterFullscreen) {
           // Critical fallback for iOS Safari which only supports fullscreen on the video element
-          video.webkitEnterFullscreen();
+          (video as any).webkitEnterFullscreen();
         }
       } else {
         // Exit fullscreen
@@ -345,10 +360,24 @@ const VideoCard: React.FC<VideoCardProps> = ({
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
+  // Category → colour mapping for badges
+  const CATEGORY_COLORS: Record<string, string> = {
+    Originals:  'bg-red-600/20 text-red-400 border-red-500/20',
+    Education:  'bg-blue-600/20 text-blue-400 border-blue-500/20',
+    Farmers:    'bg-green-600/20 text-green-400 border-green-500/20',
+    Live:       'bg-purple-600/20 text-purple-400 border-purple-500/20',
+    Faith:      'bg-amber-600/20 text-amber-400 border-amber-500/20',
+    Diaspora:   'bg-teal-600/20 text-teal-400 border-teal-500/20',
+    Shorts:     'bg-rose-600/20 text-rose-400 border-rose-500/20',
+    Kids:       'bg-indigo-600/20 text-indigo-400 border-indigo-500/20',
+  };
+  const catClass = CATEGORY_COLORS[video.category] ?? 'bg-zinc-700/30 text-zinc-400 border-zinc-600/30';
+  const isTrending = (video.views ?? 0) >= 50000;
+
   return (
-    <div 
+    <div
       ref={containerRef}
-      className="group relative bg-zinc-900 rounded-lg overflow-hidden transition-all duration-500 hover:scale-110 hover:z-50 shadow-lg hover:shadow-2xl ring-1 ring-white/5"
+      className="group relative bg-zinc-900 rounded-xl overflow-hidden transition-all duration-300 hover:scale-[1.04] hover:z-50 shadow-lg hover:shadow-2xl ring-1 ring-white/5 hover:ring-white/10"
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => {
         setIsHovering(false);
@@ -358,93 +387,88 @@ const VideoCard: React.FC<VideoCardProps> = ({
       <div className="relative aspect-video bg-black overflow-hidden">
         {!isPlaying && !isHoverPlay && !isBuffering ? (
           <>
-            <img 
-              src={video.thumbnail} 
-              alt={video.title} 
-              className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-700 group-hover:scale-110" 
+            <img
+              src={video.thumbnail}
+              alt={video.title}
+              className="w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-all duration-500 group-hover:scale-105"
             />
-            {/* Progress Bar Mock (only visible when not playing) */}
-            <div className="absolute bottom-0 left-0 w-full h-1 bg-zinc-800">
-                <div className="h-full bg-red-600 w-1/3"></div>
+
+            {/* Always-visible bottom gradient + title overlay */}
+            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/90 to-transparent pointer-events-none">
+              <div className="absolute bottom-7 left-2.5 right-10 hidden group-hover:block">
+                <p className="text-white text-xs font-bold line-clamp-1 drop-shadow-lg">{video.title}</p>
+              </div>
             </div>
-            
+
+            {/* Progress Bar Mock */}
+            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-800">
+              <div className="h-full bg-red-600 w-1/3" />
+            </div>
+
             {/* Duration Badge */}
-            <div className="absolute bottom-2 right-2 bg-black/80 text-xs px-1.5 py-0.5 rounded text-white font-medium flex items-center gap-1 pointer-events-none">
-                <Clock size={10} />
-                {video.duration}
+            <div className="absolute bottom-2 right-2 bg-black/80 text-[10px] px-1.5 py-0.5 rounded text-white font-medium flex items-center gap-1 pointer-events-none">
+              <Clock size={9} />
+              {video.duration}
             </div>
+
+            {/* Trending badge */}
+            {isTrending && (
+              <div className="absolute top-2 right-2 pointer-events-none">
+                <div className="bg-orange-600/90 text-[9px] font-black px-2 py-0.5 rounded-full text-white shadow flex items-center gap-1">
+                  🔥 TRENDING
+                </div>
+              </div>
+            )}
 
             {/* Premium Badge */}
             {video.isPremium && (
               <div className="absolute top-2 left-2 pointer-events-none">
-                {PAYWALL_ENABLED ? (
-                  // Hard lock — paywall is active
-                  <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-xs font-bold px-2 py-1 rounded-md text-white shadow-lg flex items-center gap-1">
-                    <Lock size={12} /> PREMIUM
-                  </div>
-                ) : (
-                  // Soft badge — free access phase
-                  <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-xs font-bold px-2 py-1 rounded-md text-white shadow-lg flex items-center gap-1 opacity-90">
-                    <Sparkles size={11} /> PREMIUM
-                  </div>
-                )}
+                <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-[10px] font-bold px-2 py-0.5 rounded-full text-white shadow-lg flex items-center gap-1 opacity-90">
+                  <Sparkles size={10} /> PREMIUM
+                </div>
               </div>
             )}
 
-            {/* Premium Lock Overlay — only shown when paywall is ACTIVE */}
-            {PAYWALL_ENABLED && isPremiumLocked && (
-              <div
-                className="absolute inset-0 z-10 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3 cursor-pointer"
-                onClick={(e) => { e.stopPropagation(); onSubscribeRequest?.(); }}
-              >
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-2xl">
-                  <Lock className="w-7 h-7 text-white" />
+            {/* Episode badge (for series) */}
+            {video.episode && (
+              <div className="absolute top-2 left-2 pointer-events-none">
+                <div className="bg-black/70 backdrop-blur text-[9px] font-bold px-2 py-0.5 rounded border border-white/10 text-zinc-300">
+                  S{video.season ?? 1} E{video.episode}
                 </div>
-                <div className="text-center px-4">
-                  <p className="text-white font-bold text-sm">Ndovu Premium</p>
-                  <p className="text-zinc-400 text-xs mt-0.5">Subscribe from Ksh 350/mo</p>
-                </div>
-                <button className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors">
-                  Lipa na M-Pesa
-                </button>
               </div>
             )}
 
-            {/* Hover Actions (Initial Play) */}
-            <div className={`absolute inset-0 flex items-center justify-center gap-4 transition-all duration-300 bg-black/40 backdrop-blur-[2px] ${
+            {/* Hover Actions */}
+            <div className={`absolute inset-0 flex items-center justify-center gap-3 transition-all duration-300 bg-black/40 backdrop-blur-[1px] ${
               !isPremiumLocked && isHovering ? 'opacity-100' : 'opacity-0'
             }`}>
-               <button 
+               <button
                  onClick={togglePlay}
-                 className={`bg-white text-black rounded-full p-3 hover:scale-110 transition-transform shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}`}
+                 className={`bg-white text-black rounded-full p-2.5 hover:scale-110 transition-transform shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}`}
                >
-                   <Play fill="black" className="w-6 h-6 ml-1" />
+                   <Play fill="black" className="w-5 h-5 ml-0.5" />
                </button>
-               
+
                {onToggleWatchLater && (
-                 <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleWatchLater(video.id);
-                    }}
+                 <button
+                    onClick={(e) => { e.stopPropagation(); onToggleWatchLater(video.id); }}
                     title={isWatchLater ? "Remove from Watch Later" : "Add to Watch Later"}
-                    className={`rounded-full p-3 border-2 transition-all hover:scale-110 shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}
-                      ${isWatchLater 
-                        ? 'bg-black/50 border-green-500 text-green-500 hover:bg-green-500 hover:text-white' 
+                    className={`rounded-full p-2.5 border-2 transition-all hover:scale-110 shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}
+                      ${isWatchLater
+                        ? 'bg-black/50 border-green-500 text-green-500 hover:bg-green-500 hover:text-white'
                         : 'bg-black/50 border-white text-white hover:bg-white hover:text-black'
                       }`}
                  >
-                    {isWatchLater ? <Check className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+                    {isWatchLater ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                  </button>
                )}
 
-               {/* WhatsApp Share Button */}
                <button
                  onClick={handleWhatsAppShare}
                  title="Share on WhatsApp"
-                 className={`rounded-full p-3 border-2 border-green-500 bg-black/50 text-green-500 hover:bg-green-500 hover:text-white transition-all hover:scale-110 shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}`}
+                 className={`rounded-full p-2.5 border-2 border-green-500 bg-black/50 text-green-500 hover:bg-green-500 hover:text-white transition-all hover:scale-110 shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}`}
                >
-                 <Share2 className="w-5 h-5" />
+                 <Share2 className="w-4 h-4" />
                </button>
             </div>
           </>
@@ -621,27 +645,46 @@ const VideoCard: React.FC<VideoCardProps> = ({
         )}
       </div>
 
-      <div className="p-4">
-        <div className="flex justify-between items-start">
-            <div>
-                <h3 className="text-white font-semibold truncate pr-2 group-hover:text-red-500 transition-colors">{video.title}</h3>
-                <p className="text-zinc-400 text-sm mt-1">{video.author}</p>
-            </div>
-            <button className="text-zinc-500 hover:text-white flex-shrink-0" title="More options">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-                </svg>
-            </button>
+      {/* Info panel */}
+      <div className="p-3.5">
+        <div className="flex justify-between items-start gap-2">
+          <div className="min-w-0">
+            <h3 className="text-white font-bold text-sm leading-tight line-clamp-2 group-hover:text-red-400 transition-colors">{video.title}</h3>
+            {/* Hover description */}
+            {video.description && (
+              <p className="text-zinc-500 text-[11px] leading-relaxed mt-1 line-clamp-2 hidden group-hover:block transition-all">
+                {video.description}
+              </p>
+            )}
+            <p className="text-zinc-500 text-xs mt-1 flex items-center gap-1 truncate">
+              <span className="truncate">{video.author}</span>
+              {video.productionYear && (
+                <><span className="text-zinc-700 flex-shrink-0">·</span><span className="text-zinc-600 flex-shrink-0">{video.productionYear}</span></>
+              )}
+            </p>
+          </div>
+          <button className="text-zinc-600 hover:text-white flex-shrink-0 p-1 -mt-0.5 transition-colors" title="More options">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+            </svg>
+          </button>
         </div>
-        <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500">
-             <span className="bg-zinc-800 px-2 py-1 rounded text-zinc-300 border border-zinc-700">{video.category}</span>
-             <span>•</span>
-             <span>{(video.views / 1000).toFixed(1)}K views</span>
-             {quality !== 'Auto' && <span className="bg-red-900/30 text-red-400 px-1 rounded">{quality}</span>}
+
+        <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${catClass}`}>{video.category}</span>
+          <span className="text-zinc-700 text-[10px]">·</span>
+          <span className="text-zinc-500 text-[10px]">
+            {video.views >= 1000000
+              ? `${(video.views / 1000000).toFixed(1)}M`
+              : `${(video.views / 1000).toFixed(1)}K`} views
+          </span>
+          {quality !== 'Auto' && (
+            <span className="text-[10px] bg-red-900/30 text-red-400 px-1.5 py-0.5 rounded-full border border-red-800/30">{quality}</span>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export default VideoCard;
+export default React.memo(VideoCard);

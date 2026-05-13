@@ -76,11 +76,11 @@ export const generateAnalyticsInsights = async (data: DailyStat[]) => {
   try {
     const dataString = JSON.stringify(data);
     const prompt = `
-      Analyze the following daily video streaming statistics:
+      Analyze the following daily video streaming statistics for a Kenyan streaming platform:
       ${dataString}
 
-      Provide a concise, 2-sentence executive summary of the performance trends. 
-      Focus on revenue spikes and view engagement. Act like a senior data analyst at a streaming giant.
+      Provide a concise, 2-sentence executive summary of the view engagement trends.
+      Focus on growth patterns, peak days, and audience momentum. Act like a senior data analyst at a streaming platform.
     `;
 
     const response = await client.models.generateContent({
