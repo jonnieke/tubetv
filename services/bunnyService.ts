@@ -309,6 +309,13 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     'series': 'Series',
     'originals – series': 'Series',
     'originals': 'Movies', // Legacy fallback
+    'fashion': 'Fashion',
+    'style': 'Fashion',
+    'mitindo': 'Fashion',
+    'wildlife': 'Wildlife',
+    'nature': 'Wildlife',
+    'safari': 'Wildlife',
+    'wanyama': 'Wildlife',
     'trending': 'Trending',
     'live': 'Live',
   };

@@ -849,6 +849,8 @@ const HomeView: React.FC<HomeViewProps> = ({
               { cat: 'Faith',      emoji: '🙏', accent: 'from-amber-500 to-yellow-500',   sub: 'Sermons, worship & devotion' },
               { cat: 'Kids',       emoji: '🧒', accent: 'from-indigo-500 to-violet-500',  sub: 'Safe & educational kids content' },
               { cat: 'Diaspora',   emoji: '🌍', accent: 'from-teal-500 to-sky-500',       sub: 'Content for Kenyans abroad' },
+              { cat: 'Fashion',    emoji: '👗', accent: 'from-pink-500 to-rose-500',       sub: 'Style, trends & Kenyan fashion' },
+              { cat: 'Wildlife',   emoji: '🦁', accent: 'from-yellow-500 to-orange-500',  sub: 'Safari, nature & conservation' },
             ] as const).map(({ cat, emoji, accent, sub }) => {
               const catVids = videos.filter(v => v.category === cat);
               if (catVids.length === 0) return null;

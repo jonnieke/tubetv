@@ -17,7 +17,7 @@ const SettingsSection  = lazy(() => import('./components/SettingsSection'));
 const LiveSection      = lazy(() => import('./components/LiveSection'));
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { MOCK_SHORTS } from './constants';
-import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
+import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film, Shirt, PawPrint } from 'lucide-react';
 import { getVideoRecommendations } from './services/geminiService';
 import { fetchBunnyVideos, bunnyVideoToVideo } from './services/bunnyService';
 import { supabase, normalizePhone } from './lib/supabase';
@@ -36,7 +36,7 @@ const ADMIN_PHONES = (import.meta.env.VITE_ADMIN_PHONES || '')
 // Icon Map for Dynamic Rendering
 const ICON_MAP: Record<string, any> = {
   Home, Clapperboard, Smartphone, GraduationCap, Sprout, Heart, Baby: PlayCircle, Globe, Radio: PlayCircle, Clock, UploadCloud, BarChart2,
-  Star, Music, Game: Gamepad2, Food: Utensils, Tech: Cpu, News: BookOpen, Lifestyle: Coffee, Business: Briefcase, Travel: Anchor, Trending: Zap, Movie: Film
+  Star, Music, Game: Gamepad2, Food: Utensils, Tech: Cpu, News: BookOpen, Lifestyle: Coffee, Business: Briefcase, Travel: Anchor, Trending: Zap, Movie: Film, Shirt, PawPrint
 };
 
 const INITIAL_NAV_ITEMS: NavItem[] = [
@@ -48,6 +48,8 @@ const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.FAITH, label: 'Faith', labelKey: 'nav.faith', iconName: 'Heart', icon: Heart },
   { id: ViewState.KIDS, label: 'Kids', labelKey: 'nav.kids', iconName: 'Baby', icon: PlayCircle },
   { id: ViewState.DIASPORA, label: 'Diaspora', labelKey: 'nav.diaspora', iconName: 'Globe', icon: Globe },
+  { id: ViewState.FASHION, label: 'Fashion', labelKey: 'nav.fashion', iconName: 'Shirt', icon: Shirt },
+  { id: ViewState.WILDLIFE, label: 'Wildlife', labelKey: 'nav.wildlife', iconName: 'PawPrint', icon: PawPrint },
   { id: ViewState.LIVE, label: 'Live', labelKey: 'nav.live', iconName: 'Radio', icon: PlayCircle },
   { id: ViewState.WATCH_LATER, label: 'Watch List', labelKey: 'nav.watchlist', iconName: 'Clock', icon: Clock },
 ];

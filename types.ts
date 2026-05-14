@@ -10,6 +10,8 @@ export enum ViewState {
   FAITH = 'FAITH',
   KIDS = 'KIDS',
   DIASPORA = 'DIASPORA',
+  FASHION = 'FASHION',
+  WILDLIFE = 'WILDLIFE',
   LIVE = 'LIVE',
   ANALYTICS = 'ANALYTICS',
   UPLOAD = 'UPLOAD',
