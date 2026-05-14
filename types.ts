@@ -64,6 +64,8 @@ export interface ShortVideo {
   likes: number;
   comments: number;
   isAd?: boolean;
+  isRecommended?: boolean;
+  category?: string;
   videoUrl?: string;
 }
 

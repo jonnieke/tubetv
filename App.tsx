@@ -173,6 +173,7 @@ const App: React.FC = () => {
         title: v.title,
         author: v.author,
         description: v.description || '',
+        category: v.category,
         likes: Math.floor(v.views / 10) + 12,
         comments: Math.floor(v.views / 100) + 2,
         videoUrl: v.url
@@ -483,7 +484,7 @@ const App: React.FC = () => {
             </div>
           );
         }
-        return <ShortsPlayer shorts={realShorts} onLoginRequest={() => setShowLogin(true)} />;
+        return <ShortsPlayer shorts={realShorts} recommendedVideos={recommendedVideos} onLoginRequest={() => setShowLogin(true)} />;
       case ViewState.LIVE:
         return <LiveSection isAuthenticated={isAuthenticated} />;
       case ViewState.SETTINGS:

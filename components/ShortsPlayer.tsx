@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Music2, ExternalLink, Volume2, VolumeX, Play } from 'lucide-react';
-import { ShortVideo } from '../types';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, Music2, ExternalLink, Volume2, VolumeX, Play, Sparkles } from 'lucide-react';
+import { ShortVideo, Video } from '../types';
 import { MOCK_SHORTS } from '../constants';
 import Hls from 'hls.js';
 import ShortsComments from './ShortsComments';
@@ -15,15 +15,45 @@ const SAMPLE_VIDEOS = [
 
 interface ShortsPlayerProps {
   shorts?: ShortVideo[];
+  recommendedVideos?: Video[];
   onLoginRequest?: () => void;
 }
 
-const ShortsPlayer: React.FC<ShortsPlayerProps> = ({ 
+const ShortsPlayer: React.FC<ShortsPlayerProps> = ({
   shorts = MOCK_SHORTS,
-  onLoginRequest 
+  recommendedVideos = [],
+  onLoginRequest
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Build feed: inject recommended shorts every 3 regular shorts
+  const feed = useMemo<ShortVideo[]>(() => {
+    const recShorts: ShortVideo[] = recommendedVideos.map(v => ({
+      id: `rec-${v.id}`,
+      url: v.thumbnail,
+      title: v.title,
+      author: v.author,
+      description: v.description || '',
+      category: v.category,
+      likes: Math.floor(v.views / 10) + 12,
+      comments: Math.floor(v.views / 100) + 2,
+      videoUrl: v.url,
+      isRecommended: true,
+    }));
+
+    if (recShorts.length === 0) return shorts;
+
+    const result: ShortVideo[] = [];
+    shorts.forEach((s, i) => {
+      result.push(s);
+      // Insert a recommended short after every 3rd regular short
+      if ((i + 1) % 3 === 0 && recShorts.length > 0) {
+        result.push(recShorts[(Math.floor(i / 3)) % recShorts.length]);
+      }
+    });
+    return result;
+  }, [shorts, recommendedVideos]);
 
   useEffect(() => {
     const options = {
@@ -45,25 +75,25 @@ const ShortsPlayer: React.FC<ShortsPlayerProps> = ({
     return () => {
       observer.disconnect();
     };
-  }, []);
+  }, [feed]);
 
   // Set initial active ID if none
   useEffect(() => {
-    if (!activeId && shorts.length > 0) {
-      setActiveId(shorts[0].id);
+    if (!activeId && feed.length > 0) {
+      setActiveId(feed[0].id);
     }
-  }, [activeId, shorts]);
+  }, [activeId, feed]);
 
   return (
     <div className="h-[calc(100vh-64px)] md:h-screen w-full flex justify-center bg-black overflow-hidden relative">
-      <div 
+      <div
         ref={containerRef}
         className="h-full w-full md:w-[450px] overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
       >
-        {shorts.map((short, index) => (
-            <ShortItem 
-              key={short.id} 
-              short={short} 
+        {feed.map((short, index) => (
+            <ShortItem
+              key={short.id}
+              short={short}
               isActive={activeId === short.id}
               videoSrc={short.videoUrl || SAMPLE_VIDEOS[index % SAMPLE_VIDEOS.length]}
               onLoginRequest={onLoginRequest}
@@ -248,6 +278,20 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
 
                 {/* Bottom Info */}
                 <div className="max-w-[80%] space-y-2 pb-4 pointer-events-auto">
+                    {/* Category + Recommended badges */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {short.isRecommended && (
+                            <span className="flex items-center gap-1 text-[10px] font-black bg-gradient-to-r from-violet-600 to-purple-600 text-white px-2.5 py-0.5 rounded-full uppercase tracking-wide shadow">
+                                <Sparkles size={9} /> For You
+                            </span>
+                        )}
+                        {short.category && (
+                            <span className="text-[10px] font-bold bg-white/15 backdrop-blur text-white px-2.5 py-0.5 rounded-full border border-white/20">
+                                {short.category}
+                            </span>
+                        )}
+                    </div>
+
                     {/* Title */}
                     <h3 className="font-black text-lg leading-tight line-clamp-2">
                         {short.title || short.description}
