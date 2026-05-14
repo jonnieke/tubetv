@@ -247,36 +247,38 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
                 </div>
 
                 {/* Bottom Info */}
-                <div className="max-w-[80%] space-y-3 pb-4 pointer-events-auto">
-                    <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center font-bold text-sm">
-                            {short.author[1].toUpperCase()}
-                        </div>
-                        <h3 className="font-bold text-lg hover:underline cursor-pointer">{short.author}</h3>
-                        {!short.isAd && (
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); onLoginRequest?.(); }}
-                                className="text-xs bg-white text-black px-3 py-1 rounded-full font-bold ml-2 pointer-events-auto"
-                            >
-                                Subscribe
-                            </button>
-                        )}
-                    </div>
-                    
-                    <p className="text-sm md:text-base text-zinc-100 line-clamp-2">
-                        {short.description}
-                    </p>
+                <div className="max-w-[80%] space-y-2 pb-4 pointer-events-auto">
+                    {/* Title */}
+                    <h3 className="font-black text-lg leading-tight line-clamp-2">
+                        {short.title || short.description}
+                    </h3>
+
+                    {/* Description — only shown if different from title */}
+                    {short.description && short.title && short.description !== short.title && (
+                        <p className="text-sm text-zinc-300 line-clamp-2">
+                            {short.description}
+                        </p>
+                    )}
+
+                    {!short.isAd && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onLoginRequest?.(); }}
+                            className="text-xs bg-white text-black px-4 py-1.5 rounded-full font-bold pointer-events-auto"
+                        >
+                            Subscribe
+                        </button>
+                    )}
 
                     {short.isAd && (
-                         <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
+                        <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
                             Shop Now <ExternalLink size={16} />
-                         </button>
+                        </button>
                     )}
 
                     {!short.isAd && (
                         <div className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-800/40 w-fit px-3 py-1 rounded-full backdrop-blur-sm">
                             <Music2 size={14} className="animate-spin-slow" />
-                            <span>Original Sound - {short.author}</span>
+                            <span>Original Sound — Tube TV</span>
                         </div>
                     )}
                 </div>
