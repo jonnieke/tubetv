@@ -53,6 +53,7 @@ export interface Video {
   genre?: string;         // e.g. "Drama"
   productionYear?: number;
   trailerUrl?: string;
+  dateUploaded?: string;  // ISO 8601 from Bunny
 }
 
 export interface ShortVideo {

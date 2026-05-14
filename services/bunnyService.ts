@@ -358,6 +358,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     genre: getMeta(activeItem.metaTags, 'genre') || undefined,
     productionYear: productionYearRaw ? parseInt(productionYearRaw) : undefined,
     trailerUrl: getMeta(activeItem.metaTags, 'trailerUrl') || undefined,
+    dateUploaded: activeItem.dateUploaded || undefined,
   };
 };
 

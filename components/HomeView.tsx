@@ -797,11 +797,18 @@ const HomeView: React.FC<HomeViewProps> = ({
         {!isLoadingVideos && showCarousels && (
           <div className="space-y-2 animate-in fade-in duration-500">
 
-            {/* 1. New This Week */}
+            {/* 1. New This Week — newest uploads from Bunny (API returns orderBy=date) */}
             <NewThisWeek
-              videos={[...videos].filter(v => v.isPremium).slice(0, 4).length >= 2
-                ? [...videos].filter(v => v.isPremium).slice(0, 4)
-                : [...videos].sort((a, b) => b.views - a.views).slice(5, 9)}
+              videos={
+                [...videos]
+                  .sort((a, b) => {
+                    if (a.dateUploaded && b.dateUploaded) {
+                      return new Date(b.dateUploaded).getTime() - new Date(a.dateUploaded).getTime();
+                    }
+                    return 0; // preserve Bunny API order (already newest-first)
+                  })
+                  .slice(0, 4)
+              }
               watchLaterIds={watchLater}
               onToggleWatchLater={toggleWatchLater}
               onPlay={scrollToVideo}
