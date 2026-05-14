@@ -81,16 +81,17 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
 
             {/* Metadata */}
             <div className="absolute bottom-0 left-0 p-3 w-full transform transition-transform duration-300 translate-y-2 group-hover:translate-y-0 z-30 pointer-events-none">
-                <p className="text-white font-bold text-sm line-clamp-2 leading-tight mb-1 drop-shadow-md">
-                    {short.description}
+                {short.isAd && (
+                    <span className="bg-yellow-500 text-black px-1.5 rounded text-[10px] font-bold mb-1 inline-block">AD</span>
+                )}
+                <p className="text-white font-bold text-sm line-clamp-1 leading-tight drop-shadow-md">
+                    {short.title || short.description}
                 </p>
-                <p className="text-zinc-300 text-xs font-medium flex items-center gap-1">
-                    {short.isAd ? (
-                        <span className="bg-yellow-500 text-black px-1.5 rounded text-[10px] font-bold">AD</span>
-                    ) : (
-                        short.author
-                    )}
-                </p>
+                {short.description && short.title && short.description !== short.title && (
+                    <p className="text-zinc-300 text-xs line-clamp-2 leading-snug mt-0.5 drop-shadow">
+                        {short.description}
+                    </p>
+                )}
                 <p className="text-zinc-500 text-[10px] mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     {(short.likes / 1000).toFixed(1)}K likes
                 </p>

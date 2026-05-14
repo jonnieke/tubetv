@@ -326,14 +326,15 @@ const NewThisWeekCard: React.FC<{
         {video.genre && (
           <span className="text-[9px] text-zinc-400 uppercase tracking-wider font-bold">{video.genre}</span>
         )}
-        <p className={`text-white font-black leading-tight line-clamp-2 ${isBig ? 'text-base md:text-lg' : 'text-sm'}`}>
+        <p className={`text-white font-black leading-tight line-clamp-1 ${isBig ? 'text-base md:text-lg' : 'text-sm'}`}>
           {video.title}
         </p>
+        {video.description && (
+          <p className="text-zinc-300 text-[10px] line-clamp-1 leading-snug mt-0.5">{video.description}</p>
+        )}
         <div className="flex items-center gap-2 mt-1 text-zinc-400 text-[10px]">
           <Clock size={9} />
           <span>{video.duration}</span>
-          <span className="text-zinc-700">·</span>
-          <span>{video.author}</span>
           {isLive && !muted && (
             <span className="ml-auto flex items-center gap-1 text-emerald-400">
               <Volume2 size={9} /> Sound on
@@ -630,8 +631,6 @@ const HomeView: React.FC<HomeViewProps> = ({
                   <span>{(hero.views >= 1_000_000 ? `${(hero.views / 1_000_000).toFixed(1)}M` : `${(hero.views / 1000).toFixed(0)}K`)} views</span>
                   <span className="text-zinc-700">·</span>
                   <span>{hero.duration}</span>
-                  <span className="text-zinc-700">·</span>
-                  <span className="truncate max-w-[160px]">{hero.author}</span>
                 </div>
 
                 {/* Description */}

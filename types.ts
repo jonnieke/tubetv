@@ -55,7 +55,8 @@ export interface Video {
 
 export interface ShortVideo {
   id: string;
-  url: string; 
+  url: string;
+  title?: string;
   author: string;
   description: string;
   likes: number;

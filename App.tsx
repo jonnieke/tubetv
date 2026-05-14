@@ -168,8 +168,9 @@ const App: React.FC = () => {
       .map(v => ({
         id: v.id,
         url: v.thumbnail,
+        title: v.title,
         author: v.author,
-        description: v.description || v.title,
+        description: v.description || '',
         likes: Math.floor(v.views / 10) + 12,
         comments: Math.floor(v.views / 100) + 2,
         videoUrl: v.url
