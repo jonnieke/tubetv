@@ -4,6 +4,7 @@ import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInP
 import { Video, Caption } from '../types';
 import { generateCaptions } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
+import { getProgress, saveProgress } from '../lib/watchProgress';
 import Hls from 'hls.js';
 
 const recordView = async (videoId: string) => {
@@ -49,6 +50,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const [isHoverPlay, setIsHoverPlay] = useState(false);
   const hoverTimerRef = useRef<any>(null);
   const lastClickTimeRef = useRef<number>(0);
+  const saveThrottleRef = useRef<number>(0);
+
+  // Saved watch progress for this video (shown as progress bar on thumbnail)
+  const [savedPercent, setSavedPercent] = useState<number>(() => getProgress(video.id)?.percent ?? 0);
   
   // Caption States
   const [captions, setCaptions] = useState<Caption[]>([]);
@@ -294,9 +299,17 @@ const VideoCard: React.FC<VideoCardProps> = ({
       const total = videoRef.current.duration;
       setCurrentTime(current);
       setDuration(total || 0);
-      setProgress((current / total) * 100);
-
+      const pct = (current / total) * 100;
+      setProgress(pct);
+      setSavedPercent(pct);
       updateCaptionForTime(current);
+
+      // Persist to localStorage at most once every 5 seconds
+      const now = Date.now();
+      if (now - saveThrottleRef.current > 5000) {
+        saveProgress(video.id, current, total);
+        saveThrottleRef.current = now;
+      }
     }
   };
 
@@ -400,10 +413,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
               </div>
             </div>
 
-            {/* Progress Bar Mock */}
-            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-800">
-              <div className="h-full bg-red-600 w-1/3" />
-            </div>
+            {/* Watch progress bar — only shown when partially watched */}
+            {savedPercent > 2 && (
+              <div className="absolute bottom-0 left-0 w-full h-1 bg-zinc-700/80">
+                <div className="h-full bg-red-500 transition-none" style={{ width: `${savedPercent}%` }} />
+              </div>
+            )}
 
             {/* Duration Badge */}
             <div className="absolute bottom-2 right-2 bg-black/80 text-[10px] px-1.5 py-0.5 rounded text-white font-medium flex items-center gap-1 pointer-events-none">

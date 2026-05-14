@@ -1,13 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Search, Sparkles, Loader2, Play, BookmarkPlus, BookmarkCheck,
-  Info, ChevronLeft, ChevronRight, Flame, Star, Clock, Volume2, VolumeX,
+  Info, ChevronLeft, ChevronRight, Flame, Star, Clock, Volume2, VolumeX, History,
 } from 'lucide-react';
 import { Video, NavItem, ViewStateOrString, ViewState } from '../types';
 import VideoCard from './VideoCard';
 import VideoCarousel from './VideoCarousel';
 import SeriesCarousel from './SeriesCarousel';
 import ShortsShelf from './ShortsShelf';
+import { getAllProgress } from '../lib/watchProgress';
 import type { ShortVideo } from '../types';
 import Hls from 'hls.js';
 
@@ -503,6 +504,15 @@ const HomeView: React.FC<HomeViewProps> = ({
   const [heroProgress, setHeroProgress] = useState(0);
   const showHero = currentView === ViewState.HOME && !searchQuery;
 
+  // Continue Watching — join saved progress records with loaded videos
+  const continueWatchingVideos = useMemo<Video[]>(() => {
+    const records = getAllProgress(); // sorted newest-first, 5–95%
+    return records
+      .map(r => videos.find(v => v.id === r.videoId))
+      .filter((v): v is Video => !!v)
+      .slice(0, 12);
+  }, [videos]);
+
   // Auto-advance hero
   useEffect(() => {
     if (!showHero) return;
@@ -804,13 +814,31 @@ const HomeView: React.FC<HomeViewProps> = ({
               onToggleWatchLater={toggleWatchLater}
             />
 
-            {/* 3. AI Picks (if watch list has items) */}
-            {watchLater.length > 0 && recommendedVideos.length > 0 && (
+            {/* 3. Continue Watching */}
+            {continueWatchingVideos.length > 0 && (
+              <VideoCarousel
+                title="⏱ Continue Watching"
+                subtitle="Pick up where you left off"
+                accentColor="from-zinc-400 to-zinc-600"
+                videos={continueWatchingVideos}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={true}
+              />
+            )}
+
+            {/* 4. AI Picks — show recommendations when available, trending as fallback */}
+            {isRecLoading && watchLater.length > 0 ? (
+              <div className="flex items-center gap-3 py-5 px-2">
+                <Loader2 className="w-4 h-4 text-purple-400 animate-spin flex-shrink-0" />
+                <span className="text-zinc-500 text-sm">AI is personalising your feed…</span>
+              </div>
+            ) : (
               <VideoCarousel
                 title="✨ Recommended For You"
-                subtitle="Curated by AI based on your Watch List"
+                subtitle={recommendedVideos.length > 0 ? "Curated by AI based on your Watch List" : "Popular picks you might enjoy"}
                 accentColor="from-purple-500 to-pink-500"
-                videos={recommendedVideos}
+                videos={recommendedVideos.length > 0 ? recommendedVideos : [...videos].sort((a, b) => b.views - a.views).slice(10, 30)}
                 watchLaterIds={watchLater}
                 onToggleWatchLater={toggleWatchLater}
                 isAuthenticated={true}
@@ -868,13 +896,6 @@ const HomeView: React.FC<HomeViewProps> = ({
               );
             })}
 
-            {/* AI loading state */}
-            {isRecLoading && watchLater.length > 0 && (
-              <div className="flex items-center gap-3 py-5 px-2">
-                <Loader2 className="w-4 h-4 text-purple-400 animate-spin flex-shrink-0" />
-                <span className="text-zinc-500 text-sm">AI is personalising your feed…</span>
-              </div>
-            )}
           </div>
         )}
 
