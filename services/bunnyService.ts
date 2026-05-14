@@ -321,9 +321,8 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   const rawEpisode = getMeta(activeItem.metaTags, 'episode');
   const rawSeriesTitle = getMeta(activeItem.metaTags, 'seriesTitle') || getMeta(activeItem.metaTags, 'series');
 
-  // Also attempt to extract S/E from title if not in metaTags
-  // Strip common video file extensions left in Bunny titles
-  const titleNoExt = activeItem.title?.replace(/\.(mp4|mkv|avi|mov|webm|flv|wmv)$/i, '').trim() ?? '';
+  // Strip file extensions Bunny leaves in titles (trim first so $ anchor isn't blocked by trailing whitespace)
+  const titleNoExt = (activeItem.title ?? '').trim().replace(/\.(mp4|mkv|avi|mov|webm|flv|wmv)\s*$/i, '').trim();
   const seMatch = titleNoExt.match(/^S(\d+)\s*E(\d+)\s*[-–:]?\s*/i);
   const parsedSeason = rawSeason ? parseInt(rawSeason) : (seMatch ? parseInt(seMatch[1]) : undefined);
   const parsedEpisode = rawEpisode ? parseInt(rawEpisode) : (seMatch ? parseInt(seMatch[2]) : undefined);
