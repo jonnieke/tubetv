@@ -13,11 +13,13 @@ const MAX_IMAGES    = 40;
 
 const KNOWN_CACHES  = [SHELL_CACHE, STATIC_CACHE, IMAGE_CACHE];
 
-// ─── Install: pre-cache the app shell ────────────────────────────────────────
+const OFFLINE_URL = '/offline.html';
+
+// ─── Install: pre-cache the app shell + offline page ─────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(SHELL_CACHE).then((cache) =>
-      cache.addAll(['/', '/index.html'])
+      cache.addAll(['/', '/index.html', OFFLINE_URL])
     ).then(() => self.skipWaiting())
   );
 });
@@ -54,7 +56,8 @@ async function networkFirst(request, fallbackUrl) {
       const fallback = await caches.match(fallbackUrl);
       if (fallback) return fallback;
     }
-    return new Response('Offline', { status: 503 });
+    const offline = await caches.match(OFFLINE_URL);
+    return offline || new Response('Offline', { status: 503 });
   }
 }
 
