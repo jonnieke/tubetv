@@ -122,8 +122,12 @@ const App: React.FC = () => {
   // ─── Detect admin ──────────────────────────────────────────────────────────
   const isAdmin = currentUser
     ? ADMIN_EMAILS.includes(currentUser.email ?? '') ||
+      // Match via user_metadata.phone (set at signup)
       ADMIN_PHONES.map(normalizePhone).includes(normalizePhone(currentUser.user_metadata?.phone || '')) ||
-      ADMIN_PHONES.includes(currentUser.phone ?? '')
+      // Match via Supabase phone field (native phone auth)
+      ADMIN_PHONES.includes(currentUser.phone ?? '') ||
+      // Reliable fallback: derive email from each admin phone and compare directly
+      ADMIN_PHONES.some(p => `${normalizePhone(p)}@tubekenya.com` === currentUser.email)
     : false;
 
   // ─── Videos: load from Bunny CDN on mount ─────────────────────────────────
