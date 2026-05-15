@@ -708,28 +708,43 @@ const HomeView: React.FC<HomeViewProps> = ({
               )}
             </div>
 
-            {/* ── Right panel: Up Next (xl screens) ── */}
+            {/* ── Up Next panel — right edge, vertically centred ── */}
             {upNext.length > 0 && (
-              <div className="absolute right-10 bottom-14 hidden xl:flex flex-col gap-3 z-10 w-[220px]">
-                <p className="text-zinc-500 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Up Next</p>
-                {upNext.map((v, i) => (
-                  <button
-                    key={v.id}
-                    onClick={() => { setHeroIndex(featuredVideos.indexOf(v)); setHeroProgress(0); }}
-                    className="flex items-center gap-3 group/up text-left"
-                  >
-                    <div className="relative w-28 h-16 rounded-lg overflow-hidden flex-shrink-0 border border-white/10 group-hover/up:border-white/40 transition-all shadow-xl">
-                      <img src={v.thumbnail} alt={v.title} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/up:opacity-100 transition-opacity">
-                        <Play size={16} fill="white" className="text-white" />
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 hidden xl:flex flex-col z-10 w-[188px] rounded-l-2xl overflow-hidden"
+                style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.75), rgba(0,0,0,0.55))', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
+                {/* Header */}
+                <div className="px-4 pt-4 pb-3 border-b border-white/[0.06]">
+                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-400">Up Next</p>
+                </div>
+                {/* Cards */}
+                <div className="flex flex-col gap-0">
+                  {upNext.slice(0, 2).map((v) => (
+                    <button
+                      key={v.id}
+                      onClick={() => { setHeroIndex(featuredVideos.indexOf(v)); setHeroProgress(0); }}
+                      className="group/up flex flex-col gap-0 text-left hover:bg-white/[0.06] transition-colors px-3 py-3"
+                    >
+                      {/* Thumbnail */}
+                      <div className="relative w-full aspect-video rounded-lg overflow-hidden mb-2 border border-white/[0.08] group-hover/up:border-white/25 transition-all">
+                        <img src={v.thumbnail} alt={v.title} className="w-full h-full object-cover group-hover/up:scale-105 transition-transform duration-300" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/up:opacity-100 transition-opacity flex items-center justify-center">
+                          <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                            <Play size={14} fill="white" className="text-white ml-0.5" />
+                          </div>
+                        </div>
+                        {/* Duration badge */}
+                        <div className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                          {v.duration}
+                        </div>
                       </div>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-white text-xs font-bold line-clamp-2 group-hover/up:text-zinc-200 leading-tight">{v.title}</p>
-                      <p className="text-zinc-500 text-[10px] mt-1">{v.duration}</p>
-                    </div>
-                  </button>
-                ))}
+                      {/* Meta */}
+                      <p className="text-white text-[11px] font-semibold line-clamp-2 leading-snug group-hover/up:text-zinc-200 transition-colors">{v.title}</p>
+                      {v.category && (
+                        <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-wide">{v.category}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
