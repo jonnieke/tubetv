@@ -566,7 +566,7 @@ const HomeView: React.FC<HomeViewProps> = ({
     <div className="pb-24">
 
       {/* ══════════════════════════════════════════════════════════════════
-          PREMIUM HERO BANNER
+          NETFLIX-STYLE HERO BANNER
       ══════════════════════════════════════════════════════════════════ */}
       {showHero && (() => {
         const featuredVideos = [...videos].sort((a, b) => b.views - a.views).slice(0, 5);
@@ -574,10 +574,9 @@ const HomeView: React.FC<HomeViewProps> = ({
         const hero = featuredVideos[activeIdx];
         if (!hero) return null;
         const isSaved = watchLater.includes(hero.id);
-        const upNext = featuredVideos.filter((_, i) => i !== activeIdx).slice(0, 3);
 
         return (
-          <div className="relative w-full h-[62vh] md:h-[84vh] overflow-hidden select-none">
+          <div className="relative w-full h-[72vh] md:h-[95vh] overflow-hidden select-none group/hero">
 
             {/* ── Crossfading background images ── */}
             {featuredVideos.map((v, i) => (
@@ -586,119 +585,140 @@ const HomeView: React.FC<HomeViewProps> = ({
                 src={v.thumbnail}
                 alt=""
                 aria-hidden="true"
-                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
-                  i === activeIdx ? 'opacity-100 scale-[1.04]' : 'opacity-0 scale-100'
-                }`}
-                style={{ transition: 'opacity 1s ease, transform 8s ease' }}
+                className={`absolute inset-0 w-full h-full object-cover ${i === activeIdx ? 'opacity-100' : 'opacity-0'}`}
+                style={{
+                  transform: i === activeIdx ? 'scale(1.06)' : 'scale(1)',
+                  transition: 'opacity 1.2s ease, transform 9s ease',
+                }}
                 onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
               />
             ))}
 
-            {/* ── Gradient layers ── */}
-            {/* Top — nav fade */}
-            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-zinc-950/70 to-transparent pointer-events-none" />
-            {/* Bottom — main content */}
-            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/55 to-transparent pointer-events-none" />
-            {/* Left — text legibility */}
-            <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/40 to-transparent pointer-events-none" />
-            {/* Ambient bottom glow */}
-            <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-zinc-950 to-transparent pointer-events-none" />
+            {/* ── Cinematic gradient layers ── */}
+            {/* Heavy bottom-to-top — dissolves image into page */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent pointer-events-none" />
+            {/* Strong left-to-right — text legibility */}
+            <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/40 to-transparent pointer-events-none" />
+            {/* Subtle top — nav area darkening */}
+            <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
+            {/* Extra bottom anchor */}
+            <div className="absolute bottom-0 inset-x-0 h-28 bg-gradient-to-t from-black to-transparent pointer-events-none" />
 
-            {/* ── Left content panel ── */}
-            <div className="absolute bottom-0 left-0 right-0 xl:right-auto xl:w-[52%] px-6 md:px-12 pb-10 md:pb-14 z-10">
+            {/* ── Left nav arrow (appears on hover) ── */}
+            <button
+              onClick={() => { setHeroIndex((activeIdx - 1 + featuredVideos.length) % featuredVideos.length); setHeroProgress(0); }}
+              className="absolute left-3 md:left-5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 md:w-12 md:h-12 rounded-full bg-black/40 border border-white/15 backdrop-blur-sm flex items-center justify-center text-white opacity-0 group-hover/hero:opacity-100 transition-all duration-300 hover:bg-black/70 hover:border-white/40 hover:scale-105 active:scale-95"
+              aria-label="Previous"
+            >
+              <ChevronLeft size={22} />
+            </button>
 
-              {/* Platform + category badges */}
-              <div className="flex flex-wrap items-center gap-2 mb-4">
-                <span className="text-red-500 text-[9px] font-black tracking-[0.18em] uppercase border border-red-500/60 px-2.5 py-0.5 rounded-sm shadow shadow-red-900/30">
+            {/* ── Right nav arrow (appears on hover) ── */}
+            <button
+              onClick={() => { setHeroIndex((activeIdx + 1) % featuredVideos.length); setHeroProgress(0); }}
+              className="absolute right-3 md:right-5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 md:w-12 md:h-12 rounded-full bg-black/40 border border-white/15 backdrop-blur-sm flex items-center justify-center text-white opacity-0 group-hover/hero:opacity-100 transition-all duration-300 hover:bg-black/70 hover:border-white/40 hover:scale-105 active:scale-95"
+              aria-label="Next"
+            >
+              <ChevronRight size={22} />
+            </button>
+
+            {/* ── Main content — bottom-left ── */}
+            <div className="absolute bottom-0 left-0 px-6 md:px-14 pb-12 md:pb-20 z-10 w-full md:max-w-[600px] xl:max-w-[660px]">
+
+              {/* TUBE ORIGINAL + category */}
+              <div className="flex flex-wrap items-center gap-2.5 mb-5">
+                <span className="text-[10px] font-black tracking-[0.22em] uppercase px-2.5 py-1 rounded-sm border"
+                  style={{ color: '#e50914', borderColor: 'rgba(229,9,20,0.6)' }}>
                   TUBE ORIGINAL
                 </span>
                 {hero.category && (
-                  <span className="text-zinc-400 text-[10px] font-semibold tracking-widest uppercase">
+                  <span className="text-zinc-400 text-[10px] font-semibold tracking-[0.18em] uppercase">
                     {hero.category}
                   </span>
                 )}
-                {hero.seriesTitle && hero.season && (
-                  <span className="text-zinc-500 text-[10px]">· Season {hero.season}</span>
+                {hero.seriesTitle && hero.season != null && (
+                  <span className="text-zinc-500 text-[10px] tracking-wide">· Season {hero.season}</span>
                 )}
               </div>
 
-              {/* Series parent title */}
+              {/* Series parent label */}
               {hero.seriesTitle && (
-                <p className="text-zinc-300 text-xs md:text-sm font-bold uppercase tracking-[0.15em] mb-1.5">
+                <p className="text-zinc-200 text-xs md:text-sm font-bold uppercase tracking-[0.14em] mb-2 drop-shadow">
                   {hero.seriesTitle}
                 </p>
               )}
 
               {/* Main title */}
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white leading-[0.88] tracking-tight drop-shadow-2xl mb-4 line-clamp-2">
+              <h1 className="font-black text-white leading-[0.9] tracking-tight drop-shadow-2xl mb-5 line-clamp-2"
+                style={{ fontSize: 'clamp(2.4rem, 5.5vw, 4.5rem)' }}>
                 {hero.title}
               </h1>
 
-              {/* Quality + meta row */}
-              <div className="flex items-center gap-2 mb-4 flex-wrap">
-                <span className="border border-zinc-600 text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-sm tracking-widest">HD</span>
-                <span className="border border-zinc-600 text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-sm tracking-widest">KE</span>
-                {hero.genre && (
-                  <span className="text-zinc-400 text-xs font-medium">{hero.genre}</span>
-                )}
+              {/* Meta strip */}
+              <div className="flex items-center gap-2.5 mb-5 flex-wrap">
                 {hero.productionYear && (
-                  <span className="text-zinc-500 text-xs">{hero.productionYear}</span>
+                  <span className="text-zinc-300 text-sm font-medium">{hero.productionYear}</span>
                 )}
-                <span className="text-zinc-600 text-xs">·</span>
-                <span className="text-zinc-400 text-xs">{hero.duration}</span>
-                <span className="text-zinc-600 text-xs">·</span>
-                <span className="text-zinc-400 text-xs">
-                  {hero.views >= 1_000_000
-                    ? `${(hero.views / 1_000_000).toFixed(1)}M views`
-                    : `${(hero.views / 1000).toFixed(0)}K views`}
-                </span>
+                <span className="border border-zinc-500/80 text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-sm tracking-widest">HD</span>
+                {hero.genre && (
+                  <span className="text-zinc-400 text-sm">{hero.genre}</span>
+                )}
+                {hero.duration && (
+                  <>
+                    <span className="text-zinc-600">·</span>
+                    <span className="text-zinc-400 text-sm">{hero.duration}</span>
+                  </>
+                )}
               </div>
 
-              {/* Description — always visible */}
-              <p className="text-zinc-300 text-sm md:text-base leading-relaxed line-clamp-2 md:line-clamp-3 mb-7 max-w-lg drop-shadow">
+              {/* Description */}
+              <p className="text-zinc-200 text-sm md:text-[0.95rem] leading-relaxed line-clamp-2 md:line-clamp-3 mb-8 max-w-[500px] drop-shadow">
                 {hero.description || `Watch ${hero.title} — exclusive on Tube TV, Kenya's home for premium original content.`}
               </p>
 
               {/* CTA buttons */}
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
                 <button
                   onClick={() => scrollToVideo(hero.id)}
-                  className="flex items-center gap-2.5 bg-white text-black font-black px-8 py-3.5 rounded-lg text-sm hover:bg-zinc-100 transition-all shadow-2xl active:scale-[0.97] flex-shrink-0"
+                  className="flex items-center gap-2.5 bg-white text-black font-bold px-7 md:px-9 py-3 md:py-3.5 rounded text-sm md:text-base hover:bg-zinc-100 transition-all shadow-2xl active:scale-[0.97] flex-shrink-0"
                 >
-                  <Play size={18} fill="black" /> Play
+                  <Play size={20} fill="black" className="flex-shrink-0" /> Play
                 </button>
                 <button
                   onClick={() => scrollToVideo(hero.id)}
-                  className="flex items-center gap-2 bg-zinc-800/70 backdrop-blur-md border border-zinc-600/50 text-white font-bold px-6 py-3.5 rounded-lg text-sm hover:bg-zinc-700/70 transition-all active:scale-[0.97] flex-shrink-0"
+                  className="flex items-center gap-2 bg-zinc-600/60 backdrop-blur-sm text-white font-semibold px-6 md:px-8 py-3 md:py-3.5 rounded text-sm md:text-base hover:bg-zinc-500/70 transition-all active:scale-[0.97] flex-shrink-0"
                 >
-                  <Info size={15} /> More Info
-                </button>
-                <button
-                  onClick={() => toggleWatchLater(hero.id)}
-                  className={`w-11 h-11 flex items-center justify-center rounded-full border-2 transition-all flex-shrink-0 ${
-                    isSaved
-                      ? 'border-white text-white bg-white/10'
-                      : 'border-zinc-500 text-zinc-400 hover:border-white hover:text-white'
-                  }`}
-                  title={isSaved ? 'Remove from Watch Later' : 'Add to Watch Later'}
-                >
-                  {isSaved ? <BookmarkCheck size={17} /> : <BookmarkPlus size={17} />}
+                  <Info size={18} className="flex-shrink-0" /> More Info
                 </button>
               </div>
+            </div>
 
-              {/* Slide progress indicators */}
+            {/* ── Bottom-right: bookmark + slide indicators (Netflix style) ── */}
+            <div className="absolute bottom-6 md:bottom-10 right-5 md:right-8 z-10 flex flex-col items-end gap-4">
+              {/* Bookmark */}
+              <button
+                onClick={() => toggleWatchLater(hero.id)}
+                title={isSaved ? 'Remove from Watch Later' : 'Add to Watch Later'}
+                className={`w-10 h-10 flex items-center justify-center rounded-full border-2 transition-all ${
+                  isSaved ? 'border-white bg-white/10 text-white' : 'border-zinc-500 text-zinc-400 hover:border-white hover:text-white'
+                }`}
+              >
+                {isSaved ? <BookmarkCheck size={16} /> : <BookmarkPlus size={16} />}
+              </button>
+
+              {/* Progress bars */}
               {featuredVideos.length > 1 && (
-                <div className="flex items-center gap-2 mt-8">
+                <div className="flex items-center gap-1.5">
                   {featuredVideos.map((_, i) => (
                     <button
                       key={i}
                       onClick={() => { setHeroIndex(i); setHeroProgress(0); }}
-                      className="relative h-[3px] rounded-full overflow-hidden bg-white/20 transition-all duration-500 flex-shrink-0"
-                      style={{ width: i === activeIdx ? 40 : 12 }}
+                      className="relative h-[3px] rounded-full overflow-hidden bg-white/25 transition-all duration-500 flex-shrink-0"
+                      style={{ width: i === activeIdx ? 36 : 10 }}
                     >
                       {i === activeIdx && (
                         <div
-                          className="absolute inset-y-0 left-0 bg-white rounded-full transition-none"
+                          className="absolute inset-y-0 left-0 bg-white rounded-full"
                           style={{ width: `${heroProgress}%` }}
                         />
                       )}
@@ -707,46 +727,6 @@ const HomeView: React.FC<HomeViewProps> = ({
                 </div>
               )}
             </div>
-
-            {/* ── Up Next panel — right edge, vertically centred ── */}
-            {upNext.length > 0 && (
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 hidden xl:flex flex-col z-10 w-[188px] rounded-l-2xl overflow-hidden"
-                style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.75), rgba(0,0,0,0.55))', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
-                {/* Header */}
-                <div className="px-4 pt-4 pb-3 border-b border-white/[0.06]">
-                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-400">Up Next</p>
-                </div>
-                {/* Cards */}
-                <div className="flex flex-col gap-0">
-                  {upNext.slice(0, 2).map((v) => (
-                    <button
-                      key={v.id}
-                      onClick={() => { setHeroIndex(featuredVideos.indexOf(v)); setHeroProgress(0); }}
-                      className="group/up flex flex-col gap-0 text-left hover:bg-white/[0.06] transition-colors px-3 py-3"
-                    >
-                      {/* Thumbnail */}
-                      <div className="relative w-full aspect-video rounded-lg overflow-hidden mb-2 border border-white/[0.08] group-hover/up:border-white/25 transition-all">
-                        <img src={v.thumbnail} alt={v.title} className="w-full h-full object-cover group-hover/up:scale-105 transition-transform duration-300" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/up:opacity-100 transition-opacity flex items-center justify-center">
-                          <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                            <Play size={14} fill="white" className="text-white ml-0.5" />
-                          </div>
-                        </div>
-                        {/* Duration badge */}
-                        <div className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
-                          {v.duration}
-                        </div>
-                      </div>
-                      {/* Meta */}
-                      <p className="text-white text-[11px] font-semibold line-clamp-2 leading-snug group-hover/up:text-zinc-200 transition-colors">{v.title}</p>
-                      {v.category && (
-                        <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-wide">{v.category}</p>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
           </div>
         );
