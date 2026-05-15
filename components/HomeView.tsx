@@ -566,153 +566,173 @@ const HomeView: React.FC<HomeViewProps> = ({
     <div className="pb-24">
 
       {/* ══════════════════════════════════════════════════════════════════
-          CINEMATIC HERO
+          PREMIUM HERO BANNER
       ══════════════════════════════════════════════════════════════════ */}
       {showHero && (() => {
         const featuredVideos = [...videos].sort((a, b) => b.views - a.views).slice(0, 5);
-        const hero = featuredVideos[heroIndex % featuredVideos.length];
+        const activeIdx = heroIndex % featuredVideos.length;
+        const hero = featuredVideos[activeIdx];
         if (!hero) return null;
         const isSaved = watchLater.includes(hero.id);
+        const upNext = featuredVideos.filter((_, i) => i !== activeIdx).slice(0, 3);
 
         return (
-          <div className="relative w-full h-[55vh] md:h-[70vh] overflow-hidden mb-0 group/hero">
-            {/* BG image */}
-            <img
-              key={hero.id}
-              src={hero.thumbnail}
-              alt={hero.title}
-              className="w-full h-full object-cover transition-all duration-1000 group-hover/hero:scale-[1.025] bg-zinc-900 animate-in fade-in duration-700"
-              onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
-            />
+          <div className="relative w-full h-[62vh] md:h-[84vh] overflow-hidden select-none">
 
-            {/* Cinematic gradients */}
-            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/30 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/90 via-zinc-950/20 to-transparent" />
-            {/* Side vignette */}
-            <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-transparent to-transparent" />
+            {/* ── Crossfading background images ── */}
+            {featuredVideos.map((v, i) => (
+              <img
+                key={v.id}
+                src={v.thumbnail}
+                alt=""
+                aria-hidden="true"
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
+                  i === activeIdx ? 'opacity-100 scale-[1.04]' : 'opacity-0 scale-100'
+                }`}
+                style={{ transition: 'opacity 1s ease, transform 8s ease' }}
+                onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+              />
+            ))}
 
-            {/* Progress bar */}
-            {featuredVideos.length > 1 && (
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-white/10">
-                <div className="h-full bg-red-500 transition-none" style={{ width: `${heroProgress}%` }} />
+            {/* ── Gradient layers ── */}
+            {/* Top — nav fade */}
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-zinc-950/70 to-transparent pointer-events-none" />
+            {/* Bottom — main content */}
+            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/55 to-transparent pointer-events-none" />
+            {/* Left — text legibility */}
+            <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/40 to-transparent pointer-events-none" />
+            {/* Ambient bottom glow */}
+            <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-zinc-950 to-transparent pointer-events-none" />
+
+            {/* ── Left content panel ── */}
+            <div className="absolute bottom-0 left-0 right-0 xl:right-auto xl:w-[52%] px-6 md:px-12 pb-10 md:pb-14 z-10">
+
+              {/* Platform + category badges */}
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <span className="text-red-500 text-[9px] font-black tracking-[0.18em] uppercase border border-red-500/60 px-2.5 py-0.5 rounded-sm shadow shadow-red-900/30">
+                  TUBE ORIGINAL
+                </span>
+                {hero.category && (
+                  <span className="text-zinc-400 text-[10px] font-semibold tracking-widest uppercase">
+                    {hero.category}
+                  </span>
+                )}
+                {hero.seriesTitle && hero.season && (
+                  <span className="text-zinc-500 text-[10px]">· Season {hero.season}</span>
+                )}
+              </div>
+
+              {/* Series parent title */}
+              {hero.seriesTitle && (
+                <p className="text-zinc-300 text-xs md:text-sm font-bold uppercase tracking-[0.15em] mb-1.5">
+                  {hero.seriesTitle}
+                </p>
+              )}
+
+              {/* Main title */}
+              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white leading-[0.88] tracking-tight drop-shadow-2xl mb-4 line-clamp-2">
+                {hero.title}
+              </h1>
+
+              {/* Quality + meta row */}
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <span className="border border-zinc-600 text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-sm tracking-widest">HD</span>
+                <span className="border border-zinc-600 text-zinc-300 text-[9px] font-black px-1.5 py-0.5 rounded-sm tracking-widest">KE</span>
+                {hero.genre && (
+                  <span className="text-zinc-400 text-xs font-medium">{hero.genre}</span>
+                )}
+                {hero.productionYear && (
+                  <span className="text-zinc-500 text-xs">{hero.productionYear}</span>
+                )}
+                <span className="text-zinc-600 text-xs">·</span>
+                <span className="text-zinc-400 text-xs">{hero.duration}</span>
+                <span className="text-zinc-600 text-xs">·</span>
+                <span className="text-zinc-400 text-xs">
+                  {hero.views >= 1_000_000
+                    ? `${(hero.views / 1_000_000).toFixed(1)}M views`
+                    : `${(hero.views / 1000).toFixed(0)}K views`}
+                </span>
+              </div>
+
+              {/* Description — always visible */}
+              <p className="text-zinc-300 text-sm md:text-base leading-relaxed line-clamp-2 md:line-clamp-3 mb-7 max-w-lg drop-shadow">
+                {hero.description || `Watch ${hero.title} — exclusive on Tube TV, Kenya's home for premium original content.`}
+              </p>
+
+              {/* CTA buttons */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => scrollToVideo(hero.id)}
+                  className="flex items-center gap-2.5 bg-white text-black font-black px-8 py-3.5 rounded-lg text-sm hover:bg-zinc-100 transition-all shadow-2xl active:scale-[0.97] flex-shrink-0"
+                >
+                  <Play size={18} fill="black" /> Play
+                </button>
+                <button
+                  onClick={() => scrollToVideo(hero.id)}
+                  className="flex items-center gap-2 bg-zinc-800/70 backdrop-blur-md border border-zinc-600/50 text-white font-bold px-6 py-3.5 rounded-lg text-sm hover:bg-zinc-700/70 transition-all active:scale-[0.97] flex-shrink-0"
+                >
+                  <Info size={15} /> More Info
+                </button>
+                <button
+                  onClick={() => toggleWatchLater(hero.id)}
+                  className={`w-11 h-11 flex items-center justify-center rounded-full border-2 transition-all flex-shrink-0 ${
+                    isSaved
+                      ? 'border-white text-white bg-white/10'
+                      : 'border-zinc-500 text-zinc-400 hover:border-white hover:text-white'
+                  }`}
+                  title={isSaved ? 'Remove from Watch Later' : 'Add to Watch Later'}
+                >
+                  {isSaved ? <BookmarkCheck size={17} /> : <BookmarkPlus size={17} />}
+                </button>
+              </div>
+
+              {/* Slide progress indicators */}
+              {featuredVideos.length > 1 && (
+                <div className="flex items-center gap-2 mt-8">
+                  {featuredVideos.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => { setHeroIndex(i); setHeroProgress(0); }}
+                      className="relative h-[3px] rounded-full overflow-hidden bg-white/20 transition-all duration-500 flex-shrink-0"
+                      style={{ width: i === activeIdx ? 40 : 12 }}
+                    >
+                      {i === activeIdx && (
+                        <div
+                          className="absolute inset-y-0 left-0 bg-white rounded-full transition-none"
+                          style={{ width: `${heroProgress}%` }}
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Right panel: Up Next (xl screens) ── */}
+            {upNext.length > 0 && (
+              <div className="absolute right-10 bottom-14 hidden xl:flex flex-col gap-3 z-10 w-[220px]">
+                <p className="text-zinc-500 text-[9px] font-black uppercase tracking-[0.2em] mb-1">Up Next</p>
+                {upNext.map((v, i) => (
+                  <button
+                    key={v.id}
+                    onClick={() => { setHeroIndex(featuredVideos.indexOf(v)); setHeroProgress(0); }}
+                    className="flex items-center gap-3 group/up text-left"
+                  >
+                    <div className="relative w-28 h-16 rounded-lg overflow-hidden flex-shrink-0 border border-white/10 group-hover/up:border-white/40 transition-all shadow-xl">
+                      <img src={v.thumbnail} alt={v.title} className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/up:opacity-100 transition-opacity">
+                        <Play size={16} fill="white" className="text-white" />
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-white text-xs font-bold line-clamp-2 group-hover/up:text-zinc-200 leading-tight">{v.title}</p>
+                      <p className="text-zinc-500 text-[10px] mt-1">{v.duration}</p>
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
 
-            {/* Hero content */}
-            <div className="absolute bottom-0 left-0 right-0 px-6 md:px-10 pb-10 md:pb-14">
-              <div className="max-w-2xl">
-                {/* Category/genre badges */}
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <span className="bg-red-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest shadow">
-                    #1 In Kenya
-                  </span>
-                  {hero.genre && (
-                    <span className="bg-white/10 backdrop-blur border border-white/15 text-zinc-200 text-[10px] font-medium px-2.5 py-0.5 rounded-full">
-                      {hero.genre}
-                    </span>
-                  )}
-                  {hero.seriesTitle && hero.episode && (
-                    <span className="bg-white/10 backdrop-blur border border-white/15 text-zinc-200 text-[10px] font-medium px-2.5 py-0.5 rounded-full">
-                      S{hero.season} · E{hero.episode}
-                    </span>
-                  )}
-                  {hero.productionYear && (
-                    <span className="text-zinc-500 text-[10px]">{hero.productionYear}</span>
-                  )}
-                </div>
-
-                {/* Series title above main title */}
-                {hero.seriesTitle && (
-                  <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest mb-1">{hero.seriesTitle}</p>
-                )}
-
-                {/* Main title */}
-                <h1 className="text-3xl md:text-5xl lg:text-6xl font-black text-white leading-none drop-shadow-2xl line-clamp-2 mb-3">
-                  {hero.title}
-                </h1>
-
-                {/* Meta */}
-                <div className="flex items-center gap-2 text-sm text-zinc-400 mb-2">
-                  <Star size={12} className="text-amber-400 fill-amber-400 flex-shrink-0" />
-                  <span className="text-amber-400 font-bold text-xs">
-                    {((hero.views / 1000) * 0.001 + 7.5).toFixed(1)}
-                  </span>
-                  <span className="text-zinc-700">·</span>
-                  <span>{(hero.views >= 1_000_000 ? `${(hero.views / 1_000_000).toFixed(1)}M` : `${(hero.views / 1000).toFixed(0)}K`)} views</span>
-                  <span className="text-zinc-700">·</span>
-                  <span>{hero.duration}</span>
-                </div>
-
-                {/* Description */}
-                {hero.description && (
-                  <p className="hidden md:block text-zinc-400 text-sm leading-relaxed line-clamp-2 mb-5 max-w-lg">
-                    {hero.description}
-                  </p>
-                )}
-
-                {/* Action row */}
-                <div className="flex items-center gap-3 mt-5">
-                  <button
-                    onClick={() => scrollToVideo(hero.id)}
-                    className="flex items-center gap-2 bg-white hover:bg-zinc-100 text-black font-black px-7 py-3 rounded-xl transition-all shadow-2xl text-sm active:scale-[0.97]"
-                  >
-                    <Play size={16} fill="black" />
-                    Play Now
-                  </button>
-                  <button
-                    onClick={() => toggleWatchLater(hero.id)}
-                    className={`flex items-center gap-2 backdrop-blur font-bold px-5 py-3 rounded-xl transition-all border text-sm active:scale-[0.97] ${
-                      isSaved
-                        ? 'bg-white/20 border-white/30 text-white'
-                        : 'bg-white/10 border-white/15 text-zinc-300 hover:bg-white/20 hover:text-white'
-                    }`}
-                  >
-                    {isSaved ? <><BookmarkCheck size={14} /> Saved</> : <><BookmarkPlus size={14} /> Watch Later</>}
-                  </button>
-                  <button
-                    onClick={() => scrollToVideo(hero.id)}
-                    className="flex items-center justify-center w-10 h-10 bg-white/10 backdrop-blur border border-white/15 hover:bg-white/20 text-white rounded-xl transition-all hidden sm:flex"
-                    title="More info"
-                  >
-                    <Info size={15} />
-                  </button>
-                </div>
-
-                {/* Dot + thumbnail strip */}
-                <div className="flex items-center gap-3 mt-5">
-                  {/* Dots */}
-                  <div className="flex gap-1.5">
-                    {featuredVideos.map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => { setHeroIndex(i); setHeroProgress(0); }}
-                        className={`rounded-full transition-all duration-500 ${
-                          i === heroIndex % featuredVideos.length
-                            ? 'w-6 h-1.5 bg-red-500 shadow shadow-red-500/40'
-                            : 'w-1.5 h-1.5 bg-white/25 hover:bg-white/50'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  {/* Thumbnail strip — desktop */}
-                  <div className="hidden lg:flex gap-1.5 ml-2">
-                    {featuredVideos.map((v, i) => (
-                      <button
-                        key={v.id}
-                        onClick={() => { setHeroIndex(i); setHeroProgress(0); }}
-                        className={`w-14 h-8 rounded-lg overflow-hidden border-2 transition-all flex-shrink-0 ${
-                          i === heroIndex % featuredVideos.length
-                            ? 'border-red-500 shadow shadow-red-500/40'
-                            : 'border-white/10 opacity-40 hover:opacity-70 hover:border-white/30'
-                        }`}
-                      >
-                        <img src={v.thumbnail} alt={v.title} className="w-full h-full object-cover bg-zinc-800" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         );
       })()}
