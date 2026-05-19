@@ -43,6 +43,36 @@ interface BunnyVideoListResponse {
   items: BunnyVideoItem[];
 }
 
+// ─── Mute helpers (admin-only, stored locally) ───────────────────────────────
+
+const MUTED_KEY = 'tube_muted_videos';
+
+/** Returns the Set of video GUIDs the admin has muted. */
+export const getMutedVideoIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(MUTED_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+
+/**
+ * Mutes or unmutes a video (admin-only).
+ * Persists to localStorage and fires 'tube-mute-change' so App.tsx
+ * can re-filter the public video list without a full reload.
+ */
+export const setVideoMuted = (videoId: string, muted: boolean): void => {
+  try {
+    const ids = getMutedVideoIds();
+    if (muted) ids.add(videoId); else ids.delete(videoId);
+    localStorage.setItem(MUTED_KEY, JSON.stringify([...ids]));
+    window.dispatchEvent(new CustomEvent('tube-mute-change'));
+  } catch {
+    // Incognito / storage full — silently ignore
+  }
+};
+
 // ─── Private helpers ──────────────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -360,6 +390,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     trailerUrl: getMeta(activeItem.metaTags, 'trailerUrl') || undefined,
     dateUploaded: activeItem.dateUploaded || undefined,
     featured: getMeta(activeItem.metaTags, 'featured') === 'true',
+    muted: getMutedVideoIds().has(item.guid),
   };
 };
 

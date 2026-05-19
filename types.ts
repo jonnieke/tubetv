@@ -55,6 +55,7 @@ export interface Video {
   trailerUrl?: string;
   dateUploaded?: string;  // ISO 8601 from Bunny
   featured?: boolean;     // Pinned to the hero carousel by admin
+  muted?: boolean;        // Hidden from public view by admin
 }
 
 export interface ShortVideo {

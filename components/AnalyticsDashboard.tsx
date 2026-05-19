@@ -10,9 +10,10 @@ import {
   Coffee, Briefcase, Anchor, Zap, Cpu, BookOpen, Utensils, RefreshCcw, Loader2,
   Search, SlidersHorizontal, X, CalendarRange,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  EyeOff, Eye,
 } from 'lucide-react';
 import { NavItem } from '../types';
-import { BunnyVideoItem, bunnyVideoToVideo, getThumbnailUrl } from '../services/bunnyService';
+import { BunnyVideoItem, bunnyVideoToVideo, getThumbnailUrl, getMutedVideoIds, setVideoMuted } from '../services/bunnyService';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../contexts/LanguageContext';
 import { error as logError } from '../lib/logger';
@@ -55,6 +56,7 @@ interface VideoRow {
   duration: string;
   /** Raw duration in seconds for range filtering */
   durationSecs: number;
+  muted: boolean;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -141,7 +143,24 @@ export default function AnalyticsDashboard({
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterDuration, setFilterDuration] = useState('');   // '' | '<5' | '5-15' | '15-30' | '30-60' | '>60'
   const [showFilters, setShowFilters] = useState(false);
+  const [showOnlyMuted, setShowOnlyMuted] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // ─── Mute state (kept in sync with localStorage via tube-mute-change) ────────
+  const [mutedIds, setMutedIds] = useState<Set<string>>(() => getMutedVideoIds());
+
+  useEffect(() => {
+    const sync = () => setMutedIds(getMutedVideoIds());
+    window.addEventListener('tube-mute-change', sync);
+    return () => window.removeEventListener('tube-mute-change', sync);
+  }, []);
+
+  const toggleMute = useCallback((videoId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // don't open detail view
+    const nowMuted = !mutedIds.has(videoId);
+    setVideoMuted(videoId, nowMuted);
+    // state update is handled by the tube-mute-change listener above
+  }, [mutedIds]);
 
   // ─── Derived from Bunny props ───────────────────────────────────────────────
 
@@ -167,6 +186,7 @@ export default function AnalyticsDashboard({
         recentViews: 0, // filled in after Supabase fetch
         duration: v.duration,
         durationSecs: item.length ?? 0,
+        muted: v.muted ?? false,
       };
     }).sort((a, b) => b.lifetimeViews - a.lifetimeViews);
 
@@ -275,7 +295,7 @@ export default function AnalyticsDashboard({
   const uniqueAuthors = useMemo(() =>
     Array.from(new Set(myVideos.map(v => v.author).filter((a): a is string => Boolean(a)))).sort(), [myVideos]);
 
-  const activeFilterCount = [filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration].filter(Boolean).length;
+  const activeFilterCount = [filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration, showOnlyMuted ? '1' : ''].filter(Boolean).length;
 
   const clearFilters = () => {
     setFilterTitle('');
@@ -285,14 +305,17 @@ export default function AnalyticsDashboard({
     setFilterDateFrom('');
     setFilterDateTo('');
     setFilterDuration('');
+    setShowOnlyMuted(false);
     setCurrentPage(1);
   };
+
+  const mutedCount = useMemo(() => myVideos.filter(v => mutedIds.has(v.id)).length, [myVideos, mutedIds]);
 
   // ─── Reset to page 1 whenever any filter changes ──────────────────────────
 
   useEffect(() => { setCurrentPage(1); },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration]);
+    [filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration, showOnlyMuted]);
 
   // ─── Apply filters ─────────────────────────────────────────────────────────
 
@@ -302,6 +325,7 @@ export default function AnalyticsDashboard({
     const toMs = filterDateTo ? new Date(filterDateTo + 'T23:59:59').getTime() : null;
 
     return myVideos.filter(v => {
+      if (showOnlyMuted && !mutedIds.has(v.id)) return false;
       if (titleQ && !v.title.toLowerCase().includes(titleQ)) return false;
       if (filterCategory && v.category !== filterCategory) return false;
       if (filterGenre && v.genre !== filterGenre) return false;
@@ -324,7 +348,7 @@ export default function AnalyticsDashboard({
 
       return true;
     });
-  }, [myVideos, filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration]);
+  }, [myVideos, mutedIds, showOnlyMuted, filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration]);
 
   // ─── Pagination ────────────────────────────────────────────────────────────
 
@@ -612,6 +636,24 @@ export default function AnalyticsDashboard({
                 )}
               </button>
 
+              {/* Hidden-only quick filter */}
+              <button
+                onClick={() => setShowOnlyMuted(f => !f)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors
+                  ${showOnlyMuted
+                    ? 'bg-red-600/20 border-red-500 text-red-400'
+                    : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'}`}
+              >
+                <EyeOff size={14} />
+                Hidden
+                {mutedCount > 0 && (
+                  <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5
+                    ${showOnlyMuted ? 'bg-red-500 text-white' : 'bg-zinc-700 text-zinc-300'}`}>
+                    {mutedCount}
+                  </span>
+                )}
+              </button>
+
               {/* Clear all */}
               {activeFilterCount > 0 && (
                 <button
@@ -741,27 +783,48 @@ export default function AnalyticsDashboard({
                   <th className="p-4 text-center whitespace-nowrap">Uploaded</th>
                   <th className="p-4 text-center">Views</th>
                   <th className="p-4 text-center hidden sm:table-cell">Duration</th>
+                  <th className="p-4 text-center" title="Hide from users">Visibility</th>
                   <th className="p-4 text-right">Detail</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {paginatedVideos.map(video => (
+                {paginatedVideos.map(video => {
+                  const isMuted = mutedIds.has(video.id);
+                  return (
                   <tr
                     key={video.id}
                     onClick={() => setSelectedVideo(video)}
-                    className="hover:bg-zinc-800/50 transition-colors cursor-pointer group"
+                    className={`transition-colors cursor-pointer group
+                      ${isMuted ? 'opacity-50 bg-zinc-950/60 hover:opacity-75' : 'hover:bg-zinc-800/50'}`}
                   >
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <img
-                          src={video.thumbnail_url}
-                          className="w-16 h-9 object-cover rounded bg-zinc-800 flex-shrink-0"
-                          alt=""
-                          onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
-                        />
+                        <div className="relative flex-shrink-0">
+                          <img
+                            src={video.thumbnail_url}
+                            className={`w-16 h-9 object-cover rounded bg-zinc-800 ${isMuted ? 'grayscale' : ''}`}
+                            alt=""
+                            onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+                          />
+                          {isMuted && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded">
+                              <EyeOff size={14} className="text-red-400" />
+                            </div>
+                          )}
+                        </div>
                         <div className="min-w-0">
-                          <p className="text-white font-medium text-sm truncate group-hover:text-red-400 transition-colors">{video.title}</p>
-                          <p className="text-zinc-500 text-xs">{video.category}</p>
+                          <p className={`font-medium text-sm truncate transition-colors
+                            ${isMuted ? 'text-zinc-500 line-through' : 'text-white group-hover:text-red-400'}`}>
+                            {video.title}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <p className="text-zinc-500 text-xs">{video.category}</p>
+                            {isMuted && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-red-500/15 text-red-400 rounded-full border border-red-500/20">
+                                Hidden
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -778,16 +841,30 @@ export default function AnalyticsDashboard({
                     </td>
                     <td className="p-4 text-center text-white text-sm font-mono">{formatNumber(video.lifetimeViews)}</td>
                     <td className="p-4 text-center text-zinc-400 text-sm font-mono hidden sm:table-cell">{video.duration}</td>
+                    <td className="p-4 text-center">
+                      <button
+                        onClick={e => toggleMute(video.id, e)}
+                        title={isMuted ? 'Unhide — make visible to users' : 'Hide from users'}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all
+                          ${isMuted
+                            ? 'bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25'
+                            : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30'}`}
+                      >
+                        {isMuted ? <EyeOff size={13} /> : <Eye size={13} />}
+                        <span className="hidden sm:inline">{isMuted ? 'Hidden' : 'Visible'}</span>
+                      </button>
+                    </td>
                     <td className="p-4 text-right">
                       <span className="text-blue-400 hover:text-blue-300 text-xs font-bold px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20 whitespace-nowrap">
                         View →
                       </span>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {paginatedVideos.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-10 text-center text-zinc-500">
+                    <td colSpan={8} className="p-10 text-center text-zinc-500">
                       {myVideos.length === 0 ? 'No videos uploaded yet.' : 'No videos match the current filters.'}
                     </td>
                   </tr>

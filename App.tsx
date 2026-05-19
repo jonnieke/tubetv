@@ -19,7 +19,7 @@ import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { MOCK_SHORTS } from './constants';
 import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film, Shirt, PawPrint } from 'lucide-react';
 import { getVideoRecommendations } from './services/geminiService';
-import { fetchBunnyVideos, bunnyVideoToVideo } from './services/bunnyService';
+import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem } from './services/bunnyService';
 import { supabase, normalizePhone } from './lib/supabase';
 import { log, warn } from './lib/logger';
 import { useToast } from './components/Toast';
@@ -136,6 +136,14 @@ const App: React.FC = () => {
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(true);
   const [isRealContent, setIsRealContent] = useState(false);
+  // Keep raw Bunny items so we can re-filter after a mute toggle without re-fetching
+  const bunnyItemsRef = useRef<BunnyVideoItem[]>([]);
+
+  const applyVideos = useCallback((items: BunnyVideoItem[]) => {
+    const mapped = items.map(bunnyVideoToVideo).filter(v => !v.muted) as Video[];
+    setVideos(mapped);
+    setIsRealContent(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,10 +153,9 @@ const App: React.FC = () => {
         log('Bunny Items Fetched:', bunnyItems.length);
         if (cancelled) return;
         if (bunnyItems.length > 0) {
-          const mapped = bunnyItems.map(bunnyVideoToVideo) as Video[];
-          log('Mapped Videos (first 2):', mapped.slice(0, 2));
-          setVideos(mapped);
-          setIsRealContent(true);
+          bunnyItemsRef.current = bunnyItems;
+          applyVideos(bunnyItems);
+          log('Mapped Videos (first 2):', videos.slice(0, 2));
         } else {
           log('No Bunny items found, keeping mock data.');
         }
@@ -161,7 +168,16 @@ const App: React.FC = () => {
     };
     loadVideos();
     return () => { cancelled = true; };
-  }, []);
+  }, [applyVideos]);
+
+  // Re-filter when admin mutes / unmutes a video
+  useEffect(() => {
+    const onMuteChange = () => {
+      if (bunnyItemsRef.current.length > 0) applyVideos(bunnyItemsRef.current);
+    };
+    window.addEventListener('tube-mute-change', onMuteChange);
+    return () => window.removeEventListener('tube-mute-change', onMuteChange);
+  }, [applyVideos]);
 
   // Derive real shorts from the videos library (tagged with 'Shorts' category)
   const realShorts = useMemo(() => {
@@ -518,6 +534,7 @@ const App: React.FC = () => {
             currentNavItems={navItems}
             onAddCategory={handleAddCategory}
             onRemoveCategory={handleRemoveCategory}
+            videos={bunnyItemsRef.current}
           />
         );
 
