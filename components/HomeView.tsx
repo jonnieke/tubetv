@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Search, Sparkles, Loader2, Play, BookmarkPlus, BookmarkCheck,
   Info, ChevronLeft, ChevronRight, Flame, Star, Clock, Volume2, VolumeX, History,
+  X, CheckCircle, Crown, Zap,
 } from 'lucide-react';
 import { Video, NavItem, ViewStateOrString, ViewState } from '../types';
 import VideoCard from './VideoCard';
@@ -471,6 +472,150 @@ const GenreMoodRow: React.FC<{ videos: Video[]; onNavigate: () => void }> = ({ v
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Welcome Banner — shown once per session to unauthenticated visitors
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WelcomeBanner: React.FC<{ onSignUp: () => void; onSignIn: () => void }> = ({ onSignUp, onSignIn }) => {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return sessionStorage.getItem('tube_welcome_dismissed') === '1'; } catch { return false; }
+  });
+  if (dismissed) return null;
+  const dismiss = () => {
+    try { sessionStorage.setItem('tube_welcome_dismissed', '1'); } catch {}
+    setDismissed(true);
+  };
+
+  return (
+    <div className="mx-4 md:mx-0 mb-6 rounded-2xl overflow-hidden border border-zinc-700/50 relative animate-in fade-in slide-in-from-top-3 duration-500">
+      {/* Kenyan flag stripe */}
+      <div className="absolute left-0 top-0 bottom-0 w-1.5 flex flex-col">
+        <div className="flex-1 bg-[#006600]" />
+        <div className="flex-1 bg-[#CC0001]" />
+        <div className="flex-1 bg-black" />
+      </div>
+      <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 pl-5 pr-4 py-4 md:py-5">
+        <div className="flex flex-col md:flex-row md:items-center gap-4">
+          {/* Left: copy */}
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-2xl leading-none">🇰🇪</span>
+              <h3 className="text-white font-black text-lg leading-tight">Karibu TubeKenya!</h3>
+              <span className="hidden sm:inline text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider">Beta</span>
+            </div>
+            <p className="text-zinc-300 text-sm leading-relaxed">
+              Burudani bora zaidi ya Kenya — filamu, elimu, kilimo, imani na zaidi.{' '}
+              <span className="text-zinc-500">Stream local content anywhere, any device.</span>
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+              {[
+                'Free to browse',
+                'Kenyan-made content',
+                'Data-saving 360p mode',
+                'New uploads daily',
+              ].map(f => (
+                <span key={f} className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <CheckCircle size={11} className="text-green-400 flex-shrink-0" /> {f}
+                </span>
+              ))}
+            </div>
+          </div>
+          {/* Right: CTAs */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={onSignIn}
+              className="px-4 py-2 text-sm font-semibold text-white border border-zinc-600 rounded-xl hover:border-zinc-400 transition-colors"
+            >
+              Ingia
+            </button>
+            <button
+              onClick={onSignUp}
+              className="px-5 py-2 text-sm font-black bg-red-600 hover:bg-red-500 text-white rounded-xl transition-colors shadow-lg shadow-red-900/30"
+            >
+              Jiunge Bure
+            </button>
+            <button onClick={dismiss} className="p-1.5 text-zinc-600 hover:text-white transition-colors flex-shrink-0">
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Category Quick-Nav — jump straight to any section from the home screen
+// ─────────────────────────────────────────────────────────────────────────────
+
+const QUICK_CATS = [
+  { view: 'FARMERS',  emoji: '🌱', label: 'Kilimo',   sub: 'Farming',   gradient: 'from-green-900/70',  border: 'border-green-800/50',  text: 'text-green-300' },
+  { view: 'FAITH',    emoji: '🙏', label: 'Imani',    sub: 'Faith',     gradient: 'from-amber-900/70',  border: 'border-amber-800/50',  text: 'text-amber-300' },
+  { view: 'EDUCATION',emoji: '📚', label: 'Elimu',    sub: 'Education', gradient: 'from-blue-900/70',   border: 'border-blue-800/50',   text: 'text-blue-300'  },
+  { view: 'KIDS',     emoji: '🧒', label: 'Watoto',   sub: 'Kids',      gradient: 'from-violet-900/70', border: 'border-violet-800/50', text: 'text-violet-300'},
+  { view: 'ORIGINALS',emoji: '🎬', label: 'Filamu',   sub: 'Movies',    gradient: 'from-red-900/70',    border: 'border-red-800/50',    text: 'text-red-300'   },
+  { view: 'DIASPORA', emoji: '✈️', label: 'Diaspora', sub: 'Abroad',    gradient: 'from-teal-900/70',   border: 'border-teal-800/50',   text: 'text-teal-300'  },
+  { view: 'FASHION',  emoji: '👗', label: 'Mitindo',  sub: 'Fashion',   gradient: 'from-pink-900/70',   border: 'border-pink-800/50',   text: 'text-pink-300'  },
+  { view: 'WILDLIFE', emoji: '🦁', label: 'Wanyama',  sub: 'Wildlife',  gradient: 'from-yellow-900/70', border: 'border-yellow-800/50', text: 'text-yellow-300'},
+  { view: 'LIVE',     emoji: '📡', label: 'Moja Kwa Moja', sub: 'Live', gradient: 'from-rose-900/70',  border: 'border-rose-800/50',   text: 'text-rose-300'  },
+] as const;
+
+const CategoryQuickNav: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => (
+  <div className="mb-7">
+    <div className="flex items-center justify-between mb-3 px-4 md:px-0">
+      <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Browse by category</p>
+    </div>
+    <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 md:px-0 pb-1">
+      {QUICK_CATS.map(({ view, emoji, label, sub, gradient, border, text }) => (
+        <button
+          key={view}
+          onClick={() => onNavigate(view)}
+          className={`flex-shrink-0 flex flex-col items-center justify-center gap-1.5 w-20 h-20 md:w-24 md:h-24 rounded-2xl border bg-gradient-to-b ${gradient} to-zinc-950 ${border} hover:scale-105 hover:border-opacity-80 transition-all duration-200 active:scale-95 group`}
+        >
+          <span className="text-2xl group-hover:scale-110 transition-transform duration-200">{emoji}</span>
+          <div className="text-center">
+            <p className={`text-[11px] font-black leading-tight ${text}`}>{label}</p>
+            <p className="text-[9px] text-zinc-500 leading-tight">{sub}</p>
+          </div>
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Premium upsell strip
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PremiumStrip: React.FC<{ onSignUp: () => void }> = ({ onSignUp }) => (
+  <div
+    onClick={onSignUp}
+    className="relative rounded-2xl overflow-hidden cursor-pointer group mb-2"
+    role="button"
+  >
+    <div className="absolute inset-0 bg-gradient-to-r from-amber-950 via-zinc-900 to-zinc-950" />
+    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_left,rgba(245,158,11,0.15),transparent_60%)]" />
+    <div className="relative flex items-center gap-4 px-5 md:px-8 py-4 md:py-5">
+      <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-amber-500/30 transition-colors">
+        <Crown size={20} className="text-amber-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-white font-black text-sm md:text-base">Pata Ndovu Premium</p>
+        <p className="text-zinc-400 text-xs md:text-sm truncate">
+          Tazama maudhui yote bila kikwazo · HD · Bila matangazo
+          <span className="hidden sm:inline"> · Lipa na M-Pesa</span>
+        </p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <Zap size={14} className="text-amber-400" />
+        <span className="text-amber-400 text-xs font-black uppercase tracking-wider group-hover:text-amber-300 transition-colors">
+          Jaribu Sasa →
+        </span>
+      </div>
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hero auto-advance
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -808,6 +953,17 @@ const HomeView: React.FC<HomeViewProps> = ({
           <BandwidthToggle />
         </div>
 
+        {/* ── Welcome banner (unauthenticated, HOME only) ── */}
+        {currentView === ViewState.HOME && !isAuthenticated && !searchQuery && (
+          <WelcomeBanner onSignUp={() => setShowLogin(true)} onSignIn={() => setShowLogin(true)} />
+        )}
+
+        {/* ── Category quick-nav (HOME only, not in search/sort modes) ── */}
+        {currentView === ViewState.HOME && !searchQuery &&
+          activeSubCategory !== 'New Releases' && activeSubCategory !== 'Most Watched' && (
+          <CategoryQuickNav onNavigate={view => setCurrentView(view as ViewStateOrString)} />
+        )}
+
         {/* Shorts shelf */}
         {currentView === ViewState.HOME && !searchQuery && (
           <ShortsShelf shorts={realShorts} onShortClick={() => setCurrentView(ViewState.SHORTS)} />
@@ -880,6 +1036,9 @@ const HomeView: React.FC<HomeViewProps> = ({
               onToggleWatchLater={toggleWatchLater}
             />
 
+            {/* Premium upsell — shown only to guests between Top 10 and content rows */}
+            {!isAuthenticated && <PremiumStrip onSignUp={() => setShowLogin(true)} />}
+
             {/* 3. Continue Watching */}
             {continueWatchingVideos.length > 0 && (
               <VideoCarousel
@@ -893,7 +1052,57 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             )}
 
-            {/* 4. AI Picks — show recommendations when available, trending as fallback */}
+            {/* 4. Kilimo — Farmers (high relevance in Kenya, shown early) */}
+            {(() => { const v = videos.filter(x => x.category === 'Farmers'); return v.length > 0 && (
+              <VideoCarousel
+                title="🌱 Kilimo"
+                subtitle="Kilimo cha kisasa · Modern farming & agribusiness"
+                accentColor="from-green-500 to-emerald-500"
+                videos={v}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={hasFullAccess}
+              />
+            ); })()}
+
+            {/* 5. Imani — Faith (major category in Kenya) */}
+            {(() => { const v = videos.filter(x => x.category === 'Faith'); return v.length > 0 && (
+              <VideoCarousel
+                title="🙏 Imani"
+                subtitle="Mahubiri, ibada na sala · Sermons, worship & devotion"
+                accentColor="from-amber-500 to-yellow-500"
+                videos={v}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={hasFullAccess}
+              />
+            ); })()}
+
+            {/* 6. Elimu — Education (CBC, KCSE) */}
+            {(() => { const v = videos.filter(x => x.category === 'Education'); return v.length > 0 && (
+              <VideoCarousel
+                title="📚 Elimu"
+                subtitle="CBC, KCSE na chuo kikuu · Kenyan curriculum"
+                accentColor="from-blue-500 to-cyan-500"
+                videos={v}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={hasFullAccess}
+              />
+            ); })()}
+
+            {/* 7. Trending Now */}
+            <VideoCarousel
+              title="🔥 Trending Now"
+              subtitle="Kenya's most-watched this week"
+              accentColor="from-red-500 to-orange-500"
+              videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 20)}
+              watchLaterIds={watchLater}
+              onToggleWatchLater={toggleWatchLater}
+              isAuthenticated={true}
+            />
+
+            {/* 8. AI Picks */}
             {isRecLoading && watchLater.length > 0 ? (
               <div className="flex items-center gap-3 py-5 px-2">
                 <Loader2 className="w-4 h-4 text-purple-400 animate-spin flex-shrink-0" />
@@ -911,18 +1120,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             )}
 
-            {/* 4. Trending Now */}
-            <VideoCarousel
-              title="🔥 Trending Now"
-              subtitle="Kenya's most-watched this week"
-              accentColor="from-red-500 to-orange-500"
-              videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 20)}
-              watchLaterIds={watchLater}
-              onToggleWatchLater={toggleWatchLater}
-              isAuthenticated={true}
-            />
-
-            {/* 5. Series */}
+            {/* 9. Series */}
             <SeriesCarousel
               title="📺 Series"
               videos={videos.filter(v => v.seriesTitle || (v.season && v.episode))}
@@ -932,19 +1130,16 @@ const HomeView: React.FC<HomeViewProps> = ({
               onSubscribeRequest={() => setShowLogin(true)}
             />
 
-            {/* 6. Browse by Mood */}
+            {/* 10. Browse by Mood */}
             <GenreMoodRow videos={videos} onNavigate={() => setCurrentView(ViewState.ORIGINALS)} />
 
-            {/* 7. Per-category rows */}
+            {/* 11. Remaining category rows */}
             {([
               { cat: 'Originals',  emoji: '🎬', accent: 'from-red-500 to-rose-500',      sub: 'Kenyan-made films & dramas' },
-              { cat: 'Education',  emoji: '📚', accent: 'from-blue-500 to-cyan-500',      sub: 'CBC, KCSE & university content' },
-              { cat: 'Farmers',    emoji: '🌱', accent: 'from-green-500 to-emerald-500',  sub: 'Modern farming & agribusiness' },
-              { cat: 'Faith',      emoji: '🙏', accent: 'from-amber-500 to-yellow-500',   sub: 'Sermons, worship & devotion' },
-              { cat: 'Kids',       emoji: '🧒', accent: 'from-indigo-500 to-violet-500',  sub: 'Safe & educational kids content' },
-              { cat: 'Diaspora',   emoji: '🌍', accent: 'from-teal-500 to-sky-500',       sub: 'Content for Kenyans abroad' },
-              { cat: 'Fashion',    emoji: '👗', accent: 'from-pink-500 to-rose-500',       sub: 'Style, trends & Kenyan fashion' },
-              { cat: 'Wildlife',   emoji: '🦁', accent: 'from-yellow-500 to-orange-500',  sub: 'Safari, nature & conservation' },
+              { cat: 'Kids',       emoji: '🧒', accent: 'from-indigo-500 to-violet-500',  sub: 'Salama na ya kuvutia · Safe & fun kids content' },
+              { cat: 'Diaspora',   emoji: '✈️', accent: 'from-teal-500 to-sky-500',       sub: 'Kwa Wakenya nje · Content for Kenyans abroad' },
+              { cat: 'Fashion',    emoji: '👗', accent: 'from-pink-500 to-rose-500',       sub: 'Mitindo ya Kenya · Style & trends' },
+              { cat: 'Wildlife',   emoji: '🦁', accent: 'from-yellow-500 to-orange-500',  sub: 'Safari, asili na uhifadhi · Nature & conservation' },
             ] as const).map(({ cat, emoji, accent, sub }) => {
               const catVids = videos.filter(v => v.category === cat);
               if (catVids.length === 0) return null;
