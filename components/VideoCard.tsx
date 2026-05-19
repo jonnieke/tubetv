@@ -1,11 +1,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles } from 'lucide-react';
+import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download } from 'lucide-react';
 import { Video, Caption } from '../types';
 import { generateCaptions } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 import { getProgress, saveProgress } from '../lib/watchProgress';
 import { useResolvedQuality } from '../lib/networkQuality';
+import { recordWatchTime, saveOffline, isOfflineSaved } from '../lib/dataTracker';
 import Hls from 'hls.js';
 
 const recordView = async (videoId: string) => {
@@ -64,6 +65,11 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const [showCaptions, setShowCaptions] = useState(false);
   const [currentCaption, setCurrentCaption] = useState<string>('');
   const [isLoadingCaptions, setIsLoadingCaptions] = useState(false);
+
+  const [isOffline, setIsOffline] = useState<boolean>(() => isOfflineSaved(video.id));
+  // Accumulates seconds played in this session for data tracking
+  const watchSecondsRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -356,6 +362,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (videoRef.current) {
       const current = videoRef.current.currentTime;
       const total = videoRef.current.duration;
+      // Accumulate watch seconds for data tracking (exclude seeks backward)
+      if (lastTimeRef.current > 0 && current > lastTimeRef.current && current - lastTimeRef.current < 3) {
+        watchSecondsRef.current += current - lastTimeRef.current;
+      }
+      lastTimeRef.current = current;
+      // Flush to data tracker every 30 seconds of real watch time
+      if (watchSecondsRef.current >= 30) {
+        recordWatchTime(video.id, video.title, watchSecondsRef.current, quality);
+        watchSecondsRef.current = 0;
+      }
       setCurrentTime(current);
       setDuration(total || 0);
       const pct = (current / total) * 100;
@@ -573,6 +589,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
               onTimeUpdate={handleTimeUpdate}
               onCanPlay={handleCanPlay}
               onEnded={() => {
+                if (watchSecondsRef.current > 0) {
+                  recordWatchTime(video.id, video.title, watchSecondsRef.current, quality);
+                  watchSecondsRef.current = 0;
+                }
                 setIsPlaying(false);
                 setIsHoverPlay(false);
               }}
@@ -659,7 +679,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
                 <div className="flex items-center gap-3">
                    {onToggleWatchLater && (
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onToggleWatchLater(video.id);
@@ -670,6 +690,17 @@ const VideoCard: React.FC<VideoCardProps> = ({
                          {isWatchLater ? <Check size={18} /> : <Plus size={18} />}
                       </button>
                    )}
+                   <button
+                     onClick={e => {
+                       e.stopPropagation();
+                       saveOffline({ id: video.id, title: video.title, thumbnail: video.thumbnail, author: video.author, duration: video.duration, category: video.category, savedAt: Date.now() });
+                       setIsOffline(true);
+                     }}
+                     className={`transition-colors ${isOffline ? 'text-blue-400' : 'text-white hover:text-zinc-300'}`}
+                     title={isOffline ? 'Saved offline' : 'Save for offline'}
+                   >
+                     {isOffline ? <Check size={18} /> : <Download size={18} />}
+                   </button>
 
                    {/* Captions Toggle */}
                    <button 

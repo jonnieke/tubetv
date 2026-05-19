@@ -14,6 +14,8 @@ import KilimoPanel from './KilimoPanel';
 import ChurchHub from './ChurchHub';
 import CreatorProfile from './CreatorProfile';
 import CreatorLeaderboard from './CreatorLeaderboard';
+import OfflineLibrary from './OfflineLibrary';
+import DataBudgetPanel from './DataBudgetPanel';
 import { getAllProgress } from '../lib/watchProgress';
 import BandwidthToggle from './BandwidthToggle';
 import type { ShortVideo } from '../types';
@@ -841,6 +843,16 @@ const HomeView: React.FC<HomeViewProps> = ({
     document.getElementById(`video-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
   const onCreatorClick = (name: string) => setCurrentView(`creator:${name}`);
+
+  // ─── Offline library view ────────────────────────────────────────────────────
+  if (currentView === ViewState.OFFLINE) {
+    return (
+      <div className="pb-24 px-4 md:px-8 pt-4">
+        <DataBudgetPanel />
+        <OfflineLibrary />
+      </div>
+    );
+  }
 
   // ─── Creator profile view — early render before all carousel logic ─────────
   if (typeof currentView === 'string' && currentView.startsWith('creator:')) {
