@@ -253,7 +253,7 @@ const App: React.FC = () => {
       case ViewState.LIVE:
         return ['Sports', 'News', 'Events'];
       case ViewState.HOME:
-        return ['Trending', 'New Releases', 'Most Watched'];
+        return ['All', 'Trending', 'New Releases', 'Most Watched'];
       default:
         // For custom categories, we can return generic filters
         return ['Trending', 'New', 'Top Rated'];
@@ -335,15 +335,16 @@ const App: React.FC = () => {
     }
 
     if (activeSubCategory && activeSubCategory !== 'All') {
-      if (currentView === ViewState.ORIGINALS) {
+      if (currentView === ViewState.HOME) {
+        // HOME pills are sort modes ('Trending', 'New Releases', 'Most Watched')
+        // — don't filter here; HomeView sorts and renders the appropriate grid
+      } else if (currentView === ViewState.ORIGINALS) {
         filtered = filtered.filter(v => v.category === activeSubCategory || (activeSubCategory === 'Movies' && v.category === 'Originals'));
       } else {
         filtered = filtered.filter(v =>
           v.genre?.includes(activeSubCategory) ||
           v.tags?.includes(activeSubCategory) ||
-          v.title.includes(activeSubCategory) ||
-          (activeSubCategory === 'Trending' && v.category === 'Trending') ||
-          (activeSubCategory === 'Most Watched' && v.views > 1000)
+          v.title.includes(activeSubCategory)
         );
       }
     }

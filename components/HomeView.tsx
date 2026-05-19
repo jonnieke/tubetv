@@ -502,7 +502,9 @@ const HomeView: React.FC<HomeViewProps> = ({
   setShowLogin,
 }) => {
   const [heroProgress, setHeroProgress] = useState(0);
-  const showHero = currentView === ViewState.HOME && !searchQuery;
+  // Hide hero when user has drilled into a sort-mode pill (New Releases / Most Watched)
+  const showHero = currentView === ViewState.HOME && !searchQuery &&
+    activeSubCategory !== 'New Releases' && activeSubCategory !== 'Most Watched';
 
   // Continue Watching — join saved progress records with loaded videos
   const continueWatchingVideos = useMemo<Video[]>(() => {
@@ -544,10 +546,35 @@ const HomeView: React.FC<HomeViewProps> = ({
   };
   const viewHeader = getViewTitle();
 
+  // Home sort-mode pills
+  const HOME_SORT_PILLS = ['All', 'Trending', 'New Releases', 'Most Watched'] as const;
+  type HomeSortPill = typeof HOME_SORT_PILLS[number];
+  const isHomeSortPill = (s: string): s is HomeSortPill => (HOME_SORT_PILLS as readonly string[]).includes(s);
+
   const showCarousels =
     currentView === ViewState.HOME &&
     !searchQuery &&
-    (activeSubCategory === 'All' || activeSubCategory === 'Trending');
+    (activeSubCategory === 'All' || activeSubCategory === 'Trending' || activeSubCategory === '');
+
+  const showNewReleases =
+    currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'New Releases';
+
+  const showMostWatched =
+    currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Most Watched';
+
+  // Sorted video lists for sort-mode grids
+  const newReleasesVideos = showNewReleases
+    ? [...videos].sort((a, b) => {
+        if (a.dateUploaded && b.dateUploaded) return new Date(b.dateUploaded).getTime() - new Date(a.dateUploaded).getTime();
+        if (a.dateUploaded) return -1;
+        if (b.dateUploaded) return 1;
+        return 0;
+      })
+    : [];
+
+  const mostWatchedVideos = showMostWatched
+    ? [...videos].sort((a, b) => b.views - a.views)
+    : [];
 
   const showOriginalsSeries =
     currentView === ViewState.ORIGINALS && !searchQuery && activeSubCategory === 'Series';
@@ -963,8 +990,74 @@ const HomeView: React.FC<HomeViewProps> = ({
           </div>
         )}
 
+        {/* ══ HOME: New Releases sorted grid ══════════════════════════════ */}
+        {!isLoadingVideos && showNewReleases && (
+          <div className="animate-in fade-in duration-500">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-1 h-7 bg-gradient-to-b from-sky-400 to-blue-600 rounded-full flex-shrink-0" />
+              <div>
+                <h2 className="text-xl font-black text-white">New Releases</h2>
+                <p className="text-zinc-500 text-xs mt-0.5">Latest uploads, freshest first</p>
+              </div>
+            </div>
+            {newReleasesVideos.length === 0 ? (
+              <p className="text-zinc-600 text-sm py-10 text-center">No videos yet — check back soon.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {newReleasesVideos.map(video => (
+                  <div id={`video-${video.id}`} key={video.id}>
+                    <VideoCard
+                      video={video}
+                      isWatchLater={watchLater.includes(video.id)}
+                      onToggleWatchLater={toggleWatchLater}
+                      isSubscribed={true}
+                      onSubscribeRequest={() => setShowLogin(true)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══ HOME: Most Watched sorted grid ═══════════════════════════════ */}
+        {!isLoadingVideos && showMostWatched && (
+          <div className="animate-in fade-in duration-500">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-1 h-7 bg-gradient-to-b from-orange-400 to-red-600 rounded-full flex-shrink-0" />
+              <div>
+                <h2 className="text-xl font-black text-white">Most Watched</h2>
+                <p className="text-zinc-500 text-xs mt-0.5">All-time most viewed on Tube TV</p>
+              </div>
+            </div>
+            {mostWatchedVideos.length === 0 ? (
+              <p className="text-zinc-600 text-sm py-10 text-center">No videos yet — check back soon.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {mostWatchedVideos.map((video, i) => (
+                  <div id={`video-${video.id}`} key={video.id} className="relative">
+                    {/* Rank badge for top 10 */}
+                    {i < 10 && (
+                      <div className="absolute top-2 left-2 z-10 w-7 h-7 rounded-full bg-red-600 text-white text-xs font-black flex items-center justify-center shadow-lg">
+                        {i + 1}
+                      </div>
+                    )}
+                    <VideoCard
+                      video={video}
+                      isWatchLater={watchLater.includes(video.id)}
+                      onToggleWatchLater={toggleWatchLater}
+                      isSubscribed={true}
+                      onSubscribeRequest={() => setShowLogin(true)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ══ Flat grid (search / specific sub-category) ══════════════════ */}
-        {!isLoadingVideos && !showCarousels && !showOriginalsSeries && !showOriginalsCarousels && (
+        {!isLoadingVideos && !showCarousels && !showOriginalsSeries && !showOriginalsCarousels && !showNewReleases && !showMostWatched && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 animate-in slide-in-from-bottom-4 duration-500">
               {filteredVideos.map(video => (
