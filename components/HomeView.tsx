@@ -668,6 +668,25 @@ const fallbackMeta = (name: string) => ({
   sub: name,
 });
 
+/** Curated genre carousels shown on the home feed, in display order */
+const GENRE_CAROUSELS = [
+  'Drama', 'Action', 'Comedy', 'Romance', 'Faith',
+  'Documentary', 'Thriller', 'Family', 'Horror', 'Swahili', 'Music',
+];
+
+/**
+ * True if a video belongs to a genre. Matches flexibly against the
+ * genre metaTag, the tags array, AND the category — case-insensitive —
+ * so genre rows still populate even when genre tags aren't perfectly set.
+ */
+const videoMatchesGenre = (v: Video, genre: string): boolean => {
+  const g = genre.toLowerCase();
+  if (v.genre?.toLowerCase() === g) return true;
+  if (v.category?.toLowerCase() === g) return true;
+  if (v.tags?.some(t => t.toLowerCase() === g)) return true;
+  return false;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Hero auto-advance
 // ─────────────────────────────────────────────────────────────────────────────
@@ -730,13 +749,14 @@ const HomeView: React.FC<HomeViewProps> = ({
       .map(([cat]) => cat);
   }, [videos]);
 
-  // Dynamic genres — all unique genre values, sorted by number of videos desc
-  const dynamicGenres = useMemo(() => {
-    const counts: Record<string, number> = {};
-    videos.forEach(v => { if (v.genre) counts[v.genre] = (counts[v.genre] || 0) + 1; });
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([genre]) => genre);
+  // Genre carousels — curated list filtered to those that actually have content,
+  // plus any extra genre tags found in the data that aren't already curated
+  const genreCarousels = useMemo(() => {
+    const curated = GENRE_CAROUSELS.filter(g => videos.some(v => videoMatchesGenre(v, g)));
+    const extra = Array.from(new Set(
+      videos.map(v => v.genre).filter((g): g is string => !!g)
+    )).filter(g => !GENRE_CAROUSELS.some(c => c.toLowerCase() === g.toLowerCase()));
+    return [...curated, ...extra];
   }, [videos]);
 
   // Auto-advance hero
@@ -1226,22 +1246,22 @@ const HomeView: React.FC<HomeViewProps> = ({
             })}
 
             {/* ── Genre section divider ── */}
-            {dynamicGenres.length > 0 && (
+            {genreCarousels.length > 0 && (
               <div className="flex items-center gap-4 pt-6 pb-2">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">🎭</span>
                   <div>
                     <h2 className="text-lg md:text-xl font-black text-white leading-tight">Browse by Genre</h2>
-                    <p className="text-zinc-500 text-xs mt-0.5">Discover content by mood and style</p>
+                    <p className="text-zinc-500 text-xs mt-0.5">Drama, Action, Comedy & more</p>
                   </div>
                 </div>
                 <div className="flex-1 h-px bg-zinc-800" />
               </div>
             )}
 
-            {/* 12. Genre carousels — auto-generated from video genre metaTags */}
-            {dynamicGenres.map(genre => {
-              const genreVids = videos.filter(v => v.genre === genre);
+            {/* 12. Genre carousels — curated genres (Drama, Action, Faith, …) */}
+            {genreCarousels.map(genre => {
+              const genreVids = videos.filter(v => videoMatchesGenre(v, genre));
               if (genreVids.length === 0) return null;
               const { emoji, accent, sub } = GENRE_META[genre] ?? fallbackMeta(genre);
               return (
@@ -1264,8 +1284,8 @@ const HomeView: React.FC<HomeViewProps> = ({
         {/* ══ ORIGINALS: Series layout — dynamic by genre ═════════════════ */}
         {!isLoadingVideos && showOriginalsSeries && (
           <div className="space-y-2 animate-in fade-in duration-500">
-            {dynamicGenres.map(genre => {
-              const gv = filteredVideos.filter(v => v.genre === genre && (v.seriesTitle || (v.season && v.episode)));
+            {genreCarousels.map(genre => {
+              const gv = filteredVideos.filter(v => videoMatchesGenre(v, genre) && (v.seriesTitle || (v.season && v.episode)));
               if (gv.length === 0) return null;
               const { emoji } = GENRE_META[genre] ?? { emoji: '📺' };
               return (
@@ -1281,7 +1301,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               );
             })}
             {/* Fallback if no genre tags — show all series */}
-            {dynamicGenres.length === 0 && (() => {
+            {genreCarousels.length === 0 && (() => {
               const gv = filteredVideos.filter(v => v.seriesTitle || (v.season && v.episode));
               return gv.length > 0 ? (
                 <SeriesCarousel
@@ -1300,8 +1320,8 @@ const HomeView: React.FC<HomeViewProps> = ({
         {/* ══ ORIGINALS: Genre carousels — fully dynamic ══════════════════ */}
         {!isLoadingVideos && showOriginalsCarousels && (
           <div className="space-y-2 animate-in fade-in duration-500">
-            {dynamicGenres.map(genre => {
-              const gv = filteredVideos.filter(v => v.genre === genre);
+            {genreCarousels.map(genre => {
+              const gv = filteredVideos.filter(v => videoMatchesGenre(v, genre));
               if (gv.length === 0) return null;
               const { emoji, accent, sub } = GENRE_META[genre] ?? fallbackMeta(genre);
               return (
@@ -1318,7 +1338,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               );
             })}
             {/* Fallback if no genre tags */}
-            {dynamicGenres.length === 0 && (
+            {genreCarousels.length === 0 && (
               <VideoCarousel
                 title="🎬 All Films"
                 subtitle="Kenyan-made films & dramas"
