@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { getProgress, saveProgress } from '../lib/watchProgress';
 import { useResolvedQuality } from '../lib/networkQuality';
 import { recordWatchTime, saveOffline, isOfflineSaved } from '../lib/dataTracker';
+import { recordHistory } from '../lib/watchHistory';
 import Hls from 'hls.js';
 
 const recordView = async (videoId: string) => {
@@ -163,10 +164,17 @@ const VideoCard: React.FC<VideoCardProps> = ({
   // Clean up on unmount
   useEffect(() => {
     return () => {
-        if (hlsRef.current) {
-            hlsRef.current.destroy();
-        }
+      if (hlsRef.current) hlsRef.current.destroy();
+      // Record partial watch if the user got past 5%
+      const prog = getProgress(video.id);
+      if (prog && prog.percent >= 5) {
+        recordHistory(
+          { videoId: video.id, title: video.title, thumbnail: video.thumbnail, author: video.author, duration: video.duration, category: video.category },
+          false,
+        );
+      }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Deep-link: auto-play + seek when App.tsx dispatches tube-deep-link for this video
@@ -593,6 +601,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
                   recordWatchTime(video.id, video.title, watchSecondsRef.current, quality);
                   watchSecondsRef.current = 0;
                 }
+                recordHistory(
+                  { videoId: video.id, title: video.title, thumbnail: video.thumbnail, author: video.author, duration: video.duration, category: video.category },
+                  true,
+                );
+                clearProgress(video.id);
+                setSavedPercent(0);
                 setIsPlaying(false);
                 setIsHoverPlay(false);
               }}

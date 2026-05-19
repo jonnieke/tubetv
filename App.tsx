@@ -17,7 +17,7 @@ const SettingsSection  = lazy(() => import('./components/SettingsSection'));
 const LiveSection      = lazy(() => import('./components/LiveSection'));
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { MOCK_SHORTS } from './constants';
-import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film, Shirt, PawPrint, WifiOff } from 'lucide-react';
+import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film, Shirt, PawPrint, WifiOff, History } from 'lucide-react';
 import { getVideoRecommendations } from './services/geminiService';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem } from './services/bunnyService';
 import { supabase, normalizePhone } from './lib/supabase';
@@ -53,6 +53,7 @@ const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.LIVE, label: 'Live', labelKey: 'nav.live', iconName: 'Radio', icon: PlayCircle },
   { id: ViewState.WATCH_LATER, label: 'Watch List', labelKey: 'nav.watchlist', iconName: 'Clock', icon: Clock },
   { id: ViewState.OFFLINE, label: 'Offline', labelKey: 'nav.offline', iconName: 'WifiOff', icon: WifiOff },
+  { id: ViewState.HISTORY, label: 'History', labelKey: 'nav.history', iconName: 'History', icon: History },
 ];
 
 const App: React.FC = () => {
@@ -714,6 +715,16 @@ const App: React.FC = () => {
               >
                 <WifiOff size={10} />
                 <span>Offline</span>
+              </button>
+
+              {/* Watch history pill */}
+              <button
+                onClick={() => handleNavigate(ViewState.HISTORY)}
+                className="hidden sm:flex items-center gap-1 text-[10px] font-bold text-zinc-500 hover:text-amber-400 border border-zinc-800 hover:border-amber-500/30 rounded-full px-2.5 py-1 transition-all"
+                title="Watch history"
+              >
+                <History size={10} />
+                <span>History</span>
               </button>
 
               {/* Language toggle — EN / SW */}

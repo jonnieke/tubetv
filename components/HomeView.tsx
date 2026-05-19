@@ -16,7 +16,10 @@ import CreatorProfile from './CreatorProfile';
 import CreatorLeaderboard from './CreatorLeaderboard';
 import OfflineLibrary from './OfflineLibrary';
 import DataBudgetPanel from './DataBudgetPanel';
+import ContinueWatchingCarousel from './ContinueWatchingCarousel';
+import WatchHistoryView from './WatchHistoryView';
 import { getAllProgress } from '../lib/watchProgress';
+import { getCategoryAffinities, getWatchedIds } from '../lib/watchHistory';
 import BandwidthToggle from './BandwidthToggle';
 import type { ShortVideo } from '../types';
 import Hls from 'hls.js';
@@ -844,6 +847,11 @@ const HomeView: React.FC<HomeViewProps> = ({
 
   const onCreatorClick = (name: string) => setCurrentView(`creator:${name}`);
 
+  // ─── Watch history view ──────────────────────────────────────────────────────
+  if (currentView === ViewState.HISTORY) {
+    return <WatchHistoryView />;
+  }
+
   // ─── Offline library view ────────────────────────────────────────────────────
   if (currentView === ViewState.OFFLINE) {
     return (
@@ -1100,6 +1108,13 @@ const HomeView: React.FC<HomeViewProps> = ({
           <ShortsShelf shorts={realShorts} onShortClick={() => setCurrentView(ViewState.SHORTS)} />
         )}
 
+        {/* Continue Watching */}
+        {currentView === ViewState.HOME && !searchQuery && (
+          <div className="px-4 md:px-8">
+            <ContinueWatchingCarousel videos={videos} />
+          </div>
+        )}
+
         {/* Section heading (flat grid mode) — hidden for views with dedicated UI */}
         {!showCarousels && !showOriginalsSeries && !showOriginalsCarousels &&
           !(currentView === ViewState.EDUCATION && !searchQuery) &&
@@ -1314,6 +1329,35 @@ const HomeView: React.FC<HomeViewProps> = ({
             })}
 
           </div>
+
+          {/* Smart recommendations — "Because you watched [Category]" */}
+          {currentView === ViewState.HOME && !searchQuery && (() => {
+            const affinities = getCategoryAffinities();
+            const watchedIds = getWatchedIds();
+            const recCarousels = affinities
+              .map(cat => ({
+                cat,
+                vids: videos.filter(v => v.category === cat && !watchedIds.has(v.id)).slice(0, 12),
+              }))
+              .filter(({ vids }) => vids.length >= 3);
+            if (!recCarousels.length) return null;
+            return (
+              <div className="space-y-2 mt-2">
+                {recCarousels.map(({ cat, vids }) => (
+                  <VideoCarousel
+                    key={`rec-${cat}`}
+                    title={`Because you watched ${cat}`}
+                    subtitle="Recommended based on your history"
+                    accentColor="from-amber-500 to-orange-500"
+                    videos={vids}
+                    watchLaterIds={watchLater}
+                    onToggleWatchLater={toggleWatchLater}
+                    isAuthenticated={isAuthenticated}
+                  />
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Top Creators leaderboard — below carousel feed on HOME */}
           {currentView === ViewState.HOME && !searchQuery && (
