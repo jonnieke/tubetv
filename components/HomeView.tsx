@@ -12,6 +12,8 @@ import ShortsShelf from './ShortsShelf';
 import CBCStudyMode from './CBCStudyMode';
 import KilimoPanel from './KilimoPanel';
 import ChurchHub from './ChurchHub';
+import CreatorProfile from './CreatorProfile';
+import CreatorLeaderboard from './CreatorLeaderboard';
 import { getAllProgress } from '../lib/watchProgress';
 import BandwidthToggle from './BandwidthToggle';
 import type { ShortVideo } from '../types';
@@ -838,6 +840,26 @@ const HomeView: React.FC<HomeViewProps> = ({
   const scrollToVideo = (id: string) =>
     document.getElementById(`video-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
+  const onCreatorClick = (name: string) => setCurrentView(`creator:${name}`);
+
+  // ─── Creator profile view — early render before all carousel logic ─────────
+  if (typeof currentView === 'string' && currentView.startsWith('creator:')) {
+    const creatorName = currentView.slice(8);
+    return (
+      <div className="pb-24 px-4 md:px-8 pt-4">
+        <CreatorProfile
+          name={creatorName}
+          videos={videos}
+          watchLaterIds={watchLater}
+          onToggleWatchLater={toggleWatchLater}
+          onSubscribeRequest={() => setShowLogin(true)}
+          onBack={() => setCurrentView(ViewState.HOME)}
+          onCreatorClick={onCreatorClick}
+        />
+      </div>
+    );
+  }
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -1109,6 +1131,7 @@ const HomeView: React.FC<HomeViewProps> = ({
 
         {/* ══ HOME: Full Netflix layout ════════════════════════════════════ */}
         {!isLoadingVideos && showCarousels && (
+          <>
           <div className="space-y-2 animate-in fade-in duration-500">
 
             {/* 1. New This Week — newest uploads from Bunny (API returns orderBy=date) */}
@@ -1279,6 +1302,14 @@ const HomeView: React.FC<HomeViewProps> = ({
             })}
 
           </div>
+
+          {/* Top Creators leaderboard — below carousel feed on HOME */}
+          {currentView === ViewState.HOME && !searchQuery && (
+            <div className="mt-4">
+              <CreatorLeaderboard videos={videos} onCreatorClick={onCreatorClick} />
+            </div>
+          )}
+          </>
         )}
 
         {/* ══ ORIGINALS: Series layout — dynamic by genre ═════════════════ */}
@@ -1373,6 +1404,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                       onToggleWatchLater={toggleWatchLater}
                       isSubscribed={hasFullAccess}
                       onSubscribeRequest={() => setShowLogin(true)}
+                      onCreatorClick={onCreatorClick}
                     />
                   </div>
                 ))}
@@ -1409,6 +1441,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                       onToggleWatchLater={toggleWatchLater}
                       isSubscribed={hasFullAccess}
                       onSubscribeRequest={() => setShowLogin(true)}
+                      onCreatorClick={onCreatorClick}
                     />
                   </div>
                 ))}
@@ -1457,6 +1490,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                     onToggleWatchLater={toggleWatchLater}
                     isSubscribed={true}
                     onSubscribeRequest={() => setShowLogin(true)}
+                    onCreatorClick={onCreatorClick}
                   />
                 </div>
               ))}
@@ -1490,6 +1524,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                         onToggleWatchLater={toggleWatchLater}
                         isSubscribed={true}
                         onSubscribeRequest={() => setShowLogin(true)}
+                        onCreatorClick={onCreatorClick}
                       />
                     ))}
                   </div>

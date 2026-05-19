@@ -28,6 +28,8 @@ interface VideoCardProps {
   isSubscribed?: boolean;
   /** Called when a locked video is clicked by a non-subscriber */
   onSubscribeRequest?: () => void;
+  /** Navigate to a creator's channel page */
+  onCreatorClick?: (name: string) => void;
 }
 
 const VideoCard: React.FC<VideoCardProps> = ({
@@ -36,6 +38,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   onToggleWatchLater,
   isSubscribed = false,
   onSubscribeRequest,
+  onCreatorClick,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
@@ -748,7 +751,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
               </p>
             )}
             <p className="text-zinc-500 text-xs mt-1 flex items-center gap-1 truncate">
-              <span className="truncate">{video.author}</span>
+              <span
+                className={`truncate ${onCreatorClick && video.author && video.author !== 'Tube Creator' ? 'hover:text-white cursor-pointer underline-offset-2 hover:underline transition-colors' : ''}`}
+                onClick={e => {
+                  if (onCreatorClick && video.author && video.author !== 'Tube Creator') {
+                    e.stopPropagation();
+                    onCreatorClick(video.author);
+                  }
+                }}
+              >{video.author}</span>
               {video.productionYear && (
                 <><span className="text-zinc-700 flex-shrink-0">·</span><span className="text-zinc-600 flex-shrink-0">{video.productionYear}</span></>
               )}
