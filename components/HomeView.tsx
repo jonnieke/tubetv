@@ -616,6 +616,59 @@ const PremiumStrip: React.FC<{ onSignUp: () => void }> = ({ onSignUp }) => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Category & Genre metadata maps
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Categories that already have elevated (hand-crafted) carousel rows */
+const ELEVATED_CATS = new Set(['Farmers', 'Faith', 'Education']);
+
+const CAT_META: Record<string, { emoji: string; accent: string; sub: string }> = {
+  Originals:    { emoji: '🎬', accent: 'from-red-500 to-rose-500',       sub: 'Kenyan-made films & dramas' },
+  Movies:       { emoji: '🎞️', accent: 'from-red-600 to-orange-500',    sub: 'Full-length feature films' },
+  Series:       { emoji: '📺', accent: 'from-violet-500 to-purple-500',  sub: 'Binge-worthy episodic content' },
+  Kids:         { emoji: '🧒', accent: 'from-indigo-500 to-violet-500',  sub: 'Salama na ya kuvutia · Safe & fun' },
+  Diaspora:     { emoji: '✈️', accent: 'from-teal-500 to-sky-500',       sub: 'Kwa Wakenya nje · Kenyans abroad' },
+  Fashion:      { emoji: '👗', accent: 'from-pink-500 to-rose-500',       sub: 'Mitindo ya Kenya · Style & trends' },
+  Wildlife:     { emoji: '🦁', accent: 'from-yellow-500 to-orange-500',  sub: 'Safari, asili na uhifadhi' },
+  Live:         { emoji: '📡', accent: 'from-rose-500 to-red-600',       sub: 'Moja kwa moja · Live broadcasts' },
+  Trending:     { emoji: '🔥', accent: 'from-orange-500 to-red-500',     sub: 'Kinachoendelea · What\'s hot' },
+  News:         { emoji: '📰', accent: 'from-slate-500 to-zinc-600',     sub: 'Habari za leo · Today\'s news' },
+  Sports:       { emoji: '⚽', accent: 'from-lime-500 to-green-600',     sub: 'Michezo · Sports & athletics' },
+  Music:        { emoji: '🎵', accent: 'from-purple-500 to-pink-500',    sub: 'Muziki wa Kenya · Kenyan music' },
+  Comedy:       { emoji: '😂', accent: 'from-orange-400 to-amber-500',   sub: 'Masihara · Laughs & light entertainment' },
+  Health:       { emoji: '🏥', accent: 'from-emerald-500 to-teal-500',  sub: 'Afya · Health & wellness' },
+  Business:     { emoji: '💼', accent: 'from-blue-600 to-indigo-600',   sub: 'Biashara · Business & finance' },
+  Technology:   { emoji: '💻', accent: 'from-cyan-500 to-blue-500',     sub: 'Teknolojia · Tech & innovation' },
+  Travel:       { emoji: '🗺️', accent: 'from-sky-500 to-cyan-500',      sub: 'Safari · Travel & exploration' },
+  Food:         { emoji: '🍲', accent: 'from-amber-600 to-orange-600',  sub: 'Chakula · Food & cooking' },
+};
+
+const GENRE_META: Record<string, { emoji: string; accent: string; sub: string }> = {
+  Drama:        { emoji: '🎭', accent: 'from-blue-500 to-indigo-500',   sub: 'Kenyan stories & human drama' },
+  Comedy:       { emoji: '😂', accent: 'from-orange-500 to-amber-500',  sub: 'Masihara · Laughs & light entertainment' },
+  Documentary:  { emoji: '🎙️', accent: 'from-zinc-500 to-slate-600',   sub: 'Hadithi za kweli · Real stories' },
+  Action:       { emoji: '💥', accent: 'from-red-500 to-orange-600',    sub: 'Vitendo · Thrills & adventure' },
+  Thriller:     { emoji: '🔪', accent: 'from-gray-700 to-zinc-800',     sub: 'Wasiwasi · Suspense & edge-of-seat' },
+  Romance:      { emoji: '💕', accent: 'from-pink-500 to-rose-400',     sub: 'Mapenzi · Love & relationships' },
+  Horror:       { emoji: '👻', accent: 'from-purple-900 to-zinc-900',   sub: 'Kutisha · Scary & supernatural' },
+  Swahili:      { emoji: '🗣️', accent: 'from-green-600 to-teal-600',   sub: 'Filamu za Kiswahili' },
+  Animation:    { emoji: '🎨', accent: 'from-violet-500 to-purple-500', sub: 'Cartoons & animated content' },
+  Musical:      { emoji: '🎵', accent: 'from-cyan-500 to-blue-500',     sub: 'Nyimbo · Music-driven stories' },
+  'Sci-Fi':     { emoji: '🚀', accent: 'from-sky-600 to-indigo-700',   sub: 'Science fiction & future worlds' },
+  Historical:   { emoji: '🏺', accent: 'from-stone-600 to-amber-800',  sub: 'Historia · Kenya\'s past on screen' },
+  Family:       { emoji: '👨‍👩‍👧', accent: 'from-emerald-500 to-teal-500', sub: 'Familia · For the whole family' },
+  Crime:        { emoji: '🔍', accent: 'from-slate-700 to-zinc-900',    sub: 'Uhalifu · Crime & investigation' },
+  Fantasy:      { emoji: '🧙', accent: 'from-purple-600 to-violet-700', sub: 'Kuchochea · Magical worlds' },
+};
+
+/** Fallback styling for unknown categories/genres */
+const fallbackMeta = (name: string) => ({
+  emoji: '▶️',
+  accent: 'from-zinc-500 to-zinc-700',
+  sub: name,
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hero auto-advance
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -664,6 +717,26 @@ const HomeView: React.FC<HomeViewProps> = ({
       .map(r => videos.find(v => v.id === r.videoId))
       .filter((v): v is Video => !!v)
       .slice(0, 12);
+  }, [videos]);
+
+  // Dynamic categories — all unique category values found in the library,
+  // sorted by number of videos desc, with elevated cats excluded (they appear above)
+  const dynamicCategories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    videos.forEach(v => { if (v.category) counts[v.category] = (counts[v.category] || 0) + 1; });
+    return Object.entries(counts)
+      .filter(([cat]) => !ELEVATED_CATS.has(cat))
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat]) => cat);
+  }, [videos]);
+
+  // Dynamic genres — all unique genre values, sorted by number of videos desc
+  const dynamicGenres = useMemo(() => {
+    const counts: Record<string, number> = {};
+    videos.forEach(v => { if (v.genre) counts[v.genre] = (counts[v.genre] || 0) + 1; });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([genre]) => genre);
   }, [videos]);
 
   // Auto-advance hero
@@ -1133,16 +1206,11 @@ const HomeView: React.FC<HomeViewProps> = ({
             {/* 10. Browse by Mood */}
             <GenreMoodRow videos={videos} onNavigate={() => setCurrentView(ViewState.ORIGINALS)} />
 
-            {/* 11. Remaining category rows */}
-            {([
-              { cat: 'Originals',  emoji: '🎬', accent: 'from-red-500 to-rose-500',      sub: 'Kenyan-made films & dramas' },
-              { cat: 'Kids',       emoji: '🧒', accent: 'from-indigo-500 to-violet-500',  sub: 'Salama na ya kuvutia · Safe & fun kids content' },
-              { cat: 'Diaspora',   emoji: '✈️', accent: 'from-teal-500 to-sky-500',       sub: 'Kwa Wakenya nje · Content for Kenyans abroad' },
-              { cat: 'Fashion',    emoji: '👗', accent: 'from-pink-500 to-rose-500',       sub: 'Mitindo ya Kenya · Style & trends' },
-              { cat: 'Wildlife',   emoji: '🦁', accent: 'from-yellow-500 to-orange-500',  sub: 'Safari, asili na uhifadhi · Nature & conservation' },
-            ] as const).map(({ cat, emoji, accent, sub }) => {
+            {/* 11. All other categories — auto-generated from library */}
+            {dynamicCategories.map(cat => {
               const catVids = videos.filter(v => v.category === cat);
               if (catVids.length === 0) return null;
+              const { emoji, accent, sub } = CAT_META[cat] ?? fallbackMeta(cat);
               return (
                 <VideoCarousel
                   key={cat}
@@ -1157,19 +1225,53 @@ const HomeView: React.FC<HomeViewProps> = ({
               );
             })}
 
+            {/* ── Genre section divider ── */}
+            {dynamicGenres.length > 0 && (
+              <div className="flex items-center gap-4 pt-6 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🎭</span>
+                  <div>
+                    <h2 className="text-lg md:text-xl font-black text-white leading-tight">Browse by Genre</h2>
+                    <p className="text-zinc-500 text-xs mt-0.5">Discover content by mood and style</p>
+                  </div>
+                </div>
+                <div className="flex-1 h-px bg-zinc-800" />
+              </div>
+            )}
+
+            {/* 12. Genre carousels — auto-generated from video genre metaTags */}
+            {dynamicGenres.map(genre => {
+              const genreVids = videos.filter(v => v.genre === genre);
+              if (genreVids.length === 0) return null;
+              const { emoji, accent, sub } = GENRE_META[genre] ?? fallbackMeta(genre);
+              return (
+                <VideoCarousel
+                  key={`genre-${genre}`}
+                  title={`${emoji} ${genre}`}
+                  subtitle={sub}
+                  accentColor={accent}
+                  videos={genreVids}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                  isAuthenticated={hasFullAccess}
+                />
+              );
+            })}
+
           </div>
         )}
 
-        {/* ══ ORIGINALS: Series layout ════════════════════════════════════ */}
+        {/* ══ ORIGINALS: Series layout — dynamic by genre ═════════════════ */}
         {!isLoadingVideos && showOriginalsSeries && (
           <div className="space-y-2 animate-in fade-in duration-500">
-            {['Swahili', 'Drama', 'Comedy', 'Thriller'].map(genre => {
-              const gv = filteredVideos.filter(v => v.genre?.includes(genre) || v.tags?.includes(genre));
+            {dynamicGenres.map(genre => {
+              const gv = filteredVideos.filter(v => v.genre === genre && (v.seriesTitle || (v.season && v.episode)));
               if (gv.length === 0) return null;
+              const { emoji } = GENRE_META[genre] ?? { emoji: '📺' };
               return (
                 <SeriesCarousel
                   key={genre}
-                  title={`📺 ${genre} Series`}
+                  title={`${emoji} ${genre} Series`}
                   videos={gv}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
@@ -1178,20 +1280,36 @@ const HomeView: React.FC<HomeViewProps> = ({
                 />
               );
             })}
+            {/* Fallback if no genre tags — show all series */}
+            {dynamicGenres.length === 0 && (() => {
+              const gv = filteredVideos.filter(v => v.seriesTitle || (v.season && v.episode));
+              return gv.length > 0 ? (
+                <SeriesCarousel
+                  title="📺 All Series"
+                  videos={gv}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                  isAuthenticated={hasFullAccess}
+                  onSubscribeRequest={() => setShowLogin(true)}
+                />
+              ) : null;
+            })()}
           </div>
         )}
 
-        {/* ══ ORIGINALS: Genre carousels ══════════════════════════════════ */}
+        {/* ══ ORIGINALS: Genre carousels — fully dynamic ══════════════════ */}
         {!isLoadingVideos && showOriginalsCarousels && (
           <div className="space-y-2 animate-in fade-in duration-500">
-            {['Drama', 'Comedy', 'Documentary', 'Action', 'Swahili'].map(genre => {
-              const gv = filteredVideos.filter(v => v.genre?.includes(genre) || v.tags?.includes(genre));
+            {dynamicGenres.map(genre => {
+              const gv = filteredVideos.filter(v => v.genre === genre);
               if (gv.length === 0) return null;
+              const { emoji, accent, sub } = GENRE_META[genre] ?? fallbackMeta(genre);
               return (
                 <VideoCarousel
                   key={genre}
-                  title={`🎬 ${genre}`}
-                  accentColor="from-red-500 to-orange-500"
+                  title={`${emoji} ${genre}`}
+                  subtitle={sub}
+                  accentColor={accent}
                   videos={gv}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
@@ -1199,6 +1317,18 @@ const HomeView: React.FC<HomeViewProps> = ({
                 />
               );
             })}
+            {/* Fallback if no genre tags */}
+            {dynamicGenres.length === 0 && (
+              <VideoCarousel
+                title="🎬 All Films"
+                subtitle="Kenyan-made films & dramas"
+                accentColor="from-red-500 to-orange-500"
+                videos={filteredVideos}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={hasFullAccess}
+              />
+            )}
           </div>
         )}
 
