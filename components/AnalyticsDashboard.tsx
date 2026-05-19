@@ -8,6 +8,7 @@ import {
   Sparkles, Eye, Users, Film, ArrowLeft, Clock,
   Plus, Trash2, LayoutGrid, Tag, Star, Music, Gamepad2,
   Coffee, Briefcase, Anchor, Zap, Cpu, BookOpen, Utensils, RefreshCcw, Loader2,
+  Search, SlidersHorizontal, X, CalendarRange,
 } from 'lucide-react';
 import { NavItem } from '../types';
 import { BunnyVideoItem, bunnyVideoToVideo, getThumbnailUrl } from '../services/bunnyService';
@@ -36,11 +37,15 @@ interface VideoRow {
   id: string;
   title: string;
   category: string;
+  genre?: string;
+  author?: string;
   thumbnail_url: string;
   created_at: string;
   lifetimeViews: number;
   recentViews: number;
   duration: string;
+  /** Raw duration in seconds for range filtering */
+  durationSecs: number;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -116,6 +121,16 @@ export default function AnalyticsDashboard({
   const [newCatName, setNewCatName] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('Star');
 
+  // ─── Video filter state ─────────────────────────────────────────────────────
+  const [filterTitle, setFilterTitle] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterGenre, setFilterGenre] = useState('');
+  const [filterAuthor, setFilterAuthor] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterDuration, setFilterDuration] = useState('');   // '' | '<5' | '5-15' | '15-30' | '30-60' | '>60'
+  const [showFilters, setShowFilters] = useState(false);
+
   // ─── Derived from Bunny props ───────────────────────────────────────────────
 
   const { myVideos, totalLifetimeViews, categoryData } = useMemo(() => {
@@ -130,13 +145,16 @@ export default function AnalyticsDashboard({
       catCounts[cat] = (catCounts[cat] || 0) + lv;
       return {
         id: item.guid,
-        title: item.title || 'Untitled',
+        title: v.title || item.title || 'Untitled',
         category: cat,
+        genre: v.genre || undefined,
+        author: v.author && v.author !== 'Tube Creator' ? v.author : undefined,
         thumbnail_url: getThumbnailUrl(item.guid, item.thumbnailFileName),
         created_at: item.dateUploaded || new Date().toISOString(),
         lifetimeViews: lv,
         recentViews: 0, // filled in after Supabase fetch
         duration: v.duration,
+        durationSecs: item.length ?? 0,
       };
     }).sort((a, b) => b.lifetimeViews - a.lifetimeViews);
 
@@ -233,6 +251,61 @@ export default function AnalyticsDashboard({
     });
     return () => { mounted = false; };
   }, [selectedVideo]);
+
+  // ─── Derived filter options ────────────────────────────────────────────────
+
+  const uniqueCategories = useMemo(() =>
+    Array.from(new Set(myVideos.map(v => v.category).filter(Boolean))).sort(), [myVideos]);
+
+  const uniqueGenres = useMemo(() =>
+    Array.from(new Set(myVideos.map(v => v.genre).filter((g): g is string => Boolean(g)))).sort(), [myVideos]);
+
+  const uniqueAuthors = useMemo(() =>
+    Array.from(new Set(myVideos.map(v => v.author).filter((a): a is string => Boolean(a)))).sort(), [myVideos]);
+
+  const activeFilterCount = [filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setFilterTitle('');
+    setFilterCategory('');
+    setFilterGenre('');
+    setFilterAuthor('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setFilterDuration('');
+  };
+
+  // ─── Apply filters ─────────────────────────────────────────────────────────
+
+  const filteredMyVideos = useMemo(() => {
+    const titleQ = filterTitle.toLowerCase().trim();
+    const fromMs = filterDateFrom ? new Date(filterDateFrom).getTime() : null;
+    const toMs = filterDateTo ? new Date(filterDateTo + 'T23:59:59').getTime() : null;
+
+    return myVideos.filter(v => {
+      if (titleQ && !v.title.toLowerCase().includes(titleQ)) return false;
+      if (filterCategory && v.category !== filterCategory) return false;
+      if (filterGenre && v.genre !== filterGenre) return false;
+      if (filterAuthor && v.author !== filterAuthor) return false;
+
+      if (fromMs || toMs) {
+        const uploadMs = new Date(v.created_at).getTime();
+        if (fromMs && uploadMs < fromMs) return false;
+        if (toMs && uploadMs > toMs) return false;
+      }
+
+      if (filterDuration) {
+        const secs = v.durationSecs;
+        if (filterDuration === '<5'    && secs >= 5 * 60) return false;
+        if (filterDuration === '5-15'  && (secs < 5 * 60 || secs >= 15 * 60)) return false;
+        if (filterDuration === '15-30' && (secs < 15 * 60 || secs >= 30 * 60)) return false;
+        if (filterDuration === '30-60' && (secs < 30 * 60 || secs >= 60 * 60)) return false;
+        if (filterDuration === '>60'   && secs < 60 * 60) return false;
+      }
+
+      return true;
+    });
+  }, [myVideos, filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration]);
 
   // ─── Video detail view ─────────────────────────────────────────────────────
 
@@ -480,20 +553,169 @@ export default function AnalyticsDashboard({
 
       {/* ─── VIDEOS TAB ───────────────────────────────────────────────────── */}
       {activeTab === 'videos' && (
-        <div className="animate-in fade-in duration-300">
+        <div className="animate-in fade-in duration-300 space-y-4">
+
+          {/* Filter bar toggle + pill strip */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Quick search */}
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search title…"
+                  value={filterTitle}
+                  onChange={e => setFilterTitle(e.target.value)}
+                  className="pl-8 pr-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-colors w-52"
+                />
+              </div>
+
+              {/* Toggle advanced filters */}
+              <button
+                onClick={() => setShowFilters(f => !f)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors
+                  ${showFilters ? 'bg-red-600 border-red-500 text-white' : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'}`}
+              >
+                <SlidersHorizontal size={14} />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="ml-1 bg-white text-red-600 text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Clear all */}
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={clearFilters}
+                  className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-700 hover:border-zinc-500 transition-colors"
+                >
+                  <X size={12} /> Clear
+                </button>
+              )}
+            </div>
+
+            {/* Results count */}
+            <p className="text-xs text-zinc-500">
+              {filteredMyVideos.length === myVideos.length
+                ? `${myVideos.length} video${myVideos.length !== 1 ? 's' : ''}`
+                : `${filteredMyVideos.length} of ${myVideos.length} videos`}
+            </p>
+          </div>
+
+          {/* Advanced filter panel */}
+          {showFilters && (
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-5 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+
+                {/* Date From */}
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5 flex items-center gap-1">
+                    <CalendarRange size={12} /> Upload Date From
+                  </label>
+                  <input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={e => setFilterDateFrom(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-colors"
+                  />
+                </div>
+
+                {/* Date To */}
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5 flex items-center gap-1">
+                    <CalendarRange size={12} /> Upload Date To
+                  </label>
+                  <input
+                    type="date"
+                    value={filterDateTo}
+                    onChange={e => setFilterDateTo(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-colors"
+                  />
+                </div>
+
+                {/* Duration range */}
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5 flex items-center gap-1">
+                    <Clock size={12} /> Duration
+                  </label>
+                  <select
+                    value={filterDuration}
+                    onChange={e => setFilterDuration(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-colors"
+                  >
+                    <option value="">Any length</option>
+                    <option value="<5">Short (&lt; 5 min)</option>
+                    <option value="5-15">Medium (5–15 min)</option>
+                    <option value="15-30">Long (15–30 min)</option>
+                    <option value="30-60">Extended (30–60 min)</option>
+                    <option value=">60">Feature (&gt; 60 min)</option>
+                  </select>
+                </div>
+
+                {/* Category */}
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Category</label>
+                  <select
+                    value={filterCategory}
+                    onChange={e => setFilterCategory(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-colors"
+                  >
+                    <option value="">All categories</option>
+                    {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+
+                {/* Genre */}
+                {uniqueGenres.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">Genre</label>
+                    <select
+                      value={filterGenre}
+                      onChange={e => setFilterGenre(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-colors"
+                    >
+                      <option value="">All genres</option>
+                      {uniqueGenres.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {/* Author */}
+                {uniqueAuthors.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">Author / Creator</label>
+                    <select
+                      value={filterAuthor}
+                      onChange={e => setFilterAuthor(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-colors"
+                    >
+                      <option value="">All authors</option>
+                      {uniqueAuthors.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Table */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-zinc-950/50 text-zinc-400 text-xs uppercase font-semibold border-b border-zinc-800">
                 <tr>
                   <th className="p-4">Video</th>
-                  <th className="p-4 text-center">Uploaded</th>
-                  <th className="p-4 text-center">Lifetime Views</th>
-                  <th className="p-4 text-center">Duration</th>
+                  <th className="p-4 hidden sm:table-cell">Author</th>
+                  <th className="p-4 hidden md:table-cell">Genre</th>
+                  <th className="p-4 text-center whitespace-nowrap">Uploaded</th>
+                  <th className="p-4 text-center">Views</th>
+                  <th className="p-4 text-center hidden sm:table-cell">Duration</th>
                   <th className="p-4 text-right">Detail</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {myVideos.map(video => (
+                {filteredMyVideos.map(video => (
                   <tr
                     key={video.id}
                     onClick={() => setSelectedVideo(video)}
@@ -513,21 +735,31 @@ export default function AnalyticsDashboard({
                         </div>
                       </div>
                     </td>
+                    <td className="p-4 hidden sm:table-cell text-zinc-400 text-sm truncate max-w-[120px]">
+                      {video.author || <span className="text-zinc-600">—</span>}
+                    </td>
+                    <td className="p-4 hidden md:table-cell text-zinc-400 text-sm">
+                      {video.genre
+                        ? <span className="px-2 py-0.5 bg-purple-500/15 text-purple-300 rounded-full text-xs">{video.genre}</span>
+                        : <span className="text-zinc-600">—</span>}
+                    </td>
                     <td className="p-4 text-center text-zinc-400 text-sm whitespace-nowrap">
                       {new Date(video.created_at).toLocaleDateString('en-KE')}
                     </td>
                     <td className="p-4 text-center text-white text-sm font-mono">{formatNumber(video.lifetimeViews)}</td>
-                    <td className="p-4 text-center text-zinc-400 text-sm font-mono">{video.duration}</td>
+                    <td className="p-4 text-center text-zinc-400 text-sm font-mono hidden sm:table-cell">{video.duration}</td>
                     <td className="p-4 text-right">
-                      <span className="text-blue-400 hover:text-blue-300 text-xs font-bold px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
+                      <span className="text-blue-400 hover:text-blue-300 text-xs font-bold px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20 whitespace-nowrap">
                         View →
                       </span>
                     </td>
                   </tr>
                 ))}
-                {myVideos.length === 0 && (
+                {filteredMyVideos.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-10 text-center text-zinc-500">No videos uploaded yet.</td>
+                    <td colSpan={7} className="p-10 text-center text-zinc-500">
+                      {myVideos.length === 0 ? 'No videos uploaded yet.' : 'No videos match the current filters.'}
+                    </td>
                   </tr>
                 )}
               </tbody>
