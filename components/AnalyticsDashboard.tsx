@@ -9,6 +9,7 @@ import {
   Plus, Trash2, LayoutGrid, Tag, Star, Music, Gamepad2,
   Coffee, Briefcase, Anchor, Zap, Cpu, BookOpen, Utensils, RefreshCcw, Loader2,
   Search, SlidersHorizontal, X, CalendarRange,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import { NavItem } from '../types';
 import { BunnyVideoItem, bunnyVideoToVideo, getThumbnailUrl } from '../services/bunnyService';
@@ -49,6 +50,8 @@ interface VideoRow {
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 15;
 
 const CATEGORY_COLORS = [
   '#ef4444','#3b82f6','#10b981','#f59e0b',
@@ -130,6 +133,7 @@ export default function AnalyticsDashboard({
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterDuration, setFilterDuration] = useState('');   // '' | '<5' | '5-15' | '15-30' | '30-60' | '>60'
   const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // ─── Derived from Bunny props ───────────────────────────────────────────────
 
@@ -273,7 +277,14 @@ export default function AnalyticsDashboard({
     setFilterDateFrom('');
     setFilterDateTo('');
     setFilterDuration('');
+    setCurrentPage(1);
   };
+
+  // ─── Reset to page 1 whenever any filter changes ──────────────────────────
+
+  useEffect(() => { setCurrentPage(1); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration]);
 
   // ─── Apply filters ─────────────────────────────────────────────────────────
 
@@ -306,6 +317,14 @@ export default function AnalyticsDashboard({
       return true;
     });
   }, [myVideos, filterTitle, filterCategory, filterGenre, filterAuthor, filterDateFrom, filterDateTo, filterDuration]);
+
+  // ─── Pagination ────────────────────────────────────────────────────────────
+
+  const totalPages = Math.max(1, Math.ceil(filteredMyVideos.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedVideos = filteredMyVideos.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  const goToPage = (p: number) => setCurrentPage(Math.max(1, Math.min(p, totalPages)));
 
   // ─── Video detail view ─────────────────────────────────────────────────────
 
@@ -596,11 +615,14 @@ export default function AnalyticsDashboard({
               )}
             </div>
 
-            {/* Results count */}
+            {/* Results count + page info */}
             <p className="text-xs text-zinc-500">
-              {filteredMyVideos.length === myVideos.length
-                ? `${myVideos.length} video${myVideos.length !== 1 ? 's' : ''}`
-                : `${filteredMyVideos.length} of ${myVideos.length} videos`}
+              {filteredMyVideos.length === 0
+                ? 'No results'
+                : filteredMyVideos.length === myVideos.length
+                  ? `${myVideos.length} video${myVideos.length !== 1 ? 's' : ''}`
+                  : `${filteredMyVideos.length} of ${myVideos.length} videos`}
+              {totalPages > 1 && ` · page ${safePage} of ${totalPages}`}
             </p>
           </div>
 
@@ -715,7 +737,7 @@ export default function AnalyticsDashboard({
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {filteredMyVideos.map(video => (
+                {paginatedVideos.map(video => (
                   <tr
                     key={video.id}
                     onClick={() => setSelectedVideo(video)}
@@ -755,7 +777,7 @@ export default function AnalyticsDashboard({
                     </td>
                   </tr>
                 ))}
-                {filteredMyVideos.length === 0 && (
+                {paginatedVideos.length === 0 && (
                   <tr>
                     <td colSpan={7} className="p-10 text-center text-zinc-500">
                       {myVideos.length === 0 ? 'No videos uploaded yet.' : 'No videos match the current filters.'}
@@ -764,6 +786,88 @@ export default function AnalyticsDashboard({
                 )}
               </tbody>
             </table>
+
+            {/* ── Pagination footer ── */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between gap-4 px-4 py-3 border-t border-zinc-800">
+
+                {/* Left: rows info */}
+                <p className="text-xs text-zinc-500 hidden sm:block">
+                  Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredMyVideos.length)} of {filteredMyVideos.length}
+                </p>
+
+                {/* Center: page buttons */}
+                <div className="flex items-center gap-1 mx-auto sm:mx-0">
+                  {/* First */}
+                  <button
+                    onClick={() => goToPage(1)}
+                    disabled={safePage === 1}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="First page"
+                  >
+                    <ChevronsLeft size={16} />
+                  </button>
+
+                  {/* Prev */}
+                  <button
+                    onClick={() => goToPage(safePage - 1)}
+                    disabled={safePage === 1}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="Previous page"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+
+                  {/* Page number pills */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 2)
+                    .reduce<(number | '…')[]>((acc, p, idx, arr) => {
+                      if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('…');
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, idx) =>
+                      p === '…'
+                        ? <span key={`ellipsis-${idx}`} className="px-1 text-zinc-600 text-sm">…</span>
+                        : (
+                          <button
+                            key={p}
+                            onClick={() => goToPage(p as number)}
+                            className={`min-w-[32px] h-8 px-2 rounded-lg text-sm font-medium transition-colors
+                              ${p === safePage
+                                ? 'bg-red-600 text-white shadow'
+                                : 'text-zinc-400 hover:text-white hover:bg-zinc-700'}`}
+                          >
+                            {p}
+                          </button>
+                        )
+                    )}
+
+                  {/* Next */}
+                  <button
+                    onClick={() => goToPage(safePage + 1)}
+                    disabled={safePage === totalPages}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="Next page"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+
+                  {/* Last */}
+                  <button
+                    onClick={() => goToPage(totalPages)}
+                    disabled={safePage === totalPages}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="Last page"
+                  >
+                    <ChevronsRight size={16} />
+                  </button>
+                </div>
+
+                {/* Right: per-page hint */}
+                <p className="text-xs text-zinc-600 hidden sm:block">{PAGE_SIZE} per page</p>
+              </div>
+            )}
           </div>
         </div>
       )}
