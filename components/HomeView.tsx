@@ -9,6 +9,9 @@ import VideoCard from './VideoCard';
 import VideoCarousel from './VideoCarousel';
 import SeriesCarousel from './SeriesCarousel';
 import ShortsShelf from './ShortsShelf';
+import CBCStudyMode from './CBCStudyMode';
+import KilimoPanel from './KilimoPanel';
+import ChurchHub from './ChurchHub';
 import { getAllProgress } from '../lib/watchProgress';
 import BandwidthToggle from './BandwidthToggle';
 import type { ShortVideo } from '../types';
@@ -1063,8 +1066,10 @@ const HomeView: React.FC<HomeViewProps> = ({
           <ShortsShelf shorts={realShorts} onShortClick={() => setCurrentView(ViewState.SHORTS)} />
         )}
 
-        {/* Section heading (flat grid mode) */}
-        {!showCarousels && !showOriginalsSeries && !showOriginalsCarousels && (
+        {/* Section heading (flat grid mode) — hidden for views with dedicated UI */}
+        {!showCarousels && !showOriginalsSeries && !showOriginalsCarousels &&
+          !(currentView === ViewState.EDUCATION && !searchQuery) &&
+          !(currentView === ViewState.FAITH && !searchQuery) && (
           <div className="mb-6 flex items-center gap-2">
             <h2 className="text-xl font-bold text-white">
               {searchQuery
@@ -1415,6 +1420,34 @@ const HomeView: React.FC<HomeViewProps> = ({
         {/* ══ Flat grid (search / specific sub-category) ══════════════════ */}
         {!isLoadingVideos && !showCarousels && !showOriginalsSeries && !showOriginalsCarousels && !showNewReleases && !showMostWatched && (
           <>
+            {/* ── Education: CBC Study Mode ── */}
+            {currentView === ViewState.EDUCATION && !searchQuery && (
+              <CBCStudyMode
+                videos={videos.filter(v => v.category === 'Education')}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                onSubscribeRequest={() => setShowLogin(true)}
+              />
+            )}
+
+            {/* ── Farmers: Kilimo market panel above the grid ── */}
+            {currentView === ViewState.FARMERS && !searchQuery && (
+              <KilimoPanel />
+            )}
+
+            {/* ── Faith: Church Hub ── */}
+            {currentView === ViewState.FAITH && !searchQuery && (
+              <ChurchHub
+                videos={videos.filter(v => v.category === 'Faith')}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                onSubscribeRequest={() => setShowLogin(true)}
+              />
+            )}
+
+            {/* Standard flat grid — used for search results, sub-category filters, and
+                non-special views. Education/Faith handle their own grids above. */}
+            {(searchQuery || (currentView !== ViewState.EDUCATION && currentView !== ViewState.FAITH)) && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 animate-in slide-in-from-bottom-4 duration-500">
               {filteredVideos.map(video => (
                 <div id={`video-${video.id}`} key={video.id}>
@@ -1428,6 +1461,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                 </div>
               ))}
             </div>
+            )}
 
             {/* AI Recs block (HOME only, non-carousel state) */}
             {currentView === ViewState.HOME && !searchQuery && watchLater.length > 0 && (
@@ -1466,7 +1500,9 @@ const HomeView: React.FC<HomeViewProps> = ({
         )}
 
         {/* ══ Empty state ══════════════════════════════════════════════════ */}
-        {!isLoadingVideos && filteredVideos.length === 0 && !showCarousels && (
+        {!isLoadingVideos && filteredVideos.length === 0 && !showCarousels &&
+          !(currentView === ViewState.EDUCATION && !searchQuery) &&
+          !(currentView === ViewState.FAITH && !searchQuery) && (
           <div className="flex flex-col items-center justify-center py-24">
             <div className="w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center mb-4">
               <Search className="w-7 h-7 text-zinc-600" />
