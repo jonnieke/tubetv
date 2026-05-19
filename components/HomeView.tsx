@@ -173,9 +173,11 @@ const Top10Card: React.FC<{
           <p className="text-white text-[9px] font-bold line-clamp-2 leading-tight">{video.title}</p>
         </div>
 
-        {/* #1 crown */}
+        {/* #1 badge */}
         {rank === 1 && (
-          <div className="absolute top-1.5 right-1.5 text-xs">👑</div>
+          <div className="absolute top-1.5 right-1.5">
+            <Crown size={11} className="text-amber-400 drop-shadow" />
+          </div>
         )}
       </div>
     </div>
@@ -663,7 +665,6 @@ const GENRE_META: Record<string, { emoji: string; accent: string; sub: string }>
 
 /** Fallback styling for unknown categories/genres */
 const fallbackMeta = (name: string) => ({
-  emoji: '▶️',
   accent: 'from-zinc-500 to-zinc-700',
   sub: name,
 });
@@ -1135,7 +1136,7 @@ const HomeView: React.FC<HomeViewProps> = ({
             {/* 3. Continue Watching */}
             {continueWatchingVideos.length > 0 && (
               <VideoCarousel
-                title="⏱ Continue Watching"
+                title="Continue Watching"
                 subtitle="Pick up where you left off"
                 accentColor="from-zinc-400 to-zinc-600"
                 videos={continueWatchingVideos}
@@ -1148,7 +1149,7 @@ const HomeView: React.FC<HomeViewProps> = ({
             {/* 4. Kilimo — Farmers (high relevance in Kenya, shown early) */}
             {(() => { const v = videos.filter(x => x.category === 'Farmers'); return v.length > 0 && (
               <VideoCarousel
-                title="🌱 Kilimo"
+                title="Kilimo"
                 subtitle="Kilimo cha kisasa · Modern farming & agribusiness"
                 accentColor="from-green-500 to-emerald-500"
                 videos={v}
@@ -1161,7 +1162,7 @@ const HomeView: React.FC<HomeViewProps> = ({
             {/* 5. Imani — Faith (major category in Kenya) */}
             {(() => { const v = videos.filter(x => x.category === 'Faith'); return v.length > 0 && (
               <VideoCarousel
-                title="🙏 Imani"
+                title="Imani"
                 subtitle="Mahubiri, ibada na sala · Sermons, worship & devotion"
                 accentColor="from-amber-500 to-yellow-500"
                 videos={v}
@@ -1174,7 +1175,7 @@ const HomeView: React.FC<HomeViewProps> = ({
             {/* 6. Elimu — Education (CBC, KCSE) */}
             {(() => { const v = videos.filter(x => x.category === 'Education'); return v.length > 0 && (
               <VideoCarousel
-                title="📚 Elimu"
+                title="Elimu"
                 subtitle="CBC, KCSE na chuo kikuu · Kenyan curriculum"
                 accentColor="from-blue-500 to-cyan-500"
                 videos={v}
@@ -1186,7 +1187,7 @@ const HomeView: React.FC<HomeViewProps> = ({
 
             {/* 7. Trending Now */}
             <VideoCarousel
-              title="🔥 Trending Now"
+              title="Trending Now"
               subtitle="Kenya's most-watched this week"
               accentColor="from-red-500 to-orange-500"
               videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 20)}
@@ -1203,7 +1204,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               </div>
             ) : (
               <VideoCarousel
-                title="✨ Recommended For You"
+                title="Recommended For You"
                 subtitle={recommendedVideos.length > 0 ? "Curated by AI based on your Watch List" : "Popular picks you might enjoy"}
                 accentColor="from-purple-500 to-pink-500"
                 videos={recommendedVideos.length > 0 ? recommendedVideos : [...videos].sort((a, b) => b.views - a.views).slice(10, 30)}
@@ -1215,7 +1216,7 @@ const HomeView: React.FC<HomeViewProps> = ({
 
             {/* 9. Series */}
             <SeriesCarousel
-              title="📺 Series"
+              title="Series"
               videos={videos.filter(v => v.seriesTitle || (v.season && v.episode))}
               watchLaterIds={watchLater}
               onToggleWatchLater={toggleWatchLater}
@@ -1223,18 +1224,15 @@ const HomeView: React.FC<HomeViewProps> = ({
               onSubscribeRequest={() => setShowLogin(true)}
             />
 
-            {/* 10. Browse by Mood */}
-            <GenreMoodRow videos={videos} onNavigate={() => setCurrentView(ViewState.ORIGINALS)} />
-
-            {/* 11. All other categories — auto-generated from library */}
-            {dynamicCategories.map(cat => {
+            {/* 10. All other categories — auto-generated from library (top 4 by video count) */}
+            {dynamicCategories.slice(0, 4).map(cat => {
               const catVids = videos.filter(v => v.category === cat);
               if (catVids.length === 0) return null;
-              const { emoji, accent, sub } = CAT_META[cat] ?? fallbackMeta(cat);
+              const { accent, sub } = CAT_META[cat] ?? fallbackMeta(cat);
               return (
                 <VideoCarousel
                   key={cat}
-                  title={`${emoji} ${cat}`}
+                  title={cat}
                   subtitle={sub}
                   accentColor={accent}
                   videos={catVids}
@@ -1248,26 +1246,23 @@ const HomeView: React.FC<HomeViewProps> = ({
             {/* ── Genre section divider ── */}
             {genreCarousels.length > 0 && (
               <div className="flex items-center gap-4 pt-6 pb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">🎭</span>
-                  <div>
-                    <h2 className="text-lg md:text-xl font-black text-white leading-tight">Browse by Genre</h2>
-                    <p className="text-zinc-500 text-xs mt-0.5">Drama, Action, Comedy & more</p>
-                  </div>
+                <div>
+                  <h2 className="text-lg md:text-xl font-black text-white leading-tight">Browse by Genre</h2>
+                  <p className="text-zinc-500 text-xs mt-0.5">Drama, Action, Comedy & more</p>
                 </div>
                 <div className="flex-1 h-px bg-zinc-800" />
               </div>
             )}
 
-            {/* 12. Genre carousels — curated genres (Drama, Action, Faith, …) */}
-            {genreCarousels.map(genre => {
+            {/* 11. Genre carousels — curated genres (Drama, Action, Faith, …) capped at 6 */}
+            {genreCarousels.slice(0, 6).map(genre => {
               const genreVids = videos.filter(v => videoMatchesGenre(v, genre));
               if (genreVids.length === 0) return null;
-              const { emoji, accent, sub } = GENRE_META[genre] ?? fallbackMeta(genre);
+              const { accent, sub } = GENRE_META[genre] ?? fallbackMeta(genre);
               return (
                 <VideoCarousel
                   key={`genre-${genre}`}
-                  title={`${emoji} ${genre}`}
+                  title={genre}
                   subtitle={sub}
                   accentColor={accent}
                   videos={genreVids}
@@ -1287,11 +1282,10 @@ const HomeView: React.FC<HomeViewProps> = ({
             {genreCarousels.map(genre => {
               const gv = filteredVideos.filter(v => videoMatchesGenre(v, genre) && (v.seriesTitle || (v.season && v.episode)));
               if (gv.length === 0) return null;
-              const { emoji } = GENRE_META[genre] ?? { emoji: '📺' };
               return (
                 <SeriesCarousel
                   key={genre}
-                  title={`${emoji} ${genre} Series`}
+                  title={`${genre} Series`}
                   videos={gv}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
@@ -1305,7 +1299,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               const gv = filteredVideos.filter(v => v.seriesTitle || (v.season && v.episode));
               return gv.length > 0 ? (
                 <SeriesCarousel
-                  title="📺 All Series"
+                  title="All Series"
                   videos={gv}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
@@ -1323,11 +1317,11 @@ const HomeView: React.FC<HomeViewProps> = ({
             {genreCarousels.map(genre => {
               const gv = filteredVideos.filter(v => videoMatchesGenre(v, genre));
               if (gv.length === 0) return null;
-              const { emoji, accent, sub } = GENRE_META[genre] ?? fallbackMeta(genre);
+              const { accent, sub } = GENRE_META[genre] ?? fallbackMeta(genre);
               return (
                 <VideoCarousel
                   key={genre}
-                  title={`${emoji} ${genre}`}
+                  title={genre}
                   subtitle={sub}
                   accentColor={accent}
                   videos={gv}
@@ -1340,7 +1334,7 @@ const HomeView: React.FC<HomeViewProps> = ({
             {/* Fallback if no genre tags */}
             {genreCarousels.length === 0 && (
               <VideoCarousel
-                title="🎬 All Films"
+                title="All Films"
                 subtitle="Kenyan-made films & dramas"
                 accentColor="from-red-500 to-orange-500"
                 videos={filteredVideos}
