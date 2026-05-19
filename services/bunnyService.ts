@@ -45,32 +45,33 @@ interface BunnyVideoListResponse {
 
 // ─── Mute helpers (admin-only, stored locally) ───────────────────────────────
 
-const MUTED_KEY = 'tube_muted_videos';
-
-/** Returns the Set of video GUIDs the admin has muted. */
-export const getMutedVideoIds = (): Set<string> => {
-  try {
-    const raw = localStorage.getItem(MUTED_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-};
-
 /**
- * Mutes or unmutes a video (admin-only).
- * Persists to localStorage and fires 'tube-mute-change' so App.tsx
- * can re-filter the public video list without a full reload.
+ * Mutes or unmutes a video (admin-only) by writing a 'muted' metaTag
+ * directly to Bunny via the API proxy. This is server-side and affects
+ * every browser / device — not just the admin's local machine.
+ *
+ * @param currentMetaTags  The video's existing metaTags (to preserve them)
+ * @returns true on success, false on failure
  */
-export const setVideoMuted = (videoId: string, muted: boolean): void => {
-  try {
-    const ids = getMutedVideoIds();
-    if (muted) ids.add(videoId); else ids.delete(videoId);
-    localStorage.setItem(MUTED_KEY, JSON.stringify([...ids]));
-    window.dispatchEvent(new CustomEvent('tube-mute-change'));
-  } catch {
-    // Incognito / storage full — silently ignore
+export const setVideoMuted = async (
+  videoId: string,
+  muted: boolean,
+  currentMetaTags: { property: string; value: string }[] = [],
+): Promise<boolean> => {
+  // Strip any existing 'muted' tag, then re-add if muting
+  const filtered = currentMetaTags.filter(t => t.property.toLowerCase() !== 'muted');
+  const newMetaTags = muted
+    ? [...filtered, { property: 'muted', value: 'true' }]
+    : filtered;
+
+  const result = await updateVideoMetadata(videoId, { metaTags: newMetaTags });
+  if (result !== null) {
+    // Notify App.tsx to instantly remove / restore the video from the public list
+    window.dispatchEvent(
+      new CustomEvent('tube-mute-change', { detail: { videoId, muted } })
+    );
   }
+  return result !== null;
 };
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
@@ -390,7 +391,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     trailerUrl: getMeta(activeItem.metaTags, 'trailerUrl') || undefined,
     dateUploaded: activeItem.dateUploaded || undefined,
     featured: getMeta(activeItem.metaTags, 'featured') === 'true',
-    muted: getMutedVideoIds().has(item.guid),
+    muted: getMeta(activeItem.metaTags, 'muted') === 'true',
   };
 };
 

@@ -13,7 +13,7 @@ import {
   EyeOff, Eye,
 } from 'lucide-react';
 import { NavItem } from '../types';
-import { BunnyVideoItem, bunnyVideoToVideo, getThumbnailUrl, getMutedVideoIds, setVideoMuted } from '../services/bunnyService';
+import { BunnyVideoItem, bunnyVideoToVideo, getThumbnailUrl, setVideoMuted } from '../services/bunnyService';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../contexts/LanguageContext';
 import { error as logError } from '../lib/logger';
@@ -57,6 +57,8 @@ interface VideoRow {
   /** Raw duration in seconds for range filtering */
   durationSecs: number;
   muted: boolean;
+  /** Original Bunny metaTags — needed to preserve them when writing muted flag */
+  metaTags: { property: string; value: string }[];
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -146,21 +148,40 @@ export default function AnalyticsDashboard({
   const [showOnlyMuted, setShowOnlyMuted] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // ─── Mute state (kept in sync with localStorage via tube-mute-change) ────────
-  const [mutedIds, setMutedIds] = useState<Set<string>>(() => getMutedVideoIds());
+  // ─── Mute state (seeded from Bunny metaTags; optimistic updates on toggle) ──
+  const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
+  const [mutingId, setMutingId] = useState<string | null>(null); // shows spinner
 
+  // Keep mutedIds in sync whenever the video list refreshes
   useEffect(() => {
-    const sync = () => setMutedIds(getMutedVideoIds());
-    window.addEventListener('tube-mute-change', sync);
-    return () => window.removeEventListener('tube-mute-change', sync);
-  }, []);
+    setMutedIds(new Set(myVideos.filter(v => v.muted).map(v => v.id)));
+  }, [myVideos]);
 
-  const toggleMute = useCallback((videoId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // don't open detail view
-    const nowMuted = !mutedIds.has(videoId);
-    setVideoMuted(videoId, nowMuted);
-    // state update is handled by the tube-mute-change listener above
-  }, [mutedIds]);
+  const toggleMute = useCallback(async (video: VideoRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (mutingId) return; // debounce
+    const nowMuted = !mutedIds.has(video.id);
+
+    // Optimistic update — feels instant
+    setMutedIds(prev => {
+      const next = new Set(prev);
+      if (nowMuted) next.add(video.id); else next.delete(video.id);
+      return next;
+    });
+    setMutingId(video.id);
+
+    const ok = await setVideoMuted(video.id, nowMuted, video.metaTags);
+
+    if (!ok) {
+      // Revert on API failure
+      setMutedIds(prev => {
+        const next = new Set(prev);
+        if (nowMuted) next.delete(video.id); else next.add(video.id);
+        return next;
+      });
+    }
+    setMutingId(null);
+  }, [mutedIds, mutingId]);
 
   // ─── Derived from Bunny props ───────────────────────────────────────────────
 
@@ -187,6 +208,7 @@ export default function AnalyticsDashboard({
         duration: v.duration,
         durationSecs: item.length ?? 0,
         muted: v.muted ?? false,
+        metaTags: item.metaTags || [],
       };
     }).sort((a, b) => b.lifetimeViews - a.lifetimeViews);
 
@@ -843,15 +865,20 @@ export default function AnalyticsDashboard({
                     <td className="p-4 text-center text-zinc-400 text-sm font-mono hidden sm:table-cell">{video.duration}</td>
                     <td className="p-4 text-center">
                       <button
-                        onClick={e => toggleMute(video.id, e)}
+                        onClick={e => toggleMute(video, e)}
+                        disabled={mutingId === video.id}
                         title={isMuted ? 'Unhide — make visible to users' : 'Hide from users'}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all disabled:cursor-wait
                           ${isMuted
                             ? 'bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25'
                             : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30'}`}
                       >
-                        {isMuted ? <EyeOff size={13} /> : <Eye size={13} />}
-                        <span className="hidden sm:inline">{isMuted ? 'Hidden' : 'Visible'}</span>
+                        {mutingId === video.id
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : isMuted ? <EyeOff size={13} /> : <Eye size={13} />}
+                        <span className="hidden sm:inline">
+                          {mutingId === video.id ? '…' : isMuted ? 'Hidden' : 'Visible'}
+                        </span>
                       </button>
                     </td>
                     <td className="p-4 text-right">

@@ -170,10 +170,17 @@ const App: React.FC = () => {
     return () => { cancelled = true; };
   }, [applyVideos]);
 
-  // Re-filter when admin mutes / unmutes a video
+  // Instantly update the public video list when admin mutes / unmutes
   useEffect(() => {
-    const onMuteChange = () => {
-      if (bunnyItemsRef.current.length > 0) applyVideos(bunnyItemsRef.current);
+    const onMuteChange = (e: Event) => {
+      const { videoId, muted } = (e as CustomEvent<{ videoId: string; muted: boolean }>).detail;
+      if (muted) {
+        // Remove the video immediately from the public list
+        setVideos(prev => prev.filter(v => v.id !== videoId));
+      } else {
+        // Re-map from raw items so the unmuted video re-appears
+        if (bunnyItemsRef.current.length > 0) applyVideos(bunnyItemsRef.current);
+      }
     };
     window.addEventListener('tube-mute-change', onMuteChange);
     return () => window.removeEventListener('tube-mute-change', onMuteChange);
