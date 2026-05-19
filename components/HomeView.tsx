@@ -36,6 +36,7 @@ interface HomeViewProps {
   watchLater: string[];
   toggleWatchLater: (id: string) => void;
   isAuthenticated: boolean;
+  isAdmin?: boolean;
   recommendedVideos: Video[];
   isRecLoading: boolean;
   navItems: NavItem[];
@@ -496,12 +497,16 @@ const HomeView: React.FC<HomeViewProps> = ({
   watchLater,
   toggleWatchLater,
   isAuthenticated,
+  isAdmin = false,
   recommendedVideos,
   isRecLoading,
   navItems,
   setCurrentView,
   setShowLogin,
 }) => {
+  // Admin gets full unrestricted access to all content (no premium gate)
+  const hasFullAccess = isAdmin || isAuthenticated;
+
   const [heroProgress, setHeroProgress] = useState(0);
   // Hide hero when user has drilled into a sort-mode pill (New Releases / Most Watched)
   const showHero = currentView === ViewState.HOME && !searchQuery &&
@@ -946,7 +951,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                   videos={catVids}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={true}
+                  isAuthenticated={hasFullAccess}
                 />
               );
             })}
@@ -967,7 +972,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                   videos={gv}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={true}
+                  isAuthenticated={hasFullAccess}
                   onSubscribeRequest={() => setShowLogin(true)}
                 />
               );
@@ -989,7 +994,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                   videos={gv}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={true}
+                  isAuthenticated={hasFullAccess}
                 />
               );
             })}
@@ -1016,7 +1021,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                       video={video}
                       isWatchLater={watchLater.includes(video.id)}
                       onToggleWatchLater={toggleWatchLater}
-                      isSubscribed={true}
+                      isSubscribed={hasFullAccess}
                       onSubscribeRequest={() => setShowLogin(true)}
                     />
                   </div>
@@ -1052,7 +1057,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                       video={video}
                       isWatchLater={watchLater.includes(video.id)}
                       onToggleWatchLater={toggleWatchLater}
-                      isSubscribed={true}
+                      isSubscribed={hasFullAccess}
                       onSubscribeRequest={() => setShowLogin(true)}
                     />
                   </div>

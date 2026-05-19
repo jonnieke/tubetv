@@ -507,6 +507,7 @@ const App: React.FC = () => {
             videos={videos}
             watchLaterIds={watchLater}
             onToggleWatchLater={toggleWatchLater}
+            hasFullAccess={isAdmin || isAuthenticated}
           />
         );
 
@@ -549,6 +550,7 @@ const App: React.FC = () => {
             watchLater={watchLater}
             toggleWatchLater={toggleWatchLater}
             isAuthenticated={isAuthenticated}
+            isAdmin={isAdmin}
             recommendedVideos={recommendedVideos}
             isRecLoading={isRecLoading}
             navItems={navItems}

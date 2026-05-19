@@ -7,9 +7,10 @@ interface WatchLaterSectionProps {
   videos: Video[];
   watchLaterIds: string[];
   onToggleWatchLater: (id: string) => void;
+  hasFullAccess?: boolean;
 }
 
-const WatchLaterSection: React.FC<WatchLaterSectionProps> = ({ videos, watchLaterIds, onToggleWatchLater }) => {
+const WatchLaterSection: React.FC<WatchLaterSectionProps> = ({ videos, watchLaterIds, onToggleWatchLater, hasFullAccess = false }) => {
   // Filter videos that are in the watch list
   const watchList = videos.filter(v => watchLaterIds.includes(v.id));
 
@@ -28,11 +29,12 @@ const WatchLaterSection: React.FC<WatchLaterSectionProps> = ({ videos, watchLate
       {watchList.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {watchList.map((video) => (
-            <VideoCard 
-                key={video.id} 
-                video={video} 
+            <VideoCard
+                key={video.id}
+                video={video}
                 isWatchLater={true}
                 onToggleWatchLater={onToggleWatchLater}
+                isSubscribed={hasFullAccess}
             />
           ))}
         </div>
