@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download } from 'lucide-react';
+import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { Video, Caption } from '../types';
 import { generateCaptions } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
@@ -8,6 +8,7 @@ import { getProgress, saveProgress } from '../lib/watchProgress';
 import { useResolvedQuality } from '../lib/networkQuality';
 import { recordWatchTime, saveOffline, isOfflineSaved } from '../lib/dataTracker';
 import { recordHistory } from '../lib/watchHistory';
+import { getRating, toggleRating, Rating } from '../lib/videoRatings';
 import Hls from 'hls.js';
 
 const recordView = async (videoId: string) => {
@@ -68,6 +69,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const [isLoadingCaptions, setIsLoadingCaptions] = useState(false);
 
   const [isOffline, setIsOffline] = useState<boolean>(() => isOfflineSaved(video.id));
+  const [rating, setRating] = useState<Rating>(() => getRating(video.id));
   // Accumulates seconds played in this session for data tracking
   const watchSecondsRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -828,6 +830,23 @@ const VideoCard: React.FC<VideoCardProps> = ({
           {quality !== 'Auto' && (
             <span className="text-[10px] bg-red-900/30 text-red-400 px-1.5 py-0.5 rounded-full border border-red-800/30">{quality}</span>
           )}
+          {/* Like / dislike */}
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={e => { e.stopPropagation(); setRating(toggleRating(video.id, 'like')); }}
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold transition-all ${rating === 'like' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'text-zinc-600 hover:text-green-400 hover:bg-green-500/10'}`}
+              title="Like"
+            >
+              <ThumbsUp size={10} className={rating === 'like' ? 'fill-green-400' : ''} />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); setRating(toggleRating(video.id, 'dislike')); }}
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold transition-all ${rating === 'dislike' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'text-zinc-600 hover:text-red-400 hover:bg-red-500/10'}`}
+              title="Dislike"
+            >
+              <ThumbsDown size={10} className={rating === 'dislike' ? 'fill-red-400' : ''} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

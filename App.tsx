@@ -72,6 +72,7 @@ const App: React.FC = () => {
   });
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- REAL AUTH: Supabase session ---
@@ -421,6 +422,19 @@ const App: React.FC = () => {
     return filtered;
   }, [videos, currentView, activeSubCategory, searchQuery, navItems]);
 
+  const suggestions = useMemo(() => {
+    if (!searchInput || searchInput.length < 2) return [];
+    const q = searchInput.toLowerCase();
+    return videos
+      .filter(v =>
+        v.title.toLowerCase().includes(q) ||
+        v.author.toLowerCase().includes(q) ||
+        v.category.toLowerCase().includes(q)
+      )
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 6);
+  }, [searchInput, videos]);
+
   const toggleWatchLater = useCallback((id: string) => {
     setWatchLater(prev => {
       const next = prev.includes(id)
@@ -471,7 +485,16 @@ const App: React.FC = () => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     setSearchInput('');
     setSearchQuery('');
+    setShowSuggestions(false);
   }, []);
+
+  const selectSuggestion = useCallback((title: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    setSearchInput(title);
+    setSearchQuery(title);
+    setShowSuggestions(false);
+    if (currentView !== ViewState.HOME) setCurrentView(ViewState.HOME);
+  }, [currentView]);
 
   const handleNavigate = (view: ViewStateOrString) => {
     // Guard: Settings and Admin require authentication
@@ -681,6 +704,8 @@ const App: React.FC = () => {
                 type="text"
                 value={searchInput}
                 onChange={handleSearch}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 placeholder={t('common.search')}
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-full py-2 pl-10 pr-10 text-zinc-300 focus:outline-none focus:border-zinc-600 focus:bg-black transition-all"
               />
@@ -692,6 +717,22 @@ const App: React.FC = () => {
                 >
                   <X className="w-4 h-4" />
                 </button>
+              )}
+              {/* Autocomplete dropdown */}
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-700 rounded-2xl overflow-hidden shadow-2xl z-[100]">
+                  {suggestions.map(v => (
+                    <button
+                      key={v.id}
+                      onMouseDown={() => selectSuggestion(v.title)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800 transition-colors text-left"
+                    >
+                      <Search size={12} className="text-zinc-600 flex-shrink-0" />
+                      <span className="text-zinc-200 text-sm truncate flex-1">{v.title}</span>
+                      <span className="text-zinc-600 text-xs flex-shrink-0">{v.category}</span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
 

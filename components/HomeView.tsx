@@ -1201,6 +1201,30 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             )}
 
+            {/* 3b. From Creators You Follow */}
+            {(() => {
+              let subs: Record<string, boolean> = {};
+              try { subs = JSON.parse(localStorage.getItem('tube_creator_subscriptions') || '{}'); } catch {}
+              const followedNames = Object.keys(subs).filter(k => subs[k]);
+              if (!followedNames.length) return null;
+              const followedVideos = videos
+                .filter(v => followedNames.includes(v.author))
+                .sort((a, b) => b.views - a.views)
+                .slice(0, 20);
+              if (followedVideos.length < 3) return null;
+              return (
+                <VideoCarousel
+                  title="From Creators You Follow"
+                  subtitle={`${followedNames.length} creator${followedNames.length !== 1 ? 's' : ''} you follow`}
+                  accentColor="from-violet-500 to-purple-500"
+                  videos={followedVideos}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                  isAuthenticated={hasFullAccess}
+                />
+              );
+            })()}
+
             {/* 4. Kilimo — Farmers (high relevance in Kenya, shown early) */}
             {(() => { const v = videos.filter(x => x.category === 'Farmers'); return v.length > 0 && (
               <VideoCarousel
