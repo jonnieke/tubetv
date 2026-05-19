@@ -524,7 +524,10 @@ const HomeView: React.FC<HomeViewProps> = ({
   // Auto-advance hero
   useEffect(() => {
     if (!showHero) return;
-    const featuredVideos = [...videos].sort((a, b) => b.views - a.views).slice(0, 5);
+    // Admin-pinned videos first (up to 5), fill remainder with top-by-views
+    const pinned = videos.filter(v => v.featured);
+    const byViews = videos.filter(v => !v.featured).sort((a, b) => b.views - a.views);
+    const featuredVideos = [...pinned, ...byViews].slice(0, 5);
     if (featuredVideos.length <= 1) return;
     setHeroProgress(0);
     const TICK = 80;
@@ -602,7 +605,10 @@ const HomeView: React.FC<HomeViewProps> = ({
           NETFLIX-STYLE HERO BANNER
       ══════════════════════════════════════════════════════════════════ */}
       {showHero && (() => {
-        const featuredVideos = [...videos].sort((a, b) => b.views - a.views).slice(0, 5);
+        // Admin-pinned videos first (up to 5), fill remainder with top-by-views
+    const pinned = videos.filter(v => v.featured);
+    const byViews = videos.filter(v => !v.featured).sort((a, b) => b.views - a.views);
+    const featuredVideos = [...pinned, ...byViews].slice(0, 5);
         const activeIdx = heroIndex % featuredVideos.length;
         const hero = featuredVideos[activeIdx];
         if (!hero) return null;

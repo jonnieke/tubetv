@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadCloud, FileVideo, CheckCircle2, Wand2, Loader2, ImageIcon, ImagePlus, Scissors, Play, Pause, RefreshCw, Repeat, Film, AlertTriangle, X, ListVideo, Trash2, ChevronRight, Clock, AlertCircle, Timer, Tag, Mic, Radio } from 'lucide-react';
+import { UploadCloud, FileVideo, CheckCircle2, Wand2, Loader2, ImageIcon, ImagePlus, Scissors, Play, Pause, RefreshCw, Repeat, Film, AlertTriangle, X, ListVideo, Trash2, ChevronRight, Clock, AlertCircle, Timer, Tag, Mic, Radio, CheckCheck } from 'lucide-react';
 import { generateVideoMetadata, generateThumbnail } from '../services/geminiService';
 import { createVideoEntry, uploadVideoFile, getStreamUrl, getThumbnailUrl } from '../services/bunnyService';
 import { supabase } from '../lib/supabase';
@@ -472,11 +472,70 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                                 Editing: <span className="text-red-500 truncate max-w-[300px]">{activeItem.file.name}</span>
                             </h2>
                             {activeItem.status === 'uploading' && (
-                                <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded animate-pulse">
-                                    Upload in progress...
+                                <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded animate-pulse flex items-center gap-1.5">
+                                    <Loader2 size={10} className="animate-spin" /> Uploading…
+                                </span>
+                            )}
+                            {activeItem.status === 'completed' && (
+                                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded flex items-center gap-1.5">
+                                    <CheckCheck size={10} /> Published
                                 </span>
                             )}
                         </div>
+
+                        {/* ── Upload Progress Bar ── */}
+                        {(activeItem.status === 'uploading' || activeItem.status === 'completed') && (
+                          <div className={`rounded-xl p-4 mb-5 border transition-colors ${
+                            activeItem.status === 'completed'
+                              ? 'bg-green-950/40 border-green-500/30'
+                              : 'bg-blue-950/40 border-blue-500/30'
+                          }`}>
+                            {/* Stage label + percent */}
+                            <div className="flex items-center justify-between mb-2.5">
+                              <div className="flex items-center gap-2">
+                                {activeItem.status === 'completed' ? (
+                                  <CheckCheck size={15} className="text-green-400 flex-shrink-0" />
+                                ) : (
+                                  <Loader2 size={15} className="text-blue-400 animate-spin flex-shrink-0" />
+                                )}
+                                <span className={`text-sm font-semibold ${activeItem.status === 'completed' ? 'text-green-300' : 'text-blue-200'}`}>
+                                  {activeItem.stageInfo || 'Uploading…'}
+                                </span>
+                              </div>
+                              <span className={`text-sm font-black tabular-nums ${activeItem.status === 'completed' ? 'text-green-400' : 'text-blue-400'}`}>
+                                {Math.round(activeItem.progress)}%
+                              </span>
+                            </div>
+
+                            {/* Progress track */}
+                            <div className="h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-300 ${
+                                  activeItem.status === 'completed'
+                                    ? 'bg-gradient-to-r from-green-600 to-green-400'
+                                    : 'bg-gradient-to-r from-blue-700 via-blue-500 to-sky-400'
+                                }`}
+                                style={{ width: `${activeItem.progress}%` }}
+                              />
+                            </div>
+
+                            {/* ETA / done message */}
+                            <div className="mt-2 flex items-center justify-between">
+                              {activeItem.status === 'uploading' && activeItem.timeRemaining !== undefined && activeItem.timeRemaining > 0 ? (
+                                <span className="text-xs text-zinc-400 flex items-center gap-1">
+                                  <Timer size={10} /> ~{activeItem.timeRemaining}s remaining
+                                </span>
+                              ) : activeItem.status === 'completed' ? (
+                                <span className="text-xs text-green-500">Video published — encoding on Bunny in background</span>
+                              ) : (
+                                <span className="text-xs text-zinc-500">{activeItem.file.name}</span>
+                              )}
+                              <span className="text-[10px] text-zinc-600 ml-auto">
+                                {(activeItem.file.size / 1024 / 1024).toFixed(1)} MB
+                              </span>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Player / Preview */}
                         <div className="w-full bg-black rounded-xl overflow-hidden mb-6 shadow-2xl border border-zinc-700 relative group aspect-video">

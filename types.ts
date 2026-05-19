@@ -54,6 +54,7 @@ export interface Video {
   productionYear?: number;
   trailerUrl?: string;
   dateUploaded?: string;  // ISO 8601 from Bunny
+  featured?: boolean;     // Pinned to the hero carousel by admin
 }
 
 export interface ShortVideo {

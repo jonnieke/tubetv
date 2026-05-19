@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, Clock, Tag, User, Calendar, Info, UploadCloud
+  ChevronDown, ChevronUp, BarChart2, Eye, Clock, Tag, User, Calendar, Info, UploadCloud, Star
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, getStreamUrl, uploadCustomThumbnail, updateVideoMetadata } from '../services/bunnyService';
 import { sanitizeText } from '../lib/sanitize';
@@ -52,6 +52,7 @@ const EMPTY_FORM = {
   trailerUrl: '',
   productionYear: '',
   isPremium: false,
+  featured: false,
   tags: '',
 };
 
@@ -325,6 +326,27 @@ const EditModal = ({
               <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.isPremium ? 'translate-x-6' : 'translate-x-0.5'}`} />
             </button>
           </div>
+
+          {/* Featured in Hero Toggle */}
+          <div className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-colors ${
+            form.featured
+              ? 'bg-amber-500/10 border-amber-500/40'
+              : 'bg-zinc-900 border-zinc-800'
+          }`}>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <Star size={14} className={form.featured ? 'text-amber-400 fill-amber-400' : 'text-zinc-500'} />
+                <p className="text-sm font-medium text-white">Featured in Hero Carousel</p>
+              </div>
+              <p className="text-xs text-zinc-500">Pins this video to the homepage hero banner (max 5 featured)</p>
+            </div>
+            <button
+              onClick={() => setForm(f => ({ ...f, featured: !f.featured }))}
+              className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${form.featured ? 'bg-amber-500' : 'bg-zinc-700'}`}
+            >
+              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.featured ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
         </div>
 
         {/* Footer Actions */}
@@ -404,6 +426,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       trailerUrl: saved.trailerUrl ?? getMeta(item.metaTags, 'trailerUrl'),
       productionYear: saved.productionYear ?? getMeta(item.metaTags, 'productionYear'),
       isPremium: saved.isPremium ?? getMeta(item.metaTags, 'isPremium') === 'true',
+      featured: saved.featured ?? getMeta(item.metaTags, 'featured') === 'true',
       tags: saved.tags ?? getMeta(item.metaTags, 'tags'),
     });
     setEditingItem(item);
@@ -418,7 +441,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       // 1. Prepare the updated metadata
       // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailUrl', 'trailerUrl', 'productionYear', 'isPremium', 'tags', 'season', 'episode', 'seriesTitle'];
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailUrl', 'trailerUrl', 'productionYear', 'isPremium', 'featured', 'tags', 'season', 'episode', 'seriesTitle'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
