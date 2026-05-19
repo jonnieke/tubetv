@@ -9,6 +9,7 @@ import VideoCarousel from './VideoCarousel';
 import SeriesCarousel from './SeriesCarousel';
 import ShortsShelf from './ShortsShelf';
 import { getAllProgress } from '../lib/watchProgress';
+import BandwidthToggle from './BandwidthToggle';
 import type { ShortVideo } from '../types';
 import Hls from 'hls.js';
 
@@ -774,21 +775,26 @@ const HomeView: React.FC<HomeViewProps> = ({
           </div>
         )}
 
-        {/* Sub-category pills */}
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-7 no-scrollbar sticky top-0 z-10 bg-zinc-950/95 backdrop-blur-xl py-3 -mx-4 px-4 md:-mx-8 md:px-8 border-b border-white/[0.04]">
-          {currentSubCategories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setActiveSubCategory(cat)}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all flex-shrink-0 ${
-                activeSubCategory === cat
-                  ? 'bg-white text-black shadow'
-                  : 'bg-zinc-900/80 text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-white'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+        {/* Sub-category pills + bandwidth toggle */}
+        <div className="flex items-center gap-2 pb-2 mb-7 sticky top-0 z-10 bg-zinc-950/95 backdrop-blur-xl py-3 -mx-4 px-4 md:-mx-8 md:px-8 border-b border-white/[0.04]">
+          {/* Scrollable pills */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar flex-1 min-w-0">
+            {currentSubCategories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setActiveSubCategory(cat)}
+                className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all flex-shrink-0 ${
+                  activeSubCategory === cat
+                    ? 'bg-white text-black shadow'
+                    : 'bg-zinc-900/80 text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-white'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+          {/* Bandwidth / quality toggle — always visible on the right */}
+          <BandwidthToggle />
         </div>
 
         {/* Shorts shelf */}

@@ -5,6 +5,7 @@ import { Video, Caption } from '../types';
 import { generateCaptions } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 import { getProgress, saveProgress } from '../lib/watchProgress';
+import { useResolvedQuality } from '../lib/networkQuality';
 import Hls from 'hls.js';
 
 const recordView = async (videoId: string) => {
@@ -64,6 +65,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+
+  // Global bandwidth preference — updates live via window event
+  const { resolved: resolvedQuality } = useResolvedQuality();
   
   // Use a sample video for demonstration if video.url is missing
   const SAMPLE_VIDEO_URL = "https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4";
@@ -71,10 +75,34 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   const qualities = ['Auto', '1080p', '720p', '480p'];
 
+  // Apply the global quality preference to an HLS instance
+  const applyHlsQuality = (hls: Hls, q: 'hd' | '360p') => {
+    if (q === 'hd') {
+      hls.currentLevel = -1; // adaptive — let HLS.js pick best
+      return;
+    }
+    // Find highest level with height ≤ 360, or fall back to level 0 (lowest)
+    const levels = hls.levels;
+    if (!levels.length) return;
+    let best = 0;
+    for (let i = 0; i < levels.length; i++) {
+      if (levels[i].height <= 360) best = i;
+    }
+    hls.currentLevel = best;
+  };
+
+  // When quality preference changes while HLS is already playing, re-apply
+  useEffect(() => {
+    if (hlsRef.current && (isPlaying || isHoverPlay)) {
+      applyHlsQuality(hlsRef.current, resolvedQuality);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedQuality]);
+
   // Initialize HLS
   useEffect(() => {
     const shouldPlay = isPlaying || isHoverPlay;
-    
+
     if (shouldPlay && videoRef.current) {
         // If already attached and playing, just update muted state
         if (hlsRef.current && videoRef.current.src) {
@@ -84,11 +112,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
         if (Hls.isSupported() && videoSrc.endsWith('.m3u8')) {
             if (hlsRef.current) hlsRef.current.destroy();
-            
+
             const hls = new Hls();
             hls.loadSource(videoSrc);
             hls.attachMedia(videoRef.current);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                applyHlsQuality(hls, resolvedQuality);
                 if (videoRef.current) {
                   videoRef.current.muted = isHoverPlay && !isPlaying;
                   videoRef.current.play().catch(() => {
