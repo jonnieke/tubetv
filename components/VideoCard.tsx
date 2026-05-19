@@ -65,6 +65,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  // Stores a pending seek-to timestamp arriving from a deep link before the video is ready
+  const seekOnPlayRef = useRef<number>(0);
 
   // Global bandwidth preference — updates live via window event
   const { resolved: resolvedQuality } = useResolvedQuality();
@@ -158,6 +160,19 @@ const VideoCard: React.FC<VideoCardProps> = ({
     };
   }, []);
 
+  // Deep-link: auto-play + seek when App.tsx dispatches tube-deep-link for this video
+  useEffect(() => {
+    const onDeepLink = (e: Event) => {
+      const { videoId, timestamp } = (e as CustomEvent<{ videoId: string; timestamp: number }>).detail;
+      if (videoId !== video.id) return;
+      seekOnPlayRef.current = timestamp;
+      setIsPlaying(true);
+      recordView(video.id);
+    };
+    window.addEventListener('tube-deep-link', onDeepLink);
+    return () => window.removeEventListener('tube-deep-link', onDeepLink);
+  }, [video.id]);
+
   // Netflix-style Hover Play logic
   useEffect(() => {
     if (isHovering && !isPlaying) {
@@ -222,12 +237,24 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (starting) recordView(video.id);
   };
 
-  const handleWhatsAppShare = (e: React.MouseEvent) => {
+  // Seek to a stored timestamp once the video has enough data
+  const handleCanPlay = () => {
+    if (seekOnPlayRef.current > 0 && videoRef.current) {
+      videoRef.current.currentTime = seekOnPlayRef.current;
+      seekOnPlayRef.current = 0;
+    }
+  };
+
+  const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const text = encodeURIComponent(
-      `👀 Watch "${video.title}" on Tube TV: ${window.location.origin}?v=${video.id}`
-    );
-    window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener');
+    const t = isPlaying && currentTime > 5 ? Math.floor(currentTime) : 0;
+    const url = `${window.location.origin}?v=${video.id}${t > 0 ? `&t=${t}` : ''}`;
+    const shareText = `Tazama "${video.title}" kwenye Tube TV 🇰🇪\n${url}`;
+    if (navigator.share) {
+      navigator.share({ title: video.title, text: shareText, url }).catch(() => {});
+      return;
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener');
   };
 
   const togglePiP = async (e: React.MouseEvent) => {
@@ -416,6 +443,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const catClass = CATEGORY_COLORS[video.category] ?? 'bg-zinc-700/30 text-zinc-400 border-zinc-600/30';
   const isTrending = (video.views ?? 0) >= 50000;
 
+  // Simulate live viewer count — deterministic so it doesn't flicker on re-render
+  const watchingCount = (() => {
+    if (!video.views || video.views < 500) return 0;
+    const base = Math.floor(video.views * 0.0018);
+    const seed = video.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+    const jitter = Math.floor((seed % 9) * Math.max(1, base * 0.12));
+    return Math.max(2, base + jitter);
+  })();
+
   return (
     <div
       ref={containerRef}
@@ -458,8 +494,18 @@ const VideoCard: React.FC<VideoCardProps> = ({
             {/* Trending badge */}
             {isTrending && (
               <div className="absolute top-2 right-2 pointer-events-none">
-                <div className="bg-orange-600/90 text-[9px] font-black px-2 py-0.5 rounded-full text-white shadow flex items-center gap-1">
-                  🔥 TRENDING
+                <div className="bg-orange-600/90 text-[9px] font-black px-2 py-0.5 rounded-full text-white shadow">
+                  TRENDING
+                </div>
+              </div>
+            )}
+
+            {/* Watching now badge */}
+            {watchingCount > 0 && !isTrending && (
+              <div className="absolute top-2 right-2 pointer-events-none">
+                <div className="flex items-center gap-1 bg-black/70 backdrop-blur text-[9px] font-bold px-2 py-0.5 rounded-full text-white border border-white/10">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                  {watchingCount.toLocaleString()} watching
                 </div>
               </div>
             )}
@@ -508,8 +554,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
                )}
 
                <button
-                 onClick={handleWhatsAppShare}
-                 title="Share on WhatsApp"
+                 onClick={handleShare}
+                 title="Share"
                  className={`rounded-full p-2.5 border-2 border-green-500 bg-black/50 text-green-500 hover:bg-green-500 hover:text-white transition-all hover:scale-110 shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}`}
                >
                  <Share2 className="w-4 h-4" />
@@ -522,6 +568,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               ref={videoRef}
               className="w-full h-full object-cover"
               onTimeUpdate={handleTimeUpdate}
+              onCanPlay={handleCanPlay}
               onEnded={() => {
                 setIsPlaying(false);
                 setIsHoverPlay(false);
@@ -532,7 +579,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               loop={isHoverPlay && !isPlaying}
               playsInline
               preload="auto"
-              crossOrigin="anonymous" 
+              crossOrigin="anonymous"
             />
             
             {/* Captions Overlay */}

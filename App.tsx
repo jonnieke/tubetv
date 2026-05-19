@@ -55,7 +55,7 @@ const INITIAL_NAV_ITEMS: NavItem[] = [
 ];
 
 const App: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language, toggleLanguage } = useLanguage();
   const toast = useToast();
   const [currentView, setCurrentView] = useState<ViewStateOrString>(ViewState.HOME);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -242,6 +242,41 @@ const App: React.FC = () => {
       localStorage.setItem('tube_nav_items', JSON.stringify(serializable));
     } catch { }
   }, [navItems]);
+
+  // ─── Deep-link: ?v=videoId&t=seconds ─────────────────────────────────────
+  const [pendingDeepLink, setPendingDeepLink] = useState<{ videoId: string; timestamp: number } | null>(null);
+
+  // Read URL params once on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const videoId = params.get('v');
+    const timestamp = parseInt(params.get('t') || '0', 10);
+    if (videoId) {
+      setPendingDeepLink({ videoId, timestamp: isNaN(timestamp) ? 0 : timestamp });
+      // Bypass landing page so the linked video is immediately accessible
+      try { localStorage.setItem('tube_entered_app', '1'); } catch {}
+      setShowLanding(false);
+    }
+  }, []);
+
+  // Once videos are loaded, scroll to the linked video and fire a play event
+  useEffect(() => {
+    if (!pendingDeepLink || videos.length === 0) return;
+    const { videoId, timestamp } = pendingDeepLink;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`video-${videoId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.dispatchEvent(
+          new CustomEvent('tube-deep-link', { detail: { videoId, timestamp } })
+        );
+        setPendingDeepLink(null);
+        // Clean the URL without a page reload
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [pendingDeepLink, videos]);
 
   // Hero spotlight index — advance logic lives in HomeView (owns the progress bar)
   const [heroIndex, setHeroIndex] = useState(0);
@@ -658,7 +693,7 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <div className="flex items-center gap-3 md:gap-6">
+            <div className="flex items-center gap-3 md:gap-4">
               {/* Mobile Search Toggle */}
               <button
                 className="md:hidden text-zinc-400 hover:text-white transition-colors"
@@ -668,6 +703,16 @@ const App: React.FC = () => {
                 }}
               >
                 {isMobileSearchOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
+              </button>
+
+              {/* Language toggle — EN / SW */}
+              <button
+                onClick={toggleLanguage}
+                className="flex items-center text-[11px] font-black tracking-wider rounded-full overflow-hidden border border-zinc-700 flex-shrink-0"
+                title={language === 'en' ? 'Switch to Kiswahili' : 'Switch to English'}
+              >
+                <span className={`px-2.5 py-1 transition-colors ${language === 'en' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>EN</span>
+                <span className={`px-2.5 py-1 transition-colors ${language === 'sw' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>SW</span>
               </button>
 
               <button
