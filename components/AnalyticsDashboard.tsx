@@ -30,6 +30,14 @@ const formatDay = (iso: string) => {
   return d.toLocaleDateString('en-KE', { weekday: 'short', month: 'short', day: 'numeric' });
 };
 
+/** Strip markdown bold/italic asterisks from Gemini output */
+const stripMd = (text: string) =>
+  text.replace(/\*\*\*(.*?)\*\*\*/g, '$1')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/^[\*\-]\s+/gm, '• ')   // convert leading * / - bullets to •
+      .trim();
+
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 interface DailyRow { day: string; views: number }
@@ -235,7 +243,7 @@ export default function AnalyticsDashboard({
     generateAnalyticsInsights(
       dailyViews.map(d => ({ day: d.day, views: d.views }))
     ).then(text => {
-      if (mounted) { setChannelInsight(text); setIsInsightLoading(false); }
+      if (mounted) { setChannelInsight(stripMd(text)); setIsInsightLoading(false); }
     });
     return () => { mounted = false; };
   }, [isLoadingLive, dailyViews]);
@@ -251,7 +259,7 @@ export default function AnalyticsDashboard({
       retention: 0,
       ctr: 0,
     }).then(text => {
-      if (mounted) { setVideoInsight(text); setIsVideoInsightLoading(false); }
+      if (mounted) { setVideoInsight(stripMd(text)); setIsVideoInsightLoading(false); }
     });
     return () => { mounted = false; };
   }, [selectedVideo]);
