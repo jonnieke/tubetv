@@ -29,21 +29,25 @@ interface UploadSectionProps {
 }
 
 const CATEGORIES = [
-    'Originals', 
-    'Shorts', 
-    'Education', 
-    'Farmers', 
-    'Faith', 
-    'Kids', 
-    'Diaspora', 
-    'Live', 
+    'Originals',
+    'Series',
+    'Movies',
+    'Shorts',
+    'Education',
+    'Farmers',
+    'Faith',
+    'Kids',
+    'Diaspora',
+    'Fashion',
+    'Wildlife',
+    'Live',
     'Live Recording',
     'Podcast',
-    'Music', 
-    'News', 
-    'Technology', 
+    'Music',
+    'News',
+    'Technology',
     'Lifestyle',
-    'Trending'
+    'Trending',
 ];
 
 const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creatorName = 'Creator' }) => {
