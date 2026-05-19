@@ -136,54 +136,7 @@ export default function AnalyticsDashboard({
   const [newCatName, setNewCatName] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('Star');
 
-  // ─── Video filter state ─────────────────────────────────────────────────────
-  const [filterTitle, setFilterTitle] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
-  const [filterGenre, setFilterGenre] = useState('');
-  const [filterAuthor, setFilterAuthor] = useState('');
-  const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterDateTo, setFilterDateTo] = useState('');
-  const [filterDuration, setFilterDuration] = useState('');   // '' | '<5' | '5-15' | '15-30' | '30-60' | '>60'
-  const [showFilters, setShowFilters] = useState(false);
-  const [showOnlyMuted, setShowOnlyMuted] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-
-  // ─── Mute state (seeded from Bunny metaTags; optimistic updates on toggle) ──
-  const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
-  const [mutingId, setMutingId] = useState<string | null>(null); // shows spinner
-
-  // Keep mutedIds in sync whenever the video list refreshes
-  useEffect(() => {
-    setMutedIds(new Set(myVideos.filter(v => v.muted).map(v => v.id)));
-  }, [myVideos]);
-
-  const toggleMute = useCallback(async (video: VideoRow, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (mutingId) return; // debounce
-    const nowMuted = !mutedIds.has(video.id);
-
-    // Optimistic update — feels instant
-    setMutedIds(prev => {
-      const next = new Set(prev);
-      if (nowMuted) next.add(video.id); else next.delete(video.id);
-      return next;
-    });
-    setMutingId(video.id);
-
-    const ok = await setVideoMuted(video.id, nowMuted, video.metaTags);
-
-    if (!ok) {
-      // Revert on API failure
-      setMutedIds(prev => {
-        const next = new Set(prev);
-        if (nowMuted) next.delete(video.id); else next.add(video.id);
-        return next;
-      });
-    }
-    setMutingId(null);
-  }, [mutedIds, mutingId]);
-
-  // ─── Derived from Bunny props ───────────────────────────────────────────────
+  // ─── Derived from Bunny props (must come first — later hooks depend on myVideos)
 
   const { myVideos, totalLifetimeViews, categoryData } = useMemo(() => {
     const catCounts: Record<string, number> = {};
@@ -218,6 +171,53 @@ export default function AnalyticsDashboard({
 
     return { myVideos: mapped, totalLifetimeViews: total, categoryData: catData };
   }, [videos]);
+
+  // ─── Video filter state ─────────────────────────────────────────────────────
+  const [filterTitle, setFilterTitle] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterGenre, setFilterGenre] = useState('');
+  const [filterAuthor, setFilterAuthor] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterDuration, setFilterDuration] = useState('');   // '' | '<5' | '5-15' | '15-30' | '30-60' | '>60'
+  const [showFilters, setShowFilters] = useState(false);
+  const [showOnlyMuted, setShowOnlyMuted] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // ─── Mute state (seeded from Bunny metaTags; optimistic updates on toggle) ──
+  const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
+  const [mutingId, setMutingId] = useState<string | null>(null);
+
+  // Keep mutedIds in sync whenever the video list refreshes from Bunny
+  useEffect(() => {
+    setMutedIds(new Set(myVideos.filter(v => v.muted).map(v => v.id)));
+  }, [myVideos]);
+
+  const toggleMute = useCallback(async (video: VideoRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (mutingId) return; // debounce
+    const nowMuted = !mutedIds.has(video.id);
+
+    // Optimistic update — feels instant
+    setMutedIds(prev => {
+      const next = new Set(prev);
+      if (nowMuted) next.add(video.id); else next.delete(video.id);
+      return next;
+    });
+    setMutingId(video.id);
+
+    const ok = await setVideoMuted(video.id, nowMuted, video.metaTags);
+
+    if (!ok) {
+      // Revert on API failure
+      setMutedIds(prev => {
+        const next = new Set(prev);
+        if (nowMuted) next.delete(video.id); else next.add(video.id);
+        return next;
+      });
+    }
+    setMutingId(null);
+  }, [mutedIds, mutingId]);
 
   // ─── Supabase: 7-day view trend + subscriber count ─────────────────────────
 
