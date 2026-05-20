@@ -17,8 +17,11 @@ const SettingsSection  = lazy(() => import('./components/SettingsSection'));
 const LiveSection      = lazy(() => import('./components/LiveSection'));
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { MOCK_SHORTS } from './constants';
-import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film, Shirt, PawPrint, WifiOff, History } from 'lucide-react';
+import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film, Shirt, PawPrint, WifiOff, History, Baby, ThumbsUp } from 'lucide-react';
 import { getVideoRecommendations } from './services/geminiService';
+import { isKidsModeActive, setKidsModeActive, KIDS_SAFE_VIEWS } from './lib/kidsMode';
+import KidsModeModal from './components/KidsModeModal';
+import LikedVideosView from './components/LikedVideosView';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem } from './services/bunnyService';
 import { supabase, normalizePhone } from './lib/supabase';
 import { log, warn } from './lib/logger';
@@ -35,8 +38,8 @@ const ADMIN_PHONES = (import.meta.env.VITE_ADMIN_PHONES || '')
 
 // Icon Map for Dynamic Rendering
 const ICON_MAP: Record<string, any> = {
-  Home, Clapperboard, Smartphone, GraduationCap, Sprout, Heart, Baby: PlayCircle, Globe, Radio: PlayCircle, Clock, UploadCloud, BarChart2,
-  Star, Music, Game: Gamepad2, Food: Utensils, Tech: Cpu, News: BookOpen, Lifestyle: Coffee, Business: Briefcase, Travel: Anchor, Trending: Zap, Movie: Film, Shirt, PawPrint
+  Home, Clapperboard, Smartphone, GraduationCap, Sprout, Heart, Baby, Globe, Radio: PlayCircle, Clock, UploadCloud, BarChart2,
+  Star, Music, Game: Gamepad2, Food: Utensils, Tech: Cpu, News: BookOpen, Lifestyle: Coffee, Business: Briefcase, Travel: Anchor, Trending: Zap, Movie: Film, Shirt, PawPrint, ThumbsUp, WifiOff, History
 };
 
 const INITIAL_NAV_ITEMS: NavItem[] = [
@@ -46,7 +49,7 @@ const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.EDUCATION, label: 'Education', labelKey: 'nav.education', iconName: 'GraduationCap', icon: GraduationCap },
   { id: ViewState.FARMERS, label: 'Farmers', labelKey: 'nav.farmers', iconName: 'Sprout', icon: Sprout },
   { id: ViewState.FAITH, label: 'Faith', labelKey: 'nav.faith', iconName: 'Heart', icon: Heart },
-  { id: ViewState.KIDS, label: 'Kids', labelKey: 'nav.kids', iconName: 'Baby', icon: PlayCircle },
+  { id: ViewState.KIDS, label: 'Kids', labelKey: 'nav.kids', iconName: 'Baby', icon: Baby },
   { id: ViewState.DIASPORA, label: 'Diaspora', labelKey: 'nav.diaspora', iconName: 'Globe', icon: Globe },
   { id: ViewState.FASHION, label: 'Fashion', labelKey: 'nav.fashion', iconName: 'Shirt', icon: Shirt },
   { id: ViewState.WILDLIFE, label: 'Wildlife', labelKey: 'nav.wildlife', iconName: 'PawPrint', icon: PawPrint },
@@ -54,6 +57,7 @@ const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.WATCH_LATER, label: 'Watch List', labelKey: 'nav.watchlist', iconName: 'Clock', icon: Clock },
   { id: ViewState.OFFLINE, label: 'Offline', labelKey: 'nav.offline', iconName: 'WifiOff', icon: WifiOff },
   { id: ViewState.HISTORY, label: 'History', labelKey: 'nav.history', iconName: 'History', icon: History },
+  { id: ViewState.LIKED, label: 'Liked', labelKey: 'nav.liked', iconName: 'ThumbsUp', icon: ThumbsUp },
 ];
 
 const App: React.FC = () => {
@@ -74,6 +78,10 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // --- Kids Mode ---
+  const [isKidsMode, setIsKidsMode] = useState<boolean>(() => isKidsModeActive());
+  const [kidsModalMode, setKidsModalMode] = useState<'activate' | 'deactivate' | null>(null);
 
   // --- REAL AUTH: Supabase session ---
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
@@ -497,6 +505,11 @@ const App: React.FC = () => {
   }, [currentView]);
 
   const handleNavigate = (view: ViewStateOrString) => {
+    // Guard: Kids Mode restricts navigation to safe views
+    if (isKidsMode && typeof view === 'string' && !KIDS_SAFE_VIEWS.has(view)) {
+      setKidsModalMode('deactivate');
+      return;
+    }
     // Guard: Settings and Admin require authentication
     if (view === ViewState.SETTINGS && !isAuthenticated) {
       setShowLogin(true);
@@ -594,6 +607,16 @@ const App: React.FC = () => {
           />
         );
 
+      case ViewState.LIKED:
+        return (
+          <LikedVideosView
+            videos={videos}
+            watchLaterIds={watchLater}
+            onToggleWatchLater={toggleWatchLater}
+            onCreatorClick={name => setCurrentView('creator:' + name)}
+          />
+        );
+
       case ViewState.ANALYTICS:
         if (!isAuthenticated) { setShowLogin(true); return null; }
         return (
@@ -647,6 +670,20 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">
+      {/* Kids Mode Modal */}
+      {kidsModalMode && (
+        <KidsModeModal
+          mode={kidsModalMode}
+          onSuccess={() => {
+            const nowActive = isKidsModeActive();
+            setIsKidsMode(nowActive);
+            setKidsModalMode(null);
+            if (nowActive) setCurrentView(ViewState.KIDS);
+          }}
+          onCancel={() => setKidsModalMode(null)}
+        />
+      )}
+
       {/* Phone + PIN Auth Modal (overlays everything) */}
       {showLogin && !isAuthenticated && (
         <AuthModal
@@ -768,6 +805,16 @@ const App: React.FC = () => {
                 <span>History</span>
               </button>
 
+              {/* Kids Mode toggle */}
+              <button
+                onClick={() => setKidsModalMode(isKidsMode ? 'deactivate' : 'activate')}
+                className={`hidden sm:flex items-center gap-1 text-[10px] font-bold rounded-full px-2.5 py-1 transition-all border ${isKidsMode ? 'bg-violet-600/20 text-violet-300 border-violet-500/50 hover:bg-violet-600/30' : 'text-zinc-500 border-zinc-800 hover:text-violet-400 hover:border-violet-500/30'}`}
+                title={isKidsMode ? 'Exit Kids Mode' : 'Enable Kids Mode'}
+              >
+                <Baby size={10} />
+                <span>{isKidsMode ? 'Kids ON' : 'Kids'}</span>
+              </button>
+
               {/* Language toggle — EN / SW */}
               <button
                 onClick={toggleLanguage}
@@ -827,6 +874,21 @@ const App: React.FC = () => {
             </div>
           </div>
         </header>
+
+        {/* Kids Mode Banner */}
+        {isKidsMode && (
+          <div className="flex items-center justify-between px-4 py-2 bg-violet-950/80 border-b border-violet-800/40">
+            <div className="flex items-center gap-2">
+              <Baby size={14} className="text-violet-300" />
+              <span className="text-violet-200 text-xs font-black tracking-wide">KIDS MODE ON</span>
+              <span className="text-violet-400 text-xs">— Safe content only</span>
+            </div>
+            <button
+              onClick={() => setKidsModalMode('deactivate')}
+              className="text-[10px] font-bold text-violet-400 hover:text-violet-200 border border-violet-700 hover:border-violet-400 rounded-full px-2.5 py-0.5 transition-all"
+            >Exit</button>
+          </div>
+        )}
 
         {/* Scrollable View Content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar">
