@@ -1414,34 +1414,23 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             ); })()}
 
-            {/* 7. Trending Now */}
-            <VideoCarousel
-              title="Trending Now"
-              subtitle="Kenya's most-watched this week"
-              accentColor="from-red-500 to-orange-500"
-              videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 20)}
-              watchLaterIds={watchLater}
-              onToggleWatchLater={toggleWatchLater}
-              isAuthenticated={true}
-            />
-
-            {/* 8. AI Picks */}
+            {/* 7. AI Picks — only shown when Gemini returns actual recommendations */}
             {isRecLoading && watchLater.length > 0 ? (
               <div className="flex items-center gap-3 py-5 px-2">
                 <Loader2 className="w-4 h-4 text-purple-400 animate-spin flex-shrink-0" />
                 <span className="text-zinc-500 text-sm">AI is personalising your feed…</span>
               </div>
-            ) : (
+            ) : recommendedVideos.length > 0 ? (
               <VideoCarousel
                 title="Recommended For You"
-                subtitle={recommendedVideos.length > 0 ? "Curated by AI based on your Watch List" : "Popular picks you might enjoy"}
+                subtitle="Curated by AI based on your Watch List"
                 accentColor="from-purple-500 to-pink-500"
-                videos={recommendedVideos.length > 0 ? recommendedVideos : [...videos].sort((a, b) => b.views - a.views).slice(10, 30)}
+                videos={recommendedVideos}
                 watchLaterIds={watchLater}
                 onToggleWatchLater={toggleWatchLater}
                 isAuthenticated={true}
               />
-            )}
+            ) : null}
 
             {/* 9. Series */}
             <SeriesCarousel
@@ -1503,35 +1492,6 @@ const HomeView: React.FC<HomeViewProps> = ({
             })}
 
           </div>
-
-          {/* Smart recommendations — "Because you watched [Category]" */}
-          {currentView === ViewState.HOME && !searchQuery && (() => {
-            const affinities = getCategoryAffinities();
-            const watchedIds = getWatchedIds();
-            const recCarousels = affinities
-              .map(cat => ({
-                cat,
-                vids: videos.filter(v => v.category === cat && !watchedIds.has(v.id)).slice(0, 12),
-              }))
-              .filter(({ vids }) => vids.length >= 3);
-            if (!recCarousels.length) return null;
-            return (
-              <div className="space-y-2 mt-2">
-                {recCarousels.map(({ cat, vids }) => (
-                  <VideoCarousel
-                    key={`rec-${cat}`}
-                    title={`Because you watched ${cat}`}
-                    subtitle="Recommended based on your history"
-                    accentColor="from-amber-500 to-orange-500"
-                    videos={vids}
-                    watchLaterIds={watchLater}
-                    onToggleWatchLater={toggleWatchLater}
-                    isAuthenticated={isAuthenticated}
-                  />
-                ))}
-              </div>
-            );
-          })()}
 
           {/* Top Creators leaderboard — below carousel feed on HOME */}
           {currentView === ViewState.HOME && !searchQuery && (
