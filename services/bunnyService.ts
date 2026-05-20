@@ -177,12 +177,23 @@ export const getStreamUrl = (videoId: string): string => {
   return `https://${host}/${videoId}/playlist.m3u8`;
 };
 
-/** Constructs the CDN thumbnail URL for a video GUID. */
+/**
+ * Constructs the CDN thumbnail URL for a video GUID.
+ *
+ * NOTE: No cache-buster is appended here on purpose.
+ * Bunny assigns a new `thumbnailFileName` whenever a custom thumbnail is uploaded,
+ * so the URL changes naturally. Adding a ?v= query string would defeat Bunny's
+ * edge cache and force an origin hit on every page load — exactly why thumbnails
+ * were loading slowly.
+ *
+ * Bunny Optimizer params (?width=480&format=webp) are appended so the CDN
+ * downscales and converts to WebP before delivery — ~3–5× smaller than the raw JPEG.
+ * If your pull zone does not have Optimizer enabled, Bunny silently ignores the params.
+ */
 export const getThumbnailUrl = (videoId: string, filename?: string): string => {
   const host = PULL_ZONE ? PULL_ZONE.replace(/\/$/, '') : 'vz-0fe79b1a-8ad.b-cdn.net';
   const name = filename || 'thumbnail.jpg';
-  // Add a cache-busting random string to the end so when we upload a new one, it updates instantly
-  return `https://${host}/${videoId}/${name}?v=${Math.floor(Date.now() / 3600000)}`;
+  return `https://${host}/${videoId}/${name}?width=480&format=webp`;
 };
 
 /**
