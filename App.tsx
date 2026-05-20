@@ -25,6 +25,10 @@ import LikedVideosView from './components/LikedVideosView';
 import NotificationPanel from './components/NotificationPanel';
 import { generateNotifications } from './lib/notifications';
 import NowPlayingBar from './components/NowPlayingBar';
+import QueuePanel from './components/QueuePanel';
+import PWAInstallBanner from './components/PWAInstallBanner';
+import { initPWA } from './lib/pwa';
+import { shiftQueue } from './lib/videoQueue';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem } from './services/bunnyService';
 import { supabase, normalizePhone } from './lib/supabase';
 import { log, warn } from './lib/logger';
@@ -262,6 +266,9 @@ const App: React.FC = () => {
   // ─── Deep-link: ?v=videoId&t=seconds ─────────────────────────────────────
   const [pendingDeepLink, setPendingDeepLink] = useState<{ videoId: string; timestamp: number } | null>(null);
 
+  // Init PWA install prompt capture
+  useEffect(() => { initPWA(); }, []);
+
   // Read URL params once on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -280,6 +287,16 @@ const App: React.FC = () => {
     setCurrentView(ViewState.HOME);
     setPendingDeepLink({ videoId, timestamp });
   }, []);
+
+  // Auto-advance queue: when a video ends, deep-link to the next queued item
+  useEffect(() => {
+    const handler = () => {
+      const next = shiftQueue();
+      if (next) navigateToVideo(next.id);
+    };
+    window.addEventListener('tube-video-ended', handler);
+    return () => window.removeEventListener('tube-video-ended', handler);
+  }, [navigateToVideo]);
 
   // Once videos are loaded, scroll to the linked video and fire a play event
   useEffect(() => {
@@ -683,6 +700,12 @@ const App: React.FC = () => {
     <div className="flex h-screen overflow-hidden bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">
       {/* Now Playing Bar — floats above everything when video scrolls out of view */}
       <NowPlayingBar />
+
+      {/* Queue panel + floating button */}
+      <QueuePanel onPlayVideo={id => navigateToVideo(id)} />
+
+      {/* PWA Install Banner */}
+      <PWAInstallBanner />
 
       {/* Kids Mode Modal */}
       {kidsModalMode && (

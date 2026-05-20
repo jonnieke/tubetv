@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download, ThumbsUp, ThumbsDown, MessageCircle } from 'lucide-react';
+import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download, ThumbsUp, ThumbsDown, MessageCircle, ListVideo } from 'lucide-react';
 import { Video, Caption } from '../types';
 import { generateCaptions } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
@@ -11,6 +11,8 @@ import { recordHistory } from '../lib/watchHistory';
 import { getRating, toggleRating, Rating } from '../lib/videoRatings';
 import { getCommentCount } from '../lib/videoComments';
 import CommentsModal from './CommentsModal';
+import { isInQueue, addToQueue, removeFromQueue as removeFromQueueLib } from '../lib/videoQueue';
+import { recordPlay } from '../lib/pwa';
 import Hls from 'hls.js';
 
 const recordView = async (videoId: string) => {
@@ -74,6 +76,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const [rating, setRating] = useState<Rating>(() => getRating(video.id));
   const [showComments, setShowComments] = useState(false);
   const [commentCount, setCommentCount] = useState(() => getCommentCount(video.id));
+  const [inQueue, setInQueue] = useState(() => isInQueue(video.id));
   // Accumulates seconds played in this session for data tracking
   const watchSecondsRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -648,6 +651,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 setSavedPercent(0);
                 setIsPlaying(false);
                 setIsHoverPlay(false);
+                // Track plays for PWA prompt
+                recordPlay();
+                // Signal queue manager to advance
+                window.dispatchEvent(new CustomEvent('tube-video-ended', { detail: { videoId: video.id } }));
               }}
               onClick={handleVideoClick}
               muted={isHoverPlay && !isPlaying}
@@ -897,6 +904,22 @@ const VideoCard: React.FC<VideoCardProps> = ({
             >
               <MessageCircle size={10} />
               {commentCount > 0 && <span>{commentCount}</span>}
+            </button>
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                if (inQueue) {
+                  removeFromQueueLib(video.id);
+                  setInQueue(false);
+                } else {
+                  addToQueue({ id: video.id, title: video.title, thumbnail: video.thumbnail, author: video.author, duration: video.duration });
+                  setInQueue(true);
+                }
+              }}
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold transition-all ${inQueue ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-zinc-600 hover:text-orange-400 hover:bg-orange-500/10'}`}
+              title={inQueue ? 'Remove from queue' : 'Add to queue'}
+            >
+              <ListVideo size={10} />
             </button>
           </div>
         </div>
