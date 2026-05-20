@@ -190,10 +190,12 @@ export const getStreamUrl = (videoId: string): string => {
  * downscales and converts to WebP before delivery — ~3–5× smaller than the raw JPEG.
  * If your pull zone does not have Optimizer enabled, Bunny silently ignores the params.
  */
+/** Dedicated Optimizer-enabled pull zone for posters/thumbnails. */
+const POSTER_CDN = 'utv-posters.b-cdn.net';
+
 export const getThumbnailUrl = (videoId: string, filename?: string): string => {
-  const host = PULL_ZONE ? PULL_ZONE.replace(/\/$/, '') : 'vz-0fe79b1a-8ad.b-cdn.net';
   const name = filename || 'thumbnail.jpg';
-  return `https://${host}/${videoId}/${name}?width=480&format=webp`;
+  return `https://${POSTER_CDN}/${videoId}/${name}?width=480&format=webp`;
 };
 
 /**
