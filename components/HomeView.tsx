@@ -3,7 +3,10 @@ import {
   Search, Sparkles, Loader2, Play, BookmarkPlus, BookmarkCheck,
   Info, ChevronLeft, ChevronRight, Flame, Star, Clock, Volume2, VolumeX, History,
   X, CheckCircle, Crown, Zap,
+  Sprout, Heart, GraduationCap, Baby, Clapperboard, Globe, Shirt, PawPrint, Radio,
+  type LucideIcon,
 } from 'lucide-react';
+import SearchFilterBar, { DurationFilter, SearchSort, SearchFilters } from './SearchFilterBar';
 import { Video, NavItem, ViewStateOrString, ViewState } from '../types';
 import VideoCard from './VideoCard';
 import VideoCarousel from './VideoCarousel';
@@ -20,6 +23,24 @@ import ContinueWatchingCarousel from './ContinueWatchingCarousel';
 import WatchHistoryView from './WatchHistoryView';
 import { getAllProgress } from '../lib/watchProgress';
 import { getCategoryAffinities, getWatchedIds } from '../lib/watchHistory';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Interest → category mapping (matches OnboardingQuiz interest IDs)
+// ─────────────────────────────────────────────────────────────────────────────
+const INTEREST_TO_CATEGORY: Record<string, string[]> = {
+  kilimo:    ['Farmers'],
+  faith:     ['Faith'],
+  education: ['Education'],
+  comedy:    ['Comedy', 'Entertainment'],
+  drama:     ['Drama', 'Originals', 'Movies', 'Series'],
+  sports:    ['Sports'],
+  music:     ['Music'],
+  kids:      ['Kids'],
+  wildlife:  ['Wildlife'],
+  fashion:   ['Fashion'],
+  business:  ['Business', 'Finance'],
+  news:      ['News'],
+};
 import BandwidthToggle from './BandwidthToggle';
 import type { ShortVideo } from '../types';
 import Hls from 'hls.js';
@@ -48,11 +69,13 @@ interface HomeViewProps {
   toggleWatchLater: (id: string) => void;
   isAuthenticated: boolean;
   isAdmin?: boolean;
+  isPremium?: boolean;
   recommendedVideos: Video[];
   isRecLoading: boolean;
   navItems: NavItem[];
   setCurrentView: (v: ViewStateOrString) => void;
   setShowLogin: (v: boolean) => void;
+  onPremiumClick?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -559,34 +582,49 @@ const WelcomeBanner: React.FC<{ onSignUp: () => void; onSignIn: () => void }> = 
 // Category Quick-Nav — jump straight to any section from the home screen
 // ─────────────────────────────────────────────────────────────────────────────
 
-const QUICK_CATS = [
-  { view: 'FARMERS',  emoji: '🌱', label: 'Kilimo',   sub: 'Farming',   gradient: 'from-green-900/70',  border: 'border-green-800/50',  text: 'text-green-300' },
-  { view: 'FAITH',    emoji: '🙏', label: 'Imani',    sub: 'Faith',     gradient: 'from-amber-900/70',  border: 'border-amber-800/50',  text: 'text-amber-300' },
-  { view: 'EDUCATION',emoji: '📚', label: 'Elimu',    sub: 'Education', gradient: 'from-blue-900/70',   border: 'border-blue-800/50',   text: 'text-blue-300'  },
-  { view: 'KIDS',     emoji: '🧒', label: 'Watoto',   sub: 'Kids',      gradient: 'from-violet-900/70', border: 'border-violet-800/50', text: 'text-violet-300'},
-  { view: 'ORIGINALS',emoji: '🎬', label: 'Filamu',   sub: 'Movies',    gradient: 'from-red-900/70',    border: 'border-red-800/50',    text: 'text-red-300'   },
-  { view: 'DIASPORA', emoji: '✈️', label: 'Diaspora', sub: 'Abroad',    gradient: 'from-teal-900/70',   border: 'border-teal-800/50',   text: 'text-teal-300'  },
-  { view: 'FASHION',  emoji: '👗', label: 'Mitindo',  sub: 'Fashion',   gradient: 'from-pink-900/70',   border: 'border-pink-800/50',   text: 'text-pink-300'  },
-  { view: 'WILDLIFE', emoji: '🦁', label: 'Wanyama',  sub: 'Wildlife',  gradient: 'from-yellow-900/70', border: 'border-yellow-800/50', text: 'text-yellow-300'},
-  { view: 'LIVE',     emoji: '📡', label: 'Moja Kwa Moja', sub: 'Live', gradient: 'from-rose-900/70',  border: 'border-rose-800/50',   text: 'text-rose-300'  },
-] as const;
+interface QuickCat {
+  view: string;
+  icon: LucideIcon;
+  label: string;
+  sub: string;
+  iconBg: string;
+  iconColor: string;
+  border: string;
+  activeBorder: string;
+}
+
+const QUICK_CATS: QuickCat[] = [
+  { view: 'FARMERS',   icon: Sprout,       label: 'Kilimo',        sub: 'Farming',   iconBg: 'bg-green-500/15',  iconColor: 'text-green-400',   border: 'border-zinc-800', activeBorder: 'hover:border-green-700/60'   },
+  { view: 'FAITH',     icon: Heart,        label: 'Imani',         sub: 'Faith',     iconBg: 'bg-amber-500/15',  iconColor: 'text-amber-400',   border: 'border-zinc-800', activeBorder: 'hover:border-amber-700/60'   },
+  { view: 'EDUCATION', icon: GraduationCap,label: 'Elimu',         sub: 'Education', iconBg: 'bg-blue-500/15',   iconColor: 'text-blue-400',    border: 'border-zinc-800', activeBorder: 'hover:border-blue-700/60'    },
+  { view: 'KIDS',      icon: Baby,         label: 'Watoto',        sub: 'Kids',      iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400',  border: 'border-zinc-800', activeBorder: 'hover:border-violet-700/60'  },
+  { view: 'ORIGINALS', icon: Clapperboard, label: 'Filamu',        sub: 'Movies',    iconBg: 'bg-red-500/15',    iconColor: 'text-red-400',     border: 'border-zinc-800', activeBorder: 'hover:border-red-700/60'     },
+  { view: 'DIASPORA',  icon: Globe,        label: 'Diaspora',      sub: 'Abroad',    iconBg: 'bg-teal-500/15',   iconColor: 'text-teal-400',    border: 'border-zinc-800', activeBorder: 'hover:border-teal-700/60'    },
+  { view: 'FASHION',   icon: Shirt,        label: 'Mitindo',       sub: 'Fashion',   iconBg: 'bg-pink-500/15',   iconColor: 'text-pink-400',    border: 'border-zinc-800', activeBorder: 'hover:border-pink-700/60'    },
+  { view: 'WILDLIFE',  icon: PawPrint,     label: 'Wanyama',       sub: 'Wildlife',  iconBg: 'bg-yellow-500/15', iconColor: 'text-yellow-400',  border: 'border-zinc-800', activeBorder: 'hover:border-yellow-700/60'  },
+  { view: 'LIVE',      icon: Radio,        label: 'Live',          sub: 'On air now',iconBg: 'bg-rose-500/15',   iconColor: 'text-rose-400',    border: 'border-zinc-800', activeBorder: 'hover:border-rose-700/60'    },
+];
 
 const CategoryQuickNav: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => (
   <div className="mb-7">
     <div className="flex items-center justify-between mb-3 px-4 md:px-0">
       <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Browse by category</p>
     </div>
-    <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 md:px-0 pb-1">
-      {QUICK_CATS.map(({ view, emoji, label, sub, gradient, border, text }) => (
+    <div className="flex gap-2.5 overflow-x-auto no-scrollbar px-4 md:px-0 pb-1">
+      {QUICK_CATS.map(({ view, icon: Icon, label, sub, iconBg, iconColor, border, activeBorder }) => (
         <button
           key={view}
           onClick={() => onNavigate(view)}
-          className={`flex-shrink-0 flex flex-col items-center justify-center gap-1.5 w-20 h-20 md:w-24 md:h-24 rounded-2xl border bg-gradient-to-b ${gradient} to-zinc-950 ${border} hover:scale-105 hover:border-opacity-80 transition-all duration-200 active:scale-95 group`}
+          className={`group flex-shrink-0 flex flex-col items-center gap-2.5 w-[72px] md:w-[84px] py-3.5 rounded-2xl border bg-zinc-900/70 ${border} ${activeBorder} hover:bg-zinc-800/80 transition-all duration-200 active:scale-95`}
         >
-          <span className="text-2xl group-hover:scale-110 transition-transform duration-200">{emoji}</span>
-          <div className="text-center">
-            <p className={`text-[11px] font-black leading-tight ${text}`}>{label}</p>
-            <p className="text-[9px] text-zinc-500 leading-tight">{sub}</p>
+          {/* Icon container */}
+          <div className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center transition-transform duration-200 group-hover:scale-110`}>
+            <Icon size={17} className={iconColor} strokeWidth={1.75} />
+          </div>
+          {/* Labels */}
+          <div className="text-center px-1">
+            <p className="text-[11px] font-black text-white leading-tight truncate w-full">{label}</p>
+            <p className="text-[9px] text-zinc-500 leading-tight mt-0.5 truncate w-full">{sub}</p>
           </div>
         </button>
       ))}
@@ -726,19 +764,102 @@ const HomeView: React.FC<HomeViewProps> = ({
   toggleWatchLater,
   isAuthenticated,
   isAdmin = false,
+  isPremium = false,
   recommendedVideos,
   isRecLoading,
   navItems,
   setCurrentView,
   setShowLogin,
+  onPremiumClick,
 }) => {
-  // Admin gets full unrestricted access to all content (no premium gate)
-  const hasFullAccess = isAdmin || isAuthenticated;
+  // Admin / subscribers get full unrestricted access to all content
+  const hasFullAccess = isAdmin || isAuthenticated || isPremium;
+
+  // ─── Search secondary filters ──────────────────────────────────────────────
+  const DEFAULT_FILTERS: SearchFilters = { duration: '', sort: 'relevant', category: '' };
+  const [searchFilters, setSearchFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
+
+  // Reset secondary filters whenever the search query changes
+  useEffect(() => { setSearchFilters(DEFAULT_FILTERS); }, [searchQuery]);
+
+  /** Parse a duration string like "5:32" or "1:23:45" → total seconds */
+  const parseDuration = (dur: string): number => {
+    const parts = dur.split(':').map(Number).reverse();
+    return (parts[0] || 0) + (parts[1] || 0) * 60 + (parts[2] || 0) * 3600;
+  };
+
+  /** filteredVideos with secondary search filters + sort applied */
+  const displayVideos = useMemo(() => {
+    if (!searchQuery) return filteredVideos;
+    let result = [...filteredVideos];
+
+    // Duration filter
+    if (searchFilters.duration) {
+      result = result.filter(v => {
+        const secs = parseDuration(v.duration || '');
+        if (searchFilters.duration === 'short')  return secs > 0 && secs < 300;
+        if (searchFilters.duration === 'medium') return secs >= 300 && secs <= 1200;
+        if (searchFilters.duration === 'long')   return secs > 1200;
+        return true;
+      });
+    }
+
+    // Category filter
+    if (searchFilters.category) {
+      result = result.filter(v => v.category === searchFilters.category);
+    }
+
+    // Sort
+    if (searchFilters.sort === 'views') {
+      result = [...result].sort((a, b) => b.views - a.views);
+    } else if (searchFilters.sort === 'newest') {
+      result = [...result].sort((a, b) => {
+        if (a.dateUploaded && b.dateUploaded) return new Date(b.dateUploaded).getTime() - new Date(a.dateUploaded).getTime();
+        return 0;
+      });
+    }
+    // 'relevant' keeps App.tsx order (already relevance-sorted by substring match)
+
+    return result;
+  }, [filteredVideos, searchQuery, searchFilters]);
+
+  /** Unique categories in the current unfiltered search results (for category chips) */
+  const searchCategories = useMemo(() => {
+    if (!searchQuery) return [];
+    const counts: Record<string, number> = {};
+    filteredVideos.forEach(v => { counts[v.category] = (counts[v.category] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([c]) => c);
+  }, [filteredVideos, searchQuery]);
 
   const [heroProgress, setHeroProgress] = useState(0);
   // Hide hero when user has drilled into a sort-mode pill (New Releases / Most Watched)
   const showHero = currentView === ViewState.HOME && !searchQuery &&
     activeSubCategory !== 'New Releases' && activeSubCategory !== 'Most Watched';
+
+  // "For You" — personalized row based on onboarding quiz interests + watch history affinities
+  const forYouVideos = useMemo<Video[]>(() => {
+    // Collect target categories from onboarding quiz
+    const quizInterests: string[] = (() => {
+      try { return JSON.parse(localStorage.getItem('tube_interests') || '[]'); } catch { return []; }
+    })();
+    const quizCats = new Set<string>(
+      quizInterests.flatMap(id => INTEREST_TO_CATEGORY[id] || [])
+    );
+
+    // Merge with top watch-history category affinities
+    getCategoryAffinities().forEach(c => quizCats.add(c));
+
+    if (quizCats.size === 0) return [];
+
+    // Filter videos that match any of the target categories; exclude already-watched
+    const watched = getWatchedIds();
+    const matched = videos
+      .filter(v => quizCats.has(v.category) && !watched.has(v.id))
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 20);
+
+    return matched;
+  }, [videos]);
 
   // Continue Watching — join saved progress records with loaded videos
   const continueWatchingVideos = useMemo<Video[]>(() => {
@@ -908,6 +1029,9 @@ const HomeView: React.FC<HomeViewProps> = ({
                 src={v.thumbnail}
                 alt=""
                 aria-hidden="true"
+                loading={i === 0 ? 'eager' : 'lazy'}
+                decoding="async"
+                fetchPriority={i === 0 ? 'high' : 'low'}
                 className={`absolute inset-0 w-full h-full object-cover ${i === activeIdx ? 'opacity-100' : 'opacity-0'}`}
                 style={{
                   transform: i === activeIdx ? 'scale(1.06)' : 'scale(1)',
@@ -1115,19 +1239,30 @@ const HomeView: React.FC<HomeViewProps> = ({
           </div>
         )}
 
-        {/* Section heading (flat grid mode) — hidden for views with dedicated UI */}
-        {!showCarousels && !showOriginalsSeries && !showOriginalsCarousels &&
+        {/* Search filter bar — only in search mode */}
+        {!isLoadingVideos && searchQuery && (
+          <SearchFilterBar
+            searchQuery={searchQuery}
+            resultCount={displayVideos.length}
+            totalCount={filteredVideos.length}
+            categories={searchCategories}
+            filters={searchFilters}
+            onChange={partial => setSearchFilters(prev => ({ ...prev, ...partial }))}
+            onReset={() => setSearchFilters(DEFAULT_FILTERS)}
+          />
+        )}
+
+        {/* Section heading (flat grid mode) — hidden for views with dedicated UI, and hidden in search mode (bar replaces it) */}
+        {!searchQuery && !showCarousels && !showOriginalsSeries && !showOriginalsCarousels &&
           !(currentView === ViewState.EDUCATION && !searchQuery) &&
           !(currentView === ViewState.FAITH && !searchQuery) && (
           <div className="mb-6 flex items-center gap-2">
             <h2 className="text-xl font-bold text-white">
-              {searchQuery
-                ? `Results for "${searchInput}"`
-                : activeSubCategory !== 'All'
-                  ? activeSubCategory
-                  : currentView === ViewState.HOME
-                    ? 'Trending Now'
-                    : 'Popular Videos'}
+              {activeSubCategory !== 'All'
+                ? activeSubCategory
+                : currentView === ViewState.HOME
+                  ? 'Trending Now'
+                  : 'Popular Videos'}
             </h2>
             {isRealContent ? (
               <span className="text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">LIVE</span>
@@ -1185,8 +1320,10 @@ const HomeView: React.FC<HomeViewProps> = ({
               onToggleWatchLater={toggleWatchLater}
             />
 
-            {/* Premium upsell — shown only to guests between Top 10 and content rows */}
-            {!isAuthenticated && <PremiumStrip onSignUp={() => setShowLogin(true)} />}
+            {/* Premium upsell — shown only to guests / free users */}
+            {!hasFullAccess && (
+              <PremiumStrip onSignUp={onPremiumClick ?? (() => setShowLogin(true))} />
+            )}
 
             {/* 3. Continue Watching */}
             {continueWatchingVideos.length > 0 && (
@@ -1198,6 +1335,19 @@ const HomeView: React.FC<HomeViewProps> = ({
                 watchLaterIds={watchLater}
                 onToggleWatchLater={toggleWatchLater}
                 isAuthenticated={true}
+              />
+            )}
+
+            {/* 3a. For You — personalized by quiz interests + watch history */}
+            {forYouVideos.length >= 3 && (
+              <VideoCarousel
+                title="For You"
+                subtitle="Based on your interests"
+                accentColor="from-rose-500 to-pink-500"
+                videos={forYouVideos}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={hasFullAccess}
               />
             )}
 
@@ -1562,7 +1712,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                 non-special views. Education/Faith handle their own grids above. */}
             {(searchQuery || (currentView !== ViewState.EDUCATION && currentView !== ViewState.FAITH)) && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 animate-in slide-in-from-bottom-4 duration-500">
-              {filteredVideos.map(video => (
+              {displayVideos.map(video => (
                 <div id={`video-${video.id}`} key={video.id}>
                   <VideoCard
                     video={video}
@@ -1615,7 +1765,7 @@ const HomeView: React.FC<HomeViewProps> = ({
         )}
 
         {/* ══ Empty state ══════════════════════════════════════════════════ */}
-        {!isLoadingVideos && filteredVideos.length === 0 && !showCarousels &&
+        {!isLoadingVideos && displayVideos.length === 0 && !showCarousels &&
           !(currentView === ViewState.EDUCATION && !searchQuery) &&
           !(currentView === ViewState.FAITH && !searchQuery) && (
           <div className="flex flex-col items-center justify-center py-24">
@@ -1624,9 +1774,11 @@ const HomeView: React.FC<HomeViewProps> = ({
             </div>
             <h3 className="text-xl font-bold text-white mb-2">No videos found</h3>
             <p className="text-zinc-500 text-sm text-center max-w-xs">
-              {currentView !== ViewState.HOME
-                ? 'No content in this category yet. Check back soon!'
-                : 'Try searching for something else or browse a different category.'}
+              {searchQuery && (searchFilters.duration || searchFilters.category)
+                ? 'No results match your filters. Try adjusting the duration or category.'
+                : currentView !== ViewState.HOME
+                  ? 'No content in this category yet. Check back soon!'
+                  : 'Try searching for something else or browse a different category.'}
             </p>
           </div>
         )}

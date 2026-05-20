@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bell, BellOff, Trash2, CheckCheck, Flame, Video } from 'lucide-react';
+import { Bell, BellOff, Trash2, CheckCheck, Flame, Video, BellRing } from 'lucide-react';
 import {
   TubeNotification,
   getNotifications,
@@ -10,6 +10,7 @@ import {
   clearAll,
   timeAgo,
 } from '../lib/notifications';
+import { requestPushPermission, getPushPermission, isPushSubscribed } from '../lib/pushNotify';
 
 interface Props {
   onNavigateVideo?: (id: string) => void;
@@ -19,6 +20,9 @@ const NotificationPanel: React.FC<Props> = ({ onNavigateVideo }) => {
   const [open, setOpen]               = useState(false);
   const [items, setItems]             = useState<TubeNotification[]>(getNotifications);
   const [unread, setUnread]           = useState<number>(getUnreadCount);
+  const [pushPermission, setPushPermission] = useState<string>(() => getPushPermission());
+  const [pushSubscribed, setPushSubscribed] = useState(() => isPushSubscribed());
+  const [requestingPush, setRequestingPush] = useState(false);
   const panelRef                      = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(() => {
@@ -46,6 +50,15 @@ const NotificationPanel: React.FC<Props> = ({ onNavigateVideo }) => {
   const handleClear = () => {
     clearAll();
     refresh();
+  };
+
+  const handleEnablePush = async () => {
+    if (requestingPush) return;
+    setRequestingPush(true);
+    const result = await requestPushPermission();
+    setPushPermission(result);
+    if (result === 'granted') setPushSubscribed(true);
+    setRequestingPush(false);
   };
 
   const handleClickItem = (n: TubeNotification) => {
@@ -112,6 +125,32 @@ const NotificationPanel: React.FC<Props> = ({ onNavigateVideo }) => {
               )}
             </div>
           </div>
+
+          {/* Push opt-in banner — show if permission not yet granted */}
+          {pushPermission !== 'denied' && !pushSubscribed && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-red-950/40 border-b border-red-900/30">
+              <div className="w-8 h-8 rounded-full bg-red-600/20 flex items-center justify-center flex-shrink-0">
+                <BellRing size={14} className="text-red-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-[11px] font-bold leading-snug">Get push notifications</p>
+                <p className="text-zinc-500 text-[10px]">Know when new content drops</p>
+              </div>
+              <button
+                onClick={handleEnablePush}
+                disabled={requestingPush}
+                className="flex-shrink-0 px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-[11px] font-black rounded-lg transition-all active:scale-95"
+              >
+                {requestingPush ? '...' : 'Enable'}
+              </button>
+            </div>
+          )}
+          {pushSubscribed && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-950/30 border-b border-green-900/20">
+              <BellRing size={12} className="text-green-400" />
+              <span className="text-green-400 text-[11px] font-bold">Push notifications enabled</span>
+            </div>
+          )}
 
           {/* List */}
           <div className="overflow-y-auto flex-1 divide-y divide-zinc-800/50">

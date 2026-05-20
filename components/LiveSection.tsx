@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Radio, Calendar, Bell, CheckCircle2, Loader2 } from 'lucide-react';
+import { Radio, Calendar, Bell, CheckCircle2, Loader2, MessageCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { error as logError } from '../lib/logger';
+import LiveChat from './LiveChat';
 
 const UPCOMING = [
   { id: 1, time: '14:00', title: 'Tech Talk Kenya', user: 'Tech Weez', category: 'Technology' },
@@ -16,6 +17,7 @@ interface LiveSectionProps {
 const LiveSection: React.FC<LiveSectionProps> = ({ isAuthenticated = false }) => {
   const [notified, setNotified] = useState<Set<number>>(new Set());
   const [notifying, setNotifying] = useState<number | null>(null);
+  const [showChat, setShowChat] = useState(false);
 
   const handleNotify = async (id: number) => {
     if (!isAuthenticated) return;
@@ -38,7 +40,9 @@ const LiveSection: React.FC<LiveSectionProps> = ({ isAuthenticated = false }) =>
   };
 
   return (
-    <div className="p-4 md:p-8 pb-24 max-w-3xl mx-auto">
+    <div className="flex h-full overflow-hidden">
+    {/* Main column */}
+    <div className={`flex-1 overflow-y-auto p-4 md:p-8 pb-24 transition-all duration-300 ${showChat ? 'max-w-none' : 'max-w-3xl mx-auto w-full'}`}>
       {/* Coming Soon Banner */}
       <div className="mb-10 rounded-2xl overflow-hidden bg-gradient-to-br from-red-900/40 to-zinc-900 border border-red-500/20 p-8 text-center">
         <div className="flex items-center justify-center gap-3 mb-4">
@@ -110,6 +114,29 @@ const LiveSection: React.FC<LiveSectionProps> = ({ isAuthenticated = false }) =>
           </p>
         )}
       </div>
+
+      {/* Chat toggle button */}
+      <div className="mt-8 flex justify-center">
+        <button
+          onClick={() => setShowChat(v => !v)}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border font-bold text-sm transition-all ${
+            showChat
+              ? 'bg-zinc-800 border-zinc-600 text-white'
+              : 'bg-red-600/20 border-red-500/40 text-red-400 hover:bg-red-600/30'
+          }`}
+        >
+          <MessageCircle size={16} />
+          {showChat ? 'Funga Chat' : 'Fungua Live Chat'}
+        </button>
+      </div>
+    </div>
+
+    {/* Chat panel — slides in from right */}
+    {showChat && (
+      <div className="w-80 flex-shrink-0 border-l border-zinc-800 flex flex-col overflow-hidden">
+        <LiveChat isOpen={showChat} onClose={() => setShowChat(false)} />
+      </div>
+    )}
     </div>
   );
 };

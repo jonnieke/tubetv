@@ -1,6 +1,8 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download, ThumbsUp, ThumbsDown, MessageCircle, ListVideo } from 'lucide-react';
+import React, { useState, useRef, useEffect, memo } from 'react';
+import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download, ThumbsUp, ThumbsDown, MessageCircle, ListVideo, Crown } from 'lucide-react';
+import ShareSheet from './ShareSheet';
+import { canNativeShare, nativeShare, buildShareUrl, buildShareText } from '../lib/share';
 import { Video, Caption } from '../types';
 import { generateCaptions } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
@@ -13,7 +15,18 @@ import { getCommentCount } from '../lib/videoComments';
 import CommentsModal from './CommentsModal';
 import { isInQueue, addToQueue, removeFromQueue as removeFromQueueLib } from '../lib/videoQueue';
 import { recordPlay } from '../lib/pwa';
-import Hls from 'hls.js';
+// HLS type only — runtime class is loaded lazily on first play
+import type HlsType from 'hls.js';
+
+// ─── Lazy HLS loader — fetches the class once, caches in module scope ─────────
+let _HlsClass: typeof HlsType | undefined;
+const loadHls = async (): Promise<typeof HlsType> => {
+  if (!_HlsClass) {
+    const mod = await import('hls.js');
+    _HlsClass = mod.default as typeof HlsType;
+  }
+  return _HlsClass;
+};
 
 const recordView = async (videoId: string) => {
   try {
@@ -73,17 +86,25 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const [isLoadingCaptions, setIsLoadingCaptions] = useState(false);
 
   const [isOffline, setIsOffline] = useState<boolean>(() => isOfflineSaved(video.id));
+  const [isCaching, setIsCaching] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [rating, setRating] = useState<Rating>(() => getRating(video.id));
   const [showComments, setShowComments] = useState(false);
   const [commentCount, setCommentCount] = useState(() => getCommentCount(video.id));
   const [inQueue, setInQueue] = useState(() => isInQueue(video.id));
+  const [showShare, setShowShare] = useState(false);
   // Accumulates seconds played in this session for data tracking
   const watchSecondsRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
+
+  // Apply playback speed whenever it changes
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = playbackSpeed;
+  }, [playbackSpeed, isPlaying]);
+  const hlsRef = useRef<HlsType | null>(null);
   // Stores a pending seek-to timestamp arriving from a deep link before the video is ready
   const seekOnPlayRef = useRef<number>(0);
 
@@ -97,7 +118,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const qualities = ['Auto', '1080p', '720p', '480p'];
 
   // Apply the global quality preference to an HLS instance
-  const applyHlsQuality = (hls: Hls, q: 'hd' | '360p') => {
+  const applyHlsQuality = (hls: HlsType, q: 'hd' | '360p') => {
     if (q === 'hd') {
       hls.currentLevel = -1; // adaptive — let HLS.js pick best
       return;
@@ -120,7 +141,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedQuality]);
 
-  // Initialize HLS
+  // Initialize HLS — HLS.js is loaded lazily on first play (deferred bundle)
   useEffect(() => {
     const shouldPlay = isPlaying || isHoverPlay;
 
@@ -131,13 +152,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
            return;
         }
 
-        if (Hls.isSupported() && videoSrc.endsWith('.m3u8')) {
-            if (hlsRef.current) hlsRef.current.destroy();
-
-            const hls = new Hls();
-            hls.loadSource(videoSrc);
-            hls.attachMedia(videoRef.current);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (videoSrc.endsWith('.m3u8')) {
+          // Load HLS.js lazily — the 161 KB chunk is fetched only on first play
+          loadHls().then(HlsClass => {
+            if (!videoRef.current) return;
+            if (HlsClass.isSupported()) {
+              if (hlsRef.current) hlsRef.current.destroy();
+              const hls = new HlsClass();
+              hls.loadSource(videoSrc);
+              hls.attachMedia(videoRef.current);
+              hls.on(HlsClass.Events.MANIFEST_PARSED, () => {
                 applyHlsQuality(hls, resolvedQuality);
                 if (videoRef.current) {
                   videoRef.current.muted = isHoverPlay && !isPlaying;
@@ -146,10 +170,17 @@ const VideoCard: React.FC<VideoCardProps> = ({
                     setIsHoverPlay(false);
                   });
                 }
-            });
-            hlsRef.current = hls;
+              });
+              hlsRef.current = hls;
+            } else {
+              // HLS natively supported (Safari)
+              videoRef.current.src = videoSrc;
+              videoRef.current.muted = isHoverPlay && !isPlaying;
+              videoRef.current.play().catch(() => { setIsPlaying(false); setIsHoverPlay(false); });
+            }
+          });
         } else {
-             // Native playback for MP4 or if HLS natively supported (Safari)
+             // Native playback for MP4
              if (!videoRef.current.src || videoRef.current.src !== videoSrc) {
                videoRef.current.src = videoSrc;
              }
@@ -162,8 +193,6 @@ const VideoCard: React.FC<VideoCardProps> = ({
     } else {
         if (videoRef.current) {
           videoRef.current.pause();
-          // Clear src to allow re-init on next play if needed
-          // videoRef.current.src = ""; 
         }
     }
 
@@ -304,16 +333,18 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
   };
 
-  const handleShare = (e: React.MouseEvent) => {
+  const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const t = isPlaying && currentTime > 5 ? Math.floor(currentTime) : 0;
-    const url = `${window.location.origin}?v=${video.id}${t > 0 ? `&t=${t}` : ''}`;
-    const shareText = `Tazama "${video.title}" kwenye Tube TV 🇰🇪\n${url}`;
-    if (navigator.share) {
-      navigator.share({ title: video.title, text: shareText, url }).catch(() => {});
-      return;
+    const url = buildShareUrl(video.id, t);
+    const text = buildShareText(video.title, url);
+    // Try the OS native share sheet first (mobile)
+    if (canNativeShare()) {
+      const shared = await nativeShare(video.title, text, url);
+      if (shared) return;
     }
-    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener');
+    // Fall back to our custom share sheet
+    setShowShare(true);
   };
 
   const togglePiP = async (e: React.MouseEvent) => {
@@ -524,7 +555,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
   return (
     <div
       ref={containerRef}
-      className="group relative bg-zinc-900 rounded-xl overflow-hidden transition-all duration-300 hover:scale-[1.04] hover:z-50 shadow-lg hover:shadow-2xl ring-1 ring-white/5 hover:ring-white/10"
+      className="group relative bg-zinc-900 rounded-xl overflow-hidden transition-all duration-300 [@media(hover:hover)]:hover:scale-[1.04] [@media(hover:hover)]:hover:z-50 shadow-lg [@media(hover:hover)]:hover:shadow-2xl ring-1 ring-white/5 [@media(hover:hover)]:hover:ring-white/10 will-change-transform"
+      style={{ contain: 'layout style paint' }}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => {
         setIsHovering(false);
@@ -537,6 +569,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
             <img
               src={video.thumbnail}
               alt={video.title}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-all duration-500 group-hover:scale-105"
             />
 
@@ -594,6 +628,22 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 <div className="bg-black/70 backdrop-blur text-[9px] font-bold px-2 py-0.5 rounded border border-white/10 text-zinc-300">
                   S{video.season ?? 1} E{video.episode}
                 </div>
+              </div>
+            )}
+
+            {/* Premium locked overlay — shown on hover when content is gated */}
+            {isPremiumLocked && isHovering && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/75 backdrop-blur-sm z-10 animate-in fade-in duration-200">
+                <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center mb-0.5">
+                  <Crown size={20} className="text-amber-400" />
+                </div>
+                <p className="text-white text-[11px] font-black tracking-wide uppercase">Premium Content</p>
+                <button
+                  onClick={e => { e.stopPropagation(); onSubscribeRequest?.(); }}
+                  className="mt-1 flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black text-[11px] font-black rounded-full shadow-lg shadow-amber-900/30 transition-all active:scale-95"
+                >
+                  <Sparkles size={10} /> Unlock Premium
+                </button>
               </div>
             )}
 
@@ -713,7 +763,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               {/* Control Buttons */}
               <div className="flex items-center justify-between relative">
                 <div className="flex items-center gap-3">
-                  <button onClick={togglePlay} className="text-white hover:text-red-500 transition-colors">
+                  <button onClick={togglePlay} className="text-white hover:text-red-500 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center -ml-1">
                     {isPlaying && !isBuffering ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
                   </button>
                   
@@ -751,15 +801,31 @@ const VideoCard: React.FC<VideoCardProps> = ({
                       </button>
                    )}
                    <button
-                     onClick={e => {
+                     onClick={async e => {
                        e.stopPropagation();
+                       if (isOffline || isCaching) return;
+                       // Save metadata to localStorage immediately
                        saveOffline({ id: video.id, title: video.title, thumbnail: video.thumbnail, author: video.author, duration: video.duration, category: video.category, savedAt: Date.now() });
                        setIsOffline(true);
+                       // Attempt to cache the actual video file via Service Worker
+                       if (video.url && navigator.serviceWorker?.controller) {
+                         setIsCaching(true);
+                         const onMsg = (ev: MessageEvent) => {
+                           if (ev.data?.videoId === video.id && (ev.data?.type === 'VIDEO_CACHED' || ev.data?.type === 'VIDEO_CACHE_ERROR')) {
+                             setIsCaching(false);
+                             navigator.serviceWorker.removeEventListener('message', onMsg);
+                           }
+                         };
+                         navigator.serviceWorker.addEventListener('message', onMsg);
+                         navigator.serviceWorker.controller.postMessage({ type: 'CACHE_VIDEO', videoUrl: video.url, videoId: video.id });
+                         // Safety timeout: stop spinner after 60s regardless
+                         setTimeout(() => { setIsCaching(false); navigator.serviceWorker.removeEventListener('message', onMsg); }, 60000);
+                       }
                      }}
-                     className={`transition-colors ${isOffline ? 'text-blue-400' : 'text-white hover:text-zinc-300'}`}
-                     title={isOffline ? 'Saved offline' : 'Save for offline'}
+                     className={`transition-colors ${isOffline ? 'text-blue-400' : isCaching ? 'text-amber-400 animate-pulse' : 'text-white hover:text-zinc-300'}`}
+                     title={isOffline ? 'Saved offline' : isCaching ? 'Saving...' : 'Save for offline'}
                    >
-                     {isOffline ? <Check size={18} /> : <Download size={18} />}
+                     {isOffline ? <Check size={18} /> : isCaching ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
                    </button>
 
                    {/* Captions Toggle */}
@@ -788,7 +854,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                      </button>
                      
                      {showSettings && (
-                         <div className="absolute bottom-8 right-0 bg-black/90 border border-zinc-800 rounded-lg p-2 min-w-[120px] shadow-xl animate-in fade-in zoom-in duration-200 z-50">
+                         <div className="absolute bottom-8 right-0 bg-black/90 border border-zinc-800 rounded-lg p-2 min-w-[140px] shadow-xl animate-in fade-in zoom-in duration-200 z-50">
                              <div className="text-xs font-bold text-zinc-400 mb-2 px-2 uppercase tracking-wider">Quality</div>
                              {qualities.map(q => (
                                  <button
@@ -803,6 +869,19 @@ const VideoCard: React.FC<VideoCardProps> = ({
                                      {quality === q && <Check size={12} className="text-red-500" />}
                                  </button>
                              ))}
+                             <div className="border-t border-zinc-800 mt-2 pt-2">
+                               <div className="text-xs font-bold text-zinc-400 mb-2 px-2 uppercase tracking-wider">Speed</div>
+                               {[0.5, 0.75, 1, 1.25, 1.5, 2].map(s => (
+                                 <button
+                                   key={s}
+                                   onClick={e => { e.stopPropagation(); setPlaybackSpeed(s); setShowSettings(false); }}
+                                   className="w-full text-left px-2 py-1.5 text-xs text-white hover:bg-zinc-800 rounded flex items-center justify-between"
+                                 >
+                                   <span>{s === 1 ? 'Normal' : `${s}×`}</span>
+                                   {playbackSpeed === s && <Check size={12} className="text-red-500" />}
+                                 </button>
+                               ))}
+                             </div>
                          </div>
                      )}
                    </div>
@@ -921,9 +1000,27 @@ const VideoCard: React.FC<VideoCardProps> = ({
             >
               <ListVideo size={10} />
             </button>
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-zinc-600 hover:text-sky-400 hover:bg-sky-500/10 transition-all"
+              title="Share"
+            >
+              <Share2 size={10} />
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Share sheet */}
+      {showShare && (
+        <ShareSheet
+          videoId={video.id}
+          title={video.title}
+          thumbnail={video.thumbnail}
+          currentTime={currentTime}
+          onClose={() => setShowShare(false)}
+        />
+      )}
 
       {/* Comments modal — portal-like, rendered outside the card */}
       {showComments && (

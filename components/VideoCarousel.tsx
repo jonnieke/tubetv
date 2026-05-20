@@ -68,6 +68,7 @@ const VideoCarousel: React.FC<VideoCarouselProps> = ({
         <div
           ref={scrollRef}
           className="flex gap-3 overflow-x-auto no-scrollbar scroll-smooth px-4 md:px-0 pb-3"
+          style={{ touchAction: 'pan-x' }}
         >
           {videos.map(video => (
             <div

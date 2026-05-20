@@ -20,7 +20,8 @@ export enum ViewState {
   ADMIN = 'ADMIN',
   OFFLINE = 'OFFLINE',
   HISTORY = 'HISTORY',
-  LIKED = 'LIKED'
+  LIKED = 'LIKED',
+  STUDIO = 'STUDIO'
 }
 
 // Allow ViewState to be treated as string for dynamic categories

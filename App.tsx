@@ -27,8 +27,13 @@ import { generateNotifications } from './lib/notifications';
 import NowPlayingBar from './components/NowPlayingBar';
 import QueuePanel from './components/QueuePanel';
 import PWAInstallBanner from './components/PWAInstallBanner';
+import PremiumModal from './components/PremiumModal';
+import CreatorStudio from './components/CreatorStudio';
+import OnboardingQuiz from './components/OnboardingQuiz';
+import NextEpisodeCountdown from './components/NextEpisodeCountdown';
 import { initPWA } from './lib/pwa';
 import { shiftQueue } from './lib/videoQueue';
+import { isPremiumActive } from './lib/premium';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem } from './services/bunnyService';
 import { supabase, normalizePhone } from './lib/supabase';
 import { log, warn } from './lib/logger';
@@ -90,6 +95,22 @@ const App: React.FC = () => {
   const [isKidsMode, setIsKidsMode] = useState<boolean>(() => isKidsModeActive());
   const [kidsModalMode, setKidsModalMode] = useState<'activate' | 'deactivate' | null>(null);
 
+  // --- Premium ---
+  const [isPremium, setIsPremium] = useState<boolean>(() => isPremiumActive());
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+
+  // --- Onboarding quiz ---
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // --- Series auto-advance ---
+  const [nextEpisodePending, setNextEpisodePending] = useState<Video | null>(null);
+
+  useEffect(() => {
+    const handler = () => setIsPremium(isPremiumActive());
+    window.addEventListener('tube-premium-changed', handler);
+    return () => window.removeEventListener('tube-premium-changed', handler);
+  }, []);
+
   // --- REAL AUTH: Supabase session ---
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -108,6 +129,12 @@ const App: React.FC = () => {
   const enterApp = useCallback(() => {
     try { localStorage.setItem('tube_entered_app', '1'); } catch { }
     setShowLanding(false);
+    // Show onboarding quiz on first visit (not yet onboarded)
+    try {
+      if (!localStorage.getItem('tube_onboarded')) {
+        setShowOnboarding(true);
+      }
+    } catch {}
   }, []);
 
   // Authenticated users skip the landing page automatically
@@ -288,15 +315,33 @@ const App: React.FC = () => {
     setPendingDeepLink({ videoId, timestamp });
   }, []);
 
-  // Auto-advance queue: when a video ends, deep-link to the next queued item
+  // Auto-advance queue OR series: when a video ends, deep-link to next queued item,
+  // or if the video is a series episode, prompt to play the next episode.
   useEffect(() => {
-    const handler = () => {
+    const handler = (e: Event) => {
+      // Queue takes priority
       const next = shiftQueue();
-      if (next) navigateToVideo(next.id);
+      if (next) { navigateToVideo(next.id); return; }
+
+      // Series auto-advance — look up the ended video in our library
+      const { videoId } = (e as CustomEvent<{ videoId: string }>).detail ?? {};
+      if (!videoId) return;
+      const ended = videos.find(v => v.id === videoId);
+      if (!ended?.seriesTitle || !ended?.episode) return;
+
+      // Find the immediate next episode: same series, same season (or season+1), episode+1
+      const nextEp = videos.find(v =>
+        v.seriesTitle === ended.seriesTitle &&
+        (
+          (v.season === ended.season && v.episode === (ended.episode! + 1)) ||
+          (v.season === (ended.season ?? 1) + 1 && v.episode === 1)
+        )
+      );
+      if (nextEp) setNextEpisodePending(nextEp);
     };
     window.addEventListener('tube-video-ended', handler);
     return () => window.removeEventListener('tube-video-ended', handler);
-  }, [navigateToVideo]);
+  }, [navigateToVideo, videos]);
 
   // Once videos are loaded, scroll to the linked video and fire a play event
   useEffect(() => {
@@ -631,7 +676,7 @@ const App: React.FC = () => {
             videos={videos}
             watchLaterIds={watchLater}
             onToggleWatchLater={toggleWatchLater}
-            hasFullAccess={isAdmin || isAuthenticated}
+            hasFullAccess={isAdmin || isAuthenticated || isPremium}
           />
         );
 
@@ -642,6 +687,14 @@ const App: React.FC = () => {
             watchLaterIds={watchLater}
             onToggleWatchLater={toggleWatchLater}
             onCreatorClick={name => setCurrentView('creator:' + name)}
+          />
+        );
+
+      case ViewState.STUDIO:
+        return (
+          <CreatorStudio
+            videos={videos}
+            creatorName={userPhone || 'Creator'}
           />
         );
 
@@ -686,11 +739,13 @@ const App: React.FC = () => {
             toggleWatchLater={toggleWatchLater}
             isAuthenticated={isAuthenticated}
             isAdmin={isAdmin}
+            isPremium={isPremium}
             recommendedVideos={recommendedVideos}
             isRecLoading={isRecLoading}
             navItems={navItems}
             setCurrentView={setCurrentView}
             setShowLogin={setShowLogin}
+            onPremiumClick={() => setShowPremiumModal(true)}
           />
         );
     }
@@ -706,6 +761,30 @@ const App: React.FC = () => {
 
       {/* PWA Install Banner */}
       <PWAInstallBanner />
+
+      {/* Onboarding Quiz — shown after first enterApp() for new visitors */}
+      {showOnboarding && (
+        <OnboardingQuiz
+          onDone={() => setShowOnboarding(false)}
+        />
+      )}
+
+      {/* Series next-episode countdown */}
+      {nextEpisodePending && (
+        <NextEpisodeCountdown
+          nextEpisode={nextEpisodePending}
+          onPlay={() => { navigateToVideo(nextEpisodePending.id); setNextEpisodePending(null); }}
+          onCancel={() => setNextEpisodePending(null)}
+        />
+      )}
+
+      {/* Premium Modal */}
+      {showPremiumModal && (
+        <PremiumModal
+          userPhone={userPhone}
+          onClose={() => setShowPremiumModal(false)}
+        />
+      )}
 
       {/* Kids Mode Modal */}
       {kidsModalMode && (
@@ -932,44 +1011,56 @@ const App: React.FC = () => {
           </Suspense>
         </main>
 
-        {/* Mobile Bottom Nav (Simplified for common tasks) */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 flex justify-around p-3 z-50 pb-safe">
-          <button
-            onClick={() => handleNavigate(ViewState.HOME)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.HOME ? 'text-white' : 'text-zinc-500'}`}
-          >
-            <Home size={20} />
-            <span className="text-[10px]">Home</span>
-          </button>
-          <button
-            onClick={() => handleNavigate(ViewState.SHORTS)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.SHORTS ? 'text-white' : 'text-zinc-500'}`}
-          >
-            <div className="w-5 h-5 border-2 border-current rounded-sm"></div>
-            <span className="text-[10px]">Shorts</span>
-          </button>
-          <button
-            onClick={() => handleNavigate(ViewState.EDUCATION)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.EDUCATION ? 'text-white' : 'text-zinc-500'}`}
-          >
-            <GraduationCap size={20} />
-            <span className="text-[10px]">Learn</span>
-          </button>
-          <button
-            onClick={() => handleNavigate(ViewState.UPLOAD)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.UPLOAD ? 'text-white' : 'text-zinc-500'}`}
-          >
-            <div className="bg-red-600 rounded-full p-1 -mt-4 mb-1">
-              <span className="text-xl font-bold leading-none">+</span>
-            </div>
-          </button>
-          <button
-            onClick={() => handleNavigate(ViewState.ANALYTICS)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.ANALYTICS ? 'text-white' : 'text-zinc-500'}`}
-          >
-            <BarChart2 size={20} />
-            <span className="text-[10px]">Studio</span>
-          </button>
+        {/* Mobile Bottom Nav */}
+        <div
+          className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900/95 backdrop-blur-md border-t border-zinc-800 flex justify-around z-50"
+          style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
+        >
+          {[
+            { view: ViewState.HOME,      Icon: Home,         label: 'Home'   },
+            { view: ViewState.SHORTS,    Icon: null,         label: 'Shorts' },
+            { view: ViewState.EDUCATION, Icon: GraduationCap,label: 'Learn'  },
+            { view: 'upload' as const,   Icon: null,         label: 'Upload' },
+            { view: ViewState.STUDIO,    Icon: BarChart2,    label: 'Studio' },
+          ].map(({ view, Icon, label }) => {
+            const isActive = currentView === view;
+            if (label === 'Upload') {
+              return (
+                <button
+                  key="upload"
+                  onClick={() => handleNavigate(ViewState.UPLOAD)}
+                  className="flex flex-col items-center justify-center pt-2 min-w-[56px] min-h-[48px] active:opacity-70 transition-opacity"
+                >
+                  <div className="bg-red-600 active:bg-red-500 rounded-full w-10 h-10 flex items-center justify-center -mt-5 mb-0.5 shadow-lg shadow-red-900/40 transition-colors">
+                    <span className="text-2xl font-bold text-white leading-none">+</span>
+                  </div>
+                </button>
+              );
+            }
+            if (label === 'Shorts') {
+              return (
+                <button
+                  key="shorts"
+                  onClick={() => handleNavigate(ViewState.SHORTS)}
+                  className={`flex flex-col items-center justify-center gap-1 pt-2 min-w-[56px] min-h-[48px] transition-colors active:opacity-70 ${isActive ? 'text-white' : 'text-zinc-500'}`}
+                >
+                  <div className={`w-5 h-5 border-2 border-current rounded-sm transition-colors`} />
+                  <span className="text-[10px] font-medium">{label}</span>
+                </button>
+              );
+            }
+            return (
+              <button
+                key={String(view)}
+                onClick={() => handleNavigate(view)}
+                className={`flex flex-col items-center justify-center gap-1 pt-2 min-w-[56px] min-h-[48px] transition-colors active:opacity-70 ${isActive ? 'text-white' : 'text-zinc-500'}`}
+              >
+                {Icon && <Icon size={22} />}
+                <span className="text-[10px] font-medium">{label}</span>
+                {isActive && <span className="w-1 h-1 rounded-full bg-red-500 mt-0.5" />}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -9,9 +9,11 @@
 const SHELL_CACHE   = 'tube-tv-shell-v1';
 const STATIC_CACHE  = 'tube-tv-static-v1';
 const IMAGE_CACHE   = 'tube-tv-images-v1';
+const VIDEO_CACHE   = 'tube-tv-videos-v1';
 const MAX_IMAGES    = 40;
+const MAX_VIDEOS    = 20; // max cached video files
 
-const KNOWN_CACHES  = [SHELL_CACHE, STATIC_CACHE, IMAGE_CACHE];
+const KNOWN_CACHES  = [SHELL_CACHE, STATIC_CACHE, IMAGE_CACHE, VIDEO_CACHE];
 
 const OFFLINE_URL = '/offline.html';
 
@@ -159,3 +161,47 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// ─── Video offline caching — triggered by postMessage from VideoCard ──────────
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'CACHE_VIDEO') return;
+  const { videoUrl, videoId } = event.data;
+  if (!videoUrl) return;
+
+  event.waitUntil(
+    (async () => {
+      try {
+        const cache = await caches.open(VIDEO_CACHE);
+
+        // Check if already cached
+        const existing = await cache.match(videoUrl);
+        if (existing) {
+          // Notify page: already cached
+          event.source?.postMessage({ type: 'VIDEO_CACHED', videoId, cached: true });
+          return;
+        }
+
+        // Fetch with no-cors so CDN bytes flow through
+        const response = await fetch(videoUrl, { mode: 'no-cors' });
+        await cache.put(videoUrl, response.clone());
+
+        // Trim to max allowed cached videos (LRU: delete first key)
+        const keys = await cache.keys();
+        if (keys.length > MAX_VIDEOS) {
+          await cache.delete(keys[0]);
+        }
+
+        event.source?.postMessage({ type: 'VIDEO_CACHED', videoId, cached: true });
+      } catch (err) {
+        event.source?.postMessage({ type: 'VIDEO_CACHE_ERROR', videoId, error: String(err) });
+      }
+    })()
+  );
+});
+
+// ─── Serve cached videos for offline playback ─────────────────────────────────
+// (added to the existing fetch handler — handled inline via staleWhileRevalidate)
+// Video files from Bunny CDN are not intercepted by the fetch handler above
+// (they are excluded via the b-cdn.net / bunnycdn.com check).
+// Instead, we use the Cache API directly: VideoCard posts CACHE_VIDEO and on
+// playback, it reads from cache via a blob URL created by the page code.
