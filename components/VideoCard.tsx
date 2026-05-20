@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download, ThumbsUp, ThumbsDown, MessageCircle } from 'lucide-react';
 import { Video, Caption } from '../types';
 import { generateCaptions } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
@@ -9,6 +9,8 @@ import { useResolvedQuality } from '../lib/networkQuality';
 import { recordWatchTime, saveOffline, isOfflineSaved } from '../lib/dataTracker';
 import { recordHistory } from '../lib/watchHistory';
 import { getRating, toggleRating, Rating } from '../lib/videoRatings';
+import { getCommentCount } from '../lib/videoComments';
+import CommentsModal from './CommentsModal';
 import Hls from 'hls.js';
 
 const recordView = async (videoId: string) => {
@@ -70,6 +72,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   const [isOffline, setIsOffline] = useState<boolean>(() => isOfflineSaved(video.id));
   const [rating, setRating] = useState<Rating>(() => getRating(video.id));
+  const [showComments, setShowComments] = useState(false);
+  const [commentCount, setCommentCount] = useState(() => getCommentCount(video.id));
   // Accumulates seconds played in this session for data tracking
   const watchSecondsRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -190,6 +194,39 @@ const VideoCard: React.FC<VideoCardProps> = ({
     };
     window.addEventListener('tube-deep-link', onDeepLink);
     return () => window.removeEventListener('tube-deep-link', onDeepLink);
+  }, [video.id]);
+
+  // Now-Playing Bar: emit tube-now-playing when video scrolls out of viewport while playing
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting && isPlaying) {
+          window.dispatchEvent(new CustomEvent('tube-now-playing', {
+            detail: { videoId: video.id, title: video.title, thumbnail: video.thumbnail, isPlaying: true },
+          }));
+        } else if (entry.isIntersecting) {
+          // Back in viewport — clear the bar
+          window.dispatchEvent(new CustomEvent('tube-now-playing', { detail: null }));
+        }
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isPlaying, video.id, video.title, video.thumbnail]);
+
+  // tube-video-control: play/pause proxy from NowPlayingBar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { videoId, action } = (e as CustomEvent<{ videoId: string; action: 'play' | 'pause' }>).detail;
+      if (videoId !== video.id) return;
+      if (action === 'pause') setIsPlaying(false);
+      else setIsPlaying(true);
+    };
+    window.addEventListener('tube-video-control', handler);
+    return () => window.removeEventListener('tube-video-control', handler);
   }, [video.id]);
 
   // Netflix-style Hover Play logic
@@ -837,7 +874,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
           {quality !== 'Auto' && (
             <span className="text-[10px] bg-red-900/30 text-red-400 px-1.5 py-0.5 rounded-full border border-red-800/30">{quality}</span>
           )}
-          {/* Like / dislike */}
+          {/* Like / dislike / comments */}
           <div className="ml-auto flex items-center gap-1">
             <button
               onClick={e => { e.stopPropagation(); setRating(toggleRating(video.id, 'like')); }}
@@ -853,9 +890,26 @@ const VideoCard: React.FC<VideoCardProps> = ({
             >
               <ThumbsDown size={10} className={rating === 'dislike' ? 'fill-red-400' : ''} />
             </button>
+            <button
+              onClick={e => { e.stopPropagation(); setShowComments(true); }}
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-zinc-600 hover:text-blue-400 hover:bg-blue-500/10 transition-all"
+              title="Comments"
+            >
+              <MessageCircle size={10} />
+              {commentCount > 0 && <span>{commentCount}</span>}
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Comments modal — portal-like, rendered outside the card */}
+      {showComments && (
+        <CommentsModal
+          videoId={video.id}
+          videoTitle={video.title}
+          onClose={() => { setShowComments(false); setCommentCount(getCommentCount(video.id)); }}
+        />
+      )}
     </div>
   );
 };

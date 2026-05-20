@@ -24,6 +24,7 @@ import KidsModeModal from './components/KidsModeModal';
 import LikedVideosView from './components/LikedVideosView';
 import NotificationPanel from './components/NotificationPanel';
 import { generateNotifications } from './lib/notifications';
+import NowPlayingBar from './components/NowPlayingBar';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem } from './services/bunnyService';
 import { supabase, normalizePhone } from './lib/supabase';
 import { log, warn } from './lib/logger';
@@ -680,6 +681,9 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">
+      {/* Now Playing Bar — floats above everything when video scrolls out of view */}
+      <NowPlayingBar />
+
       {/* Kids Mode Modal */}
       {kidsModalMode && (
         <KidsModeModal
