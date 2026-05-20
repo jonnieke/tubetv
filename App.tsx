@@ -274,6 +274,12 @@ const App: React.FC = () => {
     }
   }, []);
 
+  /** Programmatic deep-link: navigate to a video by id (used by notifications, liked-video clicks, etc.) */
+  const navigateToVideo = useCallback((videoId: string, timestamp = 0) => {
+    setCurrentView(ViewState.HOME);
+    setPendingDeepLink({ videoId, timestamp });
+  }, []);
+
   // Once videos are loaded, scroll to the linked video and fire a play event
   useEffect(() => {
     if (!pendingDeepLink || videos.length === 0) return;
@@ -829,12 +835,7 @@ const App: React.FC = () => {
                 <span className={`px-2.5 py-1 transition-colors ${language === 'sw' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>SW</span>
               </button>
 
-              <NotificationPanel
-                onNavigateVideo={id => {
-                  const v = videos.find(x => x.id === id);
-                  if (v) setCurrentView(ViewState.HOME);
-                }}
-              />
+              <NotificationPanel onNavigateVideo={id => navigateToVideo(id)} />
               {isAuthenticated && currentUser ? (
                 <div
                   className="w-8 h-8 rounded-full bg-gradient-to-tr from-red-600 to-orange-500 flex items-center justify-center cursor-pointer shadow-lg"
