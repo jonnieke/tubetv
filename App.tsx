@@ -22,6 +22,8 @@ import { getVideoRecommendations } from './services/geminiService';
 import { isKidsModeActive, setKidsModeActive, KIDS_SAFE_VIEWS } from './lib/kidsMode';
 import KidsModeModal from './components/KidsModeModal';
 import LikedVideosView from './components/LikedVideosView';
+import NotificationPanel from './components/NotificationPanel';
+import { generateNotifications } from './lib/notifications';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem } from './services/bunnyService';
 import { supabase, normalizePhone } from './lib/supabase';
 import { log, warn } from './lib/logger';
@@ -154,6 +156,8 @@ const App: React.FC = () => {
     const mapped = items.map(bunnyVideoToVideo).filter(v => !v.muted) as Video[];
     setVideos(mapped);
     setIsRealContent(true);
+    // Generate notifications after videos load
+    try { generateNotifications(mapped); } catch {}
   }, []);
 
   useEffect(() => {
@@ -825,13 +829,12 @@ const App: React.FC = () => {
                 <span className={`px-2.5 py-1 transition-colors ${language === 'sw' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>SW</span>
               </button>
 
-              <button
-                onClick={() => handleNavigate(ViewState.SETTINGS)}
-                className="relative text-zinc-400 hover:text-white transition-colors"
-                title="Notifications"
-              >
-                <Bell className="w-6 h-6" />
-              </button>
+              <NotificationPanel
+                onNavigateVideo={id => {
+                  const v = videos.find(x => x.id === id);
+                  if (v) setCurrentView(ViewState.HOME);
+                }}
+              />
               {isAuthenticated && currentUser ? (
                 <div
                   className="w-8 h-8 rounded-full bg-gradient-to-tr from-red-600 to-orange-500 flex items-center justify-center cursor-pointer shadow-lg"

@@ -790,7 +790,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
       <div className="p-3.5">
         <div className="flex justify-between items-start gap-2">
           <div className="min-w-0">
-            <h3 className="text-white font-bold text-sm leading-tight line-clamp-2 group-hover:text-red-400 transition-colors">{video.title}</h3>
+            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+            {video.seriesTitle && video.episode && (
+              <span className="inline-flex items-center text-[9px] font-black tracking-wider bg-zinc-800 border border-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded font-mono flex-shrink-0">
+                {video.season ? `S${video.season}·E${video.episode}` : `EP${video.episode}`}
+              </span>
+            )}
+          </div>
+          <h3 className="text-white font-bold text-sm leading-tight line-clamp-2 group-hover:text-red-400 transition-colors">{video.title}</h3>
             {/* Hover description */}
             {video.description && (
               <p className="text-zinc-500 text-[11px] leading-relaxed mt-1 line-clamp-2 hidden group-hover:block transition-all">
