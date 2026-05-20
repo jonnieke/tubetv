@@ -11,7 +11,6 @@ import { Video, NavItem, ViewStateOrString, ViewState } from '../types';
 import VideoCard from './VideoCard';
 import VideoCarousel from './VideoCarousel';
 import SeriesCarousel from './SeriesCarousel';
-import ShortsShelf from './ShortsShelf';
 import CBCStudyMode from './CBCStudyMode';
 import KilimoPanel from './KilimoPanel';
 import ChurchHub from './ChurchHub';
@@ -1227,11 +1226,6 @@ const HomeView: React.FC<HomeViewProps> = ({
           <CategoryQuickNav onNavigate={view => setCurrentView(view as ViewStateOrString)} />
         )}
 
-        {/* Shorts shelf */}
-        {currentView === ViewState.HOME && !searchQuery && (
-          <ShortsShelf shorts={realShorts} onShortClick={() => setCurrentView(ViewState.SHORTS)} />
-        )}
-
         {/* Continue Watching */}
         {currentView === ViewState.HOME && !searchQuery && (
           <div className="px-4 md:px-8">
@@ -1432,17 +1426,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             ) : null}
 
-            {/* 9. Series */}
-            <SeriesCarousel
-              title="Series"
-              videos={videos.filter(v => v.seriesTitle || (v.season && v.episode))}
-              watchLaterIds={watchLater}
-              onToggleWatchLater={toggleWatchLater}
-              isAuthenticated={true}
-              onSubscribeRequest={() => setShowLogin(true)}
-            />
-
-            {/* 10. All other categories — auto-generated from library (top 4 by video count) */}
+            {/* 9. All other categories — auto-generated from library (top 4 by video count) */}
             {dynamicCategories.slice(0, 4).map(cat => {
               const catVids = videos.filter(v => v.category === cat);
               if (catVids.length === 0) return null;
