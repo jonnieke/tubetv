@@ -636,6 +636,8 @@ const App: React.FC = () => {
         </div>
       }>
         <LandingPage
+          videos={videos}
+          isLoadingVideos={isLoadingVideos}
           onEnterApp={enterApp}
           onSignIn={() => { enterApp(); setShowLogin(true); }}
         />
