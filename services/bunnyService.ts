@@ -190,12 +190,39 @@ export const getStreamUrl = (videoId: string): string => {
  * downscales and converts to WebP before delivery — ~3–5× smaller than the raw JPEG.
  * If your pull zone does not have Optimizer enabled, Bunny silently ignores the params.
  */
-/** Dedicated Optimizer-enabled pull zone for posters/thumbnails. */
+/**
+ * Dedicated Optimizer-enabled pull zone for posters/thumbnails.
+ * Its pull zone origin must be set to the stream CDN host in the Bunny dashboard:
+ *   Origin → vz-0fe79b1a-8ad.b-cdn.net
+ * When that is configured, ?width=N&format=webp resizes + converts on the edge.
+ */
 const POSTER_CDN = 'utv-posters.b-cdn.net';
 
-export const getThumbnailUrl = (videoId: string, filename?: string): string => {
+/**
+ * Primary thumbnail URL — served from the Optimizer-enabled poster CDN.
+ * Pass `width` to get the right size for the render context:
+ *   320  → small cards on mobile
+ *   480  → standard card (default)
+ *   1280 → hero / full-bleed background
+ */
+export const getThumbnailUrl = (
+  videoId: string,
+  filename?: string,
+  width = 480,
+): string => {
   const name = filename || 'thumbnail.jpg';
-  return `https://${POSTER_CDN}/${videoId}/${name}?width=480&format=webp`;
+  return `https://${POSTER_CDN}/${videoId}/${name}?width=${width}&format=webp&quality=85`;
+};
+
+/**
+ * Fallback URL served directly from the Bunny Stream CDN.
+ * Used as the onError src when the poster CDN returns a 404
+ * (e.g. pull zone origin not yet configured, or video still encoding).
+ */
+export const getStreamThumbnailUrl = (videoId: string, filename?: string): string => {
+  const host = PULL_ZONE ? PULL_ZONE.replace(/\/$/, '') : 'vz-0fe79b1a-8ad.b-cdn.net';
+  const name = filename || 'thumbnail.jpg';
+  return `https://${host}/${videoId}/${name}`;
 };
 
 /**
@@ -386,6 +413,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     title: cleanTitle || 'Untitled',
     description: getMeta(activeItem.metaTags, 'description'),
     thumbnail: getMeta(activeItem.metaTags, 'thumbnailUrl') || getThumbnailUrl(activeItem.guid, activeItem.thumbnailFileName),
+    thumbnailFallback: getStreamThumbnailUrl(activeItem.guid, activeItem.thumbnailFileName),
     url: getStreamUrl(activeItem.guid),
     duration: formatDuration(activeItem.length),
     views: activeItem.views ?? 0,
