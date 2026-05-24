@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Play, Tv, GraduationCap, Sprout, Heart, Globe, Radio,
-  Smartphone, Clapperboard, ChevronRight, ArrowRight,
-  CheckCircle2, Flame, Lock, Eye, Clock,
+  Play, ChevronRight, ArrowRight,
+  CheckCircle2, Flame, Lock, Eye,
 } from 'lucide-react';
 import { Video } from '../types';
 
@@ -12,19 +11,6 @@ interface LandingPageProps {
   onEnterApp: () => void;
   onSignIn: () => void;
 }
-
-// ── Categories (real nav destinations in the app) ─────────────────────────────
-
-const CATEGORIES = [
-  { icon: Clapperboard, label: 'Originals',  desc: 'Drama, comedy & series made in Kenya',    gradient: 'from-red-600/20 to-orange-600/5',    border: 'border-red-500/20',    iconColor: 'text-red-400'    },
-  { icon: GraduationCap,label: 'Education',  desc: 'CBC, KCSE revision & university content', gradient: 'from-blue-600/20 to-cyan-600/5',     border: 'border-blue-500/20',   iconColor: 'text-blue-400'   },
-  { icon: Sprout,        label: 'Farming',   desc: 'Modern farming & agribusiness tips',      gradient: 'from-green-600/20 to-emerald-600/5', border: 'border-green-500/20',  iconColor: 'text-green-400'  },
-  { icon: Radio,         label: 'Live',      desc: 'Sports, news & events streaming live',    gradient: 'from-purple-600/20 to-pink-600/5',   border: 'border-purple-500/20', iconColor: 'text-purple-400' },
-  { icon: Heart,         label: 'Faith',     desc: 'Sermons, worship & devotional content',   gradient: 'from-amber-600/20 to-yellow-600/5',  border: 'border-amber-500/20',  iconColor: 'text-amber-400'  },
-  { icon: Globe,         label: 'Diaspora',  desc: 'Content for Kenyans living abroad',       gradient: 'from-teal-600/20 to-sky-600/5',      border: 'border-teal-500/20',   iconColor: 'text-teal-400'   },
-  { icon: Smartphone,    label: 'Shorts',    desc: 'Quick clips, comedy & viral moments',     gradient: 'from-rose-600/20 to-pink-600/5',     border: 'border-rose-500/20',   iconColor: 'text-rose-400'   },
-  { icon: Tv,            label: 'Kids',      desc: 'Safe, fun & educational kids content',    gradient: 'from-indigo-600/20 to-violet-600/5', border: 'border-indigo-500/20', iconColor: 'text-indigo-400' },
-];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -130,8 +116,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ videos, isLoadingVideos, onEn
           <span className="text-xl font-black tracking-tight">Tube<span className="text-red-500">TV</span></span>
         </div>
         <div className="hidden md:flex items-center gap-7 text-sm text-zinc-400">
-          <a href="#trending"   className="hover:text-white transition-colors">Trending</a>
-          <a href="#categories" className="hover:text-white transition-colors">Categories</a>
+          <a href="#trending" className="hover:text-white transition-colors">Trending</a>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={onSignIn} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors hidden sm:block px-3 py-1.5">
@@ -291,37 +276,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ videos, isLoadingVideos, onEn
         </div>
       </section>
 
-      {/* ── Categories ─────────────────────────────────────────────────────────── */}
-      <section id="categories" className="py-16 px-6 md:px-12 max-w-7xl mx-auto">
-        <div className="text-center mb-10">
-          <p className="text-red-500 text-xs font-bold uppercase tracking-[0.2em] mb-3">Browse by Category</p>
-          <h2 className="text-3xl md:text-4xl font-black text-white">
-            Everything Kenyan,<br />
-            <span className="text-zinc-500">All In One Place</span>
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.label}
-              onClick={onEnterApp}
-              className={`group relative bg-gradient-to-br ${cat.gradient} border ${cat.border} rounded-2xl p-5 text-left hover:scale-[1.03] hover:shadow-2xl transition-all duration-200 overflow-hidden active:scale-[0.98]`}
-            >
-              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/[0.03] transition-colors rounded-2xl" />
-              <div className="relative">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3 bg-black/20 border border-white/10">
-                  <cat.icon size={18} className={cat.iconColor} />
-                </div>
-                <p className="font-black text-white text-sm leading-tight mb-1">{cat.label}</p>
-                <p className="text-zinc-500 text-xs leading-snug">{cat.desc}</p>
-              </div>
-              <ArrowRight size={12} className="absolute bottom-3.5 right-3.5 text-zinc-600 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-            </button>
-          ))}
-        </div>
-      </section>
-
       {/* ── Final CTA ────────────────────────────────────────────────────────────── */}
       <section className="py-16 px-6 md:px-12 max-w-5xl mx-auto">
         <div className="relative rounded-3xl overflow-hidden text-center py-16 px-8 bg-gradient-to-br from-red-950/40 via-zinc-900 to-zinc-950 border border-red-900/20">
@@ -387,7 +341,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ videos, isLoadingVideos, onEn
             <button onClick={onEnterApp} className="hover:text-zinc-300 transition-colors">Browse</button>
             <button onClick={onSignIn}   className="hover:text-zinc-300 transition-colors">Sign In</button>
             <a href="#trending"          className="hover:text-zinc-300 transition-colors">Trending</a>
-            <a href="#categories"        className="hover:text-zinc-300 transition-colors">Categories</a>
             <a href="mailto:hello@tubekenya.co.ke" className="hover:text-zinc-300 transition-colors">Contact</a>
           </div>
           <p className="text-zinc-700 text-xs">© {new Date().getFullYear()} Tube TV · Made in Kenya</p>
