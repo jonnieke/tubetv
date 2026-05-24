@@ -911,6 +911,14 @@ const HomeView: React.FC<HomeViewProps> = ({
   const scrollToVideo = (id: string) =>
     document.getElementById(`video-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
+  /** Scroll to a video card and immediately start playing it */
+  const playVideo = (id: string) => {
+    scrollToVideo(id);
+    window.dispatchEvent(
+      new CustomEvent('tube-deep-link', { detail: { videoId: id, timestamp: 0 } })
+    );
+  };
+
   const onCreatorClick = (name: string) => setCurrentView(`creator:${name}`);
 
   // ─── Watch history view ──────────────────────────────────────────────────────
@@ -1071,7 +1079,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               {/* CTA buttons */}
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => scrollToVideo(hero.id)}
+                  onClick={() => playVideo(hero.id)}
                   className="flex items-center gap-2.5 bg-white text-black font-bold px-7 md:px-9 py-3 md:py-3.5 rounded text-sm md:text-base hover:bg-zinc-100 transition-all shadow-2xl active:scale-[0.97] flex-shrink-0"
                 >
                   <Play size={20} fill="black" className="flex-shrink-0" /> Play
@@ -1281,7 +1289,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               }
               watchLaterIds={watchLater}
               onToggleWatchLater={toggleWatchLater}
-              onPlay={scrollToVideo}
+              onPlay={playVideo}
             />
 
             {/* ── KENYA'S IDENTITY: the three pillars unique to this platform ── */}
