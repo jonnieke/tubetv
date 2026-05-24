@@ -1,6 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { X, ChevronRight } from 'lucide-react';
+import { onThumbError } from '../lib/thumbnail';
 import { Video } from '../types';
 
 interface Props {
@@ -48,7 +49,7 @@ const NextEpisodeCountdown: React.FC<Props> = ({
       {/* Thumbnail + info */}
       <div className="flex gap-3 px-4 py-3">
         <div className="relative flex-shrink-0 w-24 rounded-lg overflow-hidden bg-zinc-800 aspect-video">
-          <img src={nextEpisode.thumbnail} alt="" className="w-full h-full object-cover" />
+          <img src={nextEpisode.thumbnail} alt="" onError={onThumbError} className="w-full h-full object-cover" />
         </div>
         <div className="flex-1 min-w-0 flex flex-col justify-center">
           {nextEpisode.seriesTitle && (

@@ -89,7 +89,7 @@ const QueuePanel: React.FC<Props> = ({ onPlayVideo }) => {
                       {/* Thumbnail */}
                       <div className="relative w-16 h-11 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
                         {item.thumbnail && (
-                          <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
+                          <img src={item.thumbnail} alt="" onError={e => { e.currentTarget.style.opacity = '0'; }} className="w-full h-full object-cover" />
                         )}
                         <button
                           onClick={() => { onPlayVideo(item.id); setOpen(false); }}

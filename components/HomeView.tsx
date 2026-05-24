@@ -484,6 +484,7 @@ const GenreMoodRow: React.FC<{ videos: Video[]; onNavigate: () => void }> = ({ v
                 <img
                   src={genreVideo.thumbnail}
                   alt={mood.label}
+                  onError={e => { e.currentTarget.style.opacity = '0'; }}
                   className="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-30 transition-opacity"
                 />
               )}

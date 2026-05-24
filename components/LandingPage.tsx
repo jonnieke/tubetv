@@ -3,6 +3,7 @@ import {
   Play, ChevronRight, ArrowRight,
   CheckCircle2, Flame, Lock, Eye,
 } from 'lucide-react';
+import { onThumbError } from '../lib/thumbnail';
 import { Video } from '../types';
 
 interface LandingPageProps {
@@ -33,6 +34,7 @@ const VideoPreviewCard: React.FC<{ video: Video; onClick: () => void }> = ({ vid
         alt={video.title}
         loading="lazy"
         decoding="async"
+        onError={onThumbError}
         className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-300"
       />
       {/* Category badge */}
@@ -148,6 +150,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ videos, isLoadingVideos, onEn
                   alt=""
                   loading="eager"
                   decoding="async"
+                  onError={onThumbError}
                   className="w-full h-full object-cover rounded"
                 />
               ))}

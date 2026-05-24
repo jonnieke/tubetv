@@ -86,7 +86,7 @@ const ShareSheet: React.FC<Props> = ({ videoId, title, thumbnail, currentTime = 
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-3 min-w-0">
             {thumbnail && (
-              <img src={thumbnail} alt="" className="w-10 h-7 rounded-lg object-cover flex-shrink-0 bg-zinc-800" />
+              <img src={thumbnail} alt="" onError={e => { e.currentTarget.style.opacity = '0'; }} className="w-10 h-7 rounded-lg object-cover flex-shrink-0 bg-zinc-800" />
             )}
             <div className="min-w-0">
               <p className="text-white font-black text-sm leading-tight truncate">{title}</p>

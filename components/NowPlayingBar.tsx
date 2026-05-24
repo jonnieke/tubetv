@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Play, Pause, X, ArrowUp } from 'lucide-react';
+import { onThumbError } from '../lib/thumbnail';
 
 export interface NowPlayingInfo {
   videoId: string;
@@ -60,7 +61,7 @@ const NowPlayingBar: React.FC = () => {
         {/* Thumbnail */}
         <div className="relative w-14 h-10 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
           {info.thumbnail ? (
-            <img src={info.thumbnail} alt={info.title} className="w-full h-full object-cover" />
+            <img src={info.thumbnail} alt={info.title} onError={onThumbError} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full bg-zinc-700" />
           )}
