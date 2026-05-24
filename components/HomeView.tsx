@@ -1290,36 +1290,9 @@ const HomeView: React.FC<HomeViewProps> = ({
           <>
           <div className="space-y-2 animate-in fade-in duration-500">
 
-            {/* 1. New This Week — newest uploads from Bunny (API returns orderBy=date) */}
-            <NewThisWeek
-              videos={
-                [...videos]
-                  .sort((a, b) => {
-                    if (a.dateUploaded && b.dateUploaded) {
-                      return new Date(b.dateUploaded).getTime() - new Date(a.dateUploaded).getTime();
-                    }
-                    return 0; // preserve Bunny API order (already newest-first)
-                  })
-                  .slice(0, 4)
-              }
-              watchLaterIds={watchLater}
-              onToggleWatchLater={toggleWatchLater}
-              onPlay={scrollToVideo}
-            />
+            {/* ── RETURNING USERS: resume & personalisation (hidden for new visitors) ── */}
 
-            {/* 2. Top 10 in Kenya */}
-            <Top10Row
-              videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 10)}
-              watchLaterIds={watchLater}
-              onToggleWatchLater={toggleWatchLater}
-            />
-
-            {/* Premium upsell — shown only to guests / free users */}
-            {!hasFullAccess && (
-              <PremiumStrip onSignUp={onPremiumClick ?? (() => setShowLogin(true))} />
-            )}
-
-            {/* 3. Continue Watching */}
+            {/* Continue Watching — first thing a returning user needs */}
             {continueWatchingVideos.length > 0 && (
               <VideoCarousel
                 title="Continue Watching"
@@ -1332,7 +1305,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             )}
 
-            {/* 3a. For You — personalized by quiz interests + watch history */}
+            {/* For You — quiz interests + watch history (only when meaningful) */}
             {forYouVideos.length >= 3 && (
               <VideoCarousel
                 title="For You"
@@ -1345,31 +1318,34 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             )}
 
-            {/* 3b. From Creators You Follow */}
-            {(() => {
-              let subs: Record<string, boolean> = {};
-              try { subs = JSON.parse(localStorage.getItem('tube_creator_subscriptions') || '{}'); } catch {}
-              const followedNames = Object.keys(subs).filter(k => subs[k]);
-              if (!followedNames.length) return null;
-              const followedVideos = videos
-                .filter(v => followedNames.includes(v.author))
-                .sort((a, b) => b.views - a.views)
-                .slice(0, 20);
-              if (followedVideos.length < 3) return null;
-              return (
-                <VideoCarousel
-                  title="From Creators You Follow"
-                  subtitle={`${followedNames.length} creator${followedNames.length !== 1 ? 's' : ''} you follow`}
-                  accentColor="from-violet-500 to-purple-500"
-                  videos={followedVideos}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={hasFullAccess}
-                />
-              );
-            })()}
+            {/* ── SOCIAL PROOF: what Kenya is watching ── */}
 
-            {/* 4. Kilimo — Farmers (high relevance in Kenya, shown early) */}
+            {/* Top 10 in Kenya */}
+            <Top10Row
+              videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 10)}
+              watchLaterIds={watchLater}
+              onToggleWatchLater={toggleWatchLater}
+            />
+
+            {/* New This Week — freshness signal */}
+            <NewThisWeek
+              videos={
+                [...videos]
+                  .sort((a, b) => {
+                    if (a.dateUploaded && b.dateUploaded) {
+                      return new Date(b.dateUploaded).getTime() - new Date(a.dateUploaded).getTime();
+                    }
+                    return 0;
+                  })
+                  .slice(0, 4)
+              }
+              watchLaterIds={watchLater}
+              onToggleWatchLater={toggleWatchLater}
+              onPlay={scrollToVideo}
+            />
+
+            {/* ── KENYA'S IDENTITY: the three pillars unique to this platform ── */}
+
             {(() => { const v = videos.filter(x => x.category === 'Farmers'); return v.length > 0 && (
               <VideoCarousel
                 title="Kilimo"
@@ -1382,7 +1358,6 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             ); })()}
 
-            {/* 5. Imani — Faith (major category in Kenya) */}
             {(() => { const v = videos.filter(x => x.category === 'Faith'); return v.length > 0 && (
               <VideoCarousel
                 title="Imani"
@@ -1395,7 +1370,6 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             ); })()}
 
-            {/* 6. Elimu — Education (CBC, KCSE) */}
             {(() => { const v = videos.filter(x => x.category === 'Education'); return v.length > 0 && (
               <VideoCarousel
                 title="Elimu"
@@ -1408,26 +1382,9 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             ); })()}
 
-            {/* 7. AI Picks — only shown when Gemini returns actual recommendations */}
-            {isRecLoading && watchLater.length > 0 ? (
-              <div className="flex items-center gap-3 py-5 px-2">
-                <Loader2 className="w-4 h-4 text-purple-400 animate-spin flex-shrink-0" />
-                <span className="text-zinc-500 text-sm">AI is personalising your feed…</span>
-              </div>
-            ) : recommendedVideos.length > 0 ? (
-              <VideoCarousel
-                title="Recommended For You"
-                subtitle="Curated by AI based on your Watch List"
-                accentColor="from-purple-500 to-pink-500"
-                videos={recommendedVideos}
-                watchLaterIds={watchLater}
-                onToggleWatchLater={toggleWatchLater}
-                isAuthenticated={true}
-              />
-            ) : null}
+            {/* ── MORE FROM THE LIBRARY: top 2 remaining categories by volume ── */}
 
-            {/* 9. All other categories — auto-generated from library (top 4 by video count) */}
-            {dynamicCategories.slice(0, 4).map(cat => {
+            {dynamicCategories.slice(0, 2).map(cat => {
               const catVids = videos.filter(v => v.category === cat);
               if (catVids.length === 0) return null;
               const { accent, sub } = CAT_META[cat] ?? fallbackMeta(cat);
@@ -1445,35 +1402,28 @@ const HomeView: React.FC<HomeViewProps> = ({
               );
             })}
 
-            {/* ── Genre section divider ── */}
-            {genreCarousels.length > 0 && (
-              <div className="flex items-center gap-4 pt-6 pb-2">
-                <div>
-                  <h2 className="text-lg md:text-xl font-black text-white leading-tight">Browse by Genre</h2>
-                  <p className="text-zinc-500 text-xs mt-0.5">Drama, Action, Comedy & more</p>
-                </div>
-                <div className="flex-1 h-px bg-zinc-800" />
+            {/* AI Picks — only when Gemini has actual results */}
+            {isRecLoading && watchLater.length > 0 ? (
+              <div className="flex items-center gap-3 py-5 px-2">
+                <Loader2 className="w-4 h-4 text-purple-400 animate-spin flex-shrink-0" />
+                <span className="text-zinc-500 text-sm">AI is personalising your feed…</span>
               </div>
-            )}
+            ) : recommendedVideos.length > 0 ? (
+              <VideoCarousel
+                title="Recommended For You"
+                subtitle="Curated by AI based on your Watch List"
+                accentColor="from-purple-500 to-pink-500"
+                videos={recommendedVideos}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={true}
+              />
+            ) : null}
 
-            {/* 11. Genre carousels — curated genres (Drama, Action, Faith, …) capped at 6 */}
-            {genreCarousels.slice(0, 6).map(genre => {
-              const genreVids = videos.filter(v => videoMatchesGenre(v, genre));
-              if (genreVids.length === 0) return null;
-              const { accent, sub } = GENRE_META[genre] ?? fallbackMeta(genre);
-              return (
-                <VideoCarousel
-                  key={`genre-${genre}`}
-                  title={genre}
-                  subtitle={sub}
-                  accentColor={accent}
-                  videos={genreVids}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={hasFullAccess}
-                />
-              );
-            })}
+            {/* ── UPSELL: shown after user has seen the content value ── */}
+            {!hasFullAccess && (
+              <PremiumStrip onSignUp={onPremiumClick ?? (() => setShowLogin(true))} />
+            )}
 
           </div>
 
