@@ -3,7 +3,6 @@ import {
   Search, Sparkles, Loader2, Play, BookmarkPlus, BookmarkCheck,
   Info, ChevronLeft, ChevronRight, Flame, Star, Clock, Volume2, VolumeX, History,
   X, CheckCircle, Crown, Zap,
-  Sprout, Heart, GraduationCap, Baby, Clapperboard, Globe, Shirt, PawPrint, Radio,
   type LucideIcon,
 } from 'lucide-react';
 import SearchFilterBar, { DurationFilter, SearchSort, SearchFilters } from './SearchFilterBar';
@@ -576,60 +575,6 @@ const WelcomeBanner: React.FC<{ onSignUp: () => void; onSignIn: () => void }> = 
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Category Quick-Nav — jump straight to any section from the home screen
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface QuickCat {
-  view: string;
-  icon: LucideIcon;
-  label: string;
-  sub: string;
-  iconBg: string;
-  iconColor: string;
-  border: string;
-  activeBorder: string;
-}
-
-const QUICK_CATS: QuickCat[] = [
-  { view: 'FARMERS',   icon: Sprout,       label: 'Kilimo',        sub: 'Farming',   iconBg: 'bg-green-500/15',  iconColor: 'text-green-400',   border: 'border-zinc-800', activeBorder: 'hover:border-green-700/60'   },
-  { view: 'FAITH',     icon: Heart,        label: 'Imani',         sub: 'Faith',     iconBg: 'bg-amber-500/15',  iconColor: 'text-amber-400',   border: 'border-zinc-800', activeBorder: 'hover:border-amber-700/60'   },
-  { view: 'EDUCATION', icon: GraduationCap,label: 'Elimu',         sub: 'Education', iconBg: 'bg-blue-500/15',   iconColor: 'text-blue-400',    border: 'border-zinc-800', activeBorder: 'hover:border-blue-700/60'    },
-  { view: 'KIDS',      icon: Baby,         label: 'Watoto',        sub: 'Kids',      iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400',  border: 'border-zinc-800', activeBorder: 'hover:border-violet-700/60'  },
-  { view: 'ORIGINALS', icon: Clapperboard, label: 'Filamu',        sub: 'Movies',    iconBg: 'bg-red-500/15',    iconColor: 'text-red-400',     border: 'border-zinc-800', activeBorder: 'hover:border-red-700/60'     },
-  { view: 'DIASPORA',  icon: Globe,        label: 'Diaspora',      sub: 'Abroad',    iconBg: 'bg-teal-500/15',   iconColor: 'text-teal-400',    border: 'border-zinc-800', activeBorder: 'hover:border-teal-700/60'    },
-  { view: 'FASHION',   icon: Shirt,        label: 'Mitindo',       sub: 'Fashion',   iconBg: 'bg-pink-500/15',   iconColor: 'text-pink-400',    border: 'border-zinc-800', activeBorder: 'hover:border-pink-700/60'    },
-  { view: 'WILDLIFE',  icon: PawPrint,     label: 'Wanyama',       sub: 'Wildlife',  iconBg: 'bg-yellow-500/15', iconColor: 'text-yellow-400',  border: 'border-zinc-800', activeBorder: 'hover:border-yellow-700/60'  },
-  { view: 'LIVE',      icon: Radio,        label: 'Live',          sub: 'On air now',iconBg: 'bg-rose-500/15',   iconColor: 'text-rose-400',    border: 'border-zinc-800', activeBorder: 'hover:border-rose-700/60'    },
-];
-
-const CategoryQuickNav: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => (
-  <div className="mb-7">
-    <div className="flex items-center justify-between mb-3 px-4 md:px-0">
-      <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Browse by category</p>
-    </div>
-    <div className="flex gap-2.5 overflow-x-auto no-scrollbar px-4 md:px-0 pb-1">
-      {QUICK_CATS.map(({ view, icon: Icon, label, sub, iconBg, iconColor, border, activeBorder }) => (
-        <button
-          key={view}
-          onClick={() => onNavigate(view)}
-          className={`group flex-shrink-0 flex flex-col items-center gap-2.5 w-[72px] md:w-[84px] py-3.5 rounded-2xl border bg-zinc-900/70 ${border} ${activeBorder} hover:bg-zinc-800/80 transition-all duration-200 active:scale-95`}
-        >
-          {/* Icon container */}
-          <div className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center transition-transform duration-200 group-hover:scale-110`}>
-            <Icon size={17} className={iconColor} strokeWidth={1.75} />
-          </div>
-          {/* Labels */}
-          <div className="text-center px-1">
-            <p className="text-[11px] font-black text-white leading-tight truncate w-full">{label}</p>
-            <p className="text-[9px] text-zinc-500 leading-tight mt-0.5 truncate w-full">{sub}</p>
-          </div>
-        </button>
-      ))}
-    </div>
-  </div>
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Premium upsell strip
@@ -1218,12 +1163,6 @@ const HomeView: React.FC<HomeViewProps> = ({
         {/* ── Welcome banner (unauthenticated, HOME only) ── */}
         {currentView === ViewState.HOME && !isAuthenticated && !searchQuery && (
           <WelcomeBanner onSignUp={() => setShowLogin(true)} onSignIn={() => setShowLogin(true)} />
-        )}
-
-        {/* ── Category quick-nav (HOME only, not in search/sort modes) ── */}
-        {currentView === ViewState.HOME && !searchQuery &&
-          activeSubCategory !== 'New Releases' && activeSubCategory !== 'Most Watched' && (
-          <CategoryQuickNav onNavigate={view => setCurrentView(view as ViewStateOrString)} />
         )}
 
         {/* Continue Watching */}
