@@ -3,7 +3,7 @@ import {
   Play, ChevronRight, ArrowRight,
   CheckCircle2, Flame, Lock, Eye,
 } from 'lucide-react';
-import { makeThumbErrorHandler, onThumbError } from '../lib/thumbnail';
+import { onThumbError } from '../lib/thumbnail';
 import { Video } from '../types';
 
 interface LandingPageProps {
@@ -34,7 +34,7 @@ const VideoPreviewCard: React.FC<{ video: Video; onClick: () => void }> = ({ vid
         alt={video.title}
         loading="lazy"
         decoding="async"
-        onError={makeThumbErrorHandler(video.thumbnailFallback)}
+        onError={onThumbError}
         className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-300"
       />
       {/* Category badge */}

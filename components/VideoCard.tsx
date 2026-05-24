@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, memo } from 'react';
 import { Play, Pause, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Download, ThumbsUp, ThumbsDown, MessageCircle, ListVideo, Crown } from 'lucide-react';
 import ShareSheet from './ShareSheet';
 import { canNativeShare, nativeShare, buildShareUrl, buildShareText } from '../lib/share';
-import { makeThumbErrorHandler } from '../lib/thumbnail';
+import { onThumbError } from '../lib/thumbnail';
 import { Video, Caption } from '../types';
 import { generateCaptions } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
@@ -572,7 +572,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               alt={video.title}
               loading="lazy"
               decoding="async"
-              onError={makeThumbErrorHandler(video.thumbnailFallback)}
+              onError={onThumbError}
               className="w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-all duration-500 group-hover:scale-105"
             />
 

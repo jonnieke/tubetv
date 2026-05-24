@@ -1,7 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import { Eye, Play, ChevronLeft, ChevronRight, Trophy } from 'lucide-react';
 import { Video } from '../types';
-import { makeThumbErrorHandler, onThumbError } from '../lib/thumbnail';
+import { onThumbError } from '../lib/thumbnail';
 
 interface Props {
   videos: Video[];
@@ -37,16 +37,16 @@ const Mosaic: React.FC<{ videos: Video[] }> = ({ videos }) => {
   if (videos.length === 1) return (
     <img
       src={a.thumbnail} alt={a.title}
-      onError={makeThumbErrorHandler(a.thumbnailFallback)}
+      onError={onThumbError}
       className="w-full h-full object-cover"
     />
   );
 
   if (videos.length === 2) return (
     <div className="flex h-full gap-px">
-      <img src={a.thumbnail} alt={a.title} onError={makeThumbErrorHandler(a.thumbnailFallback)}
+      <img src={a.thumbnail} alt={a.title} onError={onThumbError}
         className="w-1/2 h-full object-cover" />
-      <img src={b.thumbnail} alt={b.title} onError={makeThumbErrorHandler(b.thumbnailFallback)}
+      <img src={b.thumbnail} alt={b.title} onError={onThumbError}
         className="w-1/2 h-full object-cover" />
     </div>
   );
@@ -54,12 +54,12 @@ const Mosaic: React.FC<{ videos: Video[] }> = ({ videos }) => {
   // 3+ videos: large left, two stacked right
   return (
     <div className="flex h-full gap-px">
-      <img src={a.thumbnail} alt={a.title} onError={makeThumbErrorHandler(a.thumbnailFallback)}
+      <img src={a.thumbnail} alt={a.title} onError={onThumbError}
         className="w-2/3 h-full object-cover" />
       <div className="w-1/3 flex flex-col gap-px">
-        <img src={b.thumbnail} alt={b.title} onError={makeThumbErrorHandler(b.thumbnailFallback)}
+        <img src={b.thumbnail} alt={b.title} onError={onThumbError}
           className="w-full h-1/2 object-cover" />
-        <img src={c.thumbnail} alt={c.title} onError={makeThumbErrorHandler(c.thumbnailFallback)}
+        <img src={c.thumbnail} alt={c.title} onError={onThumbError}
           className="w-full h-1/2 object-cover" />
       </div>
     </div>

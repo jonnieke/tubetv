@@ -41,8 +41,7 @@ export interface NavItem {
 export interface Video {
   id: string;
   title: string;
-  thumbnail: string;          // Primary URL (Optimizer CDN — WebP, resized)
-  thumbnailFallback?: string; // Stream CDN fallback if primary 404s
+  thumbnail: string;
   views: number;
   duration: string;
   isPremium: boolean;
