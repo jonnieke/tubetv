@@ -109,11 +109,12 @@ const EpisodePlayer: React.FC<{ episode: Video; onEnded: () => void }> = ({ epis
     <div className="relative w-full bg-black aspect-video group/player">
       <video
         ref={videoRef}
-        className="w-full h-full object-contain"
+        className="w-full h-full object-contain cursor-pointer"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={handleTimeUpdate}
         onEnded={onEnded}
+        onClick={togglePlay}
         playsInline
       />
 
