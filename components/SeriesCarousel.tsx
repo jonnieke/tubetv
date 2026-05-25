@@ -9,6 +9,7 @@ interface SeriesCarouselProps {
   watchLaterIds: string[];
   isAuthenticated: boolean;
   onSubscribeRequest?: () => void;
+  onSeriesClick?: (seriesTitle: string) => void;
 }
 
 // ─── Group videos into series ────────────────────────────────────────────────
@@ -96,6 +97,7 @@ interface SeriesCardProps {
   onToggleWatchLater: (id: string) => void;
   isAuthenticated: boolean;
   onSubscribeRequest?: () => void;
+  onSeriesClick?: (seriesTitle: string) => void;
 }
 
 const SeriesCard: React.FC<SeriesCardProps> = ({
@@ -104,6 +106,7 @@ const SeriesCard: React.FC<SeriesCardProps> = ({
   onToggleWatchLater,
   isAuthenticated,
   onSubscribeRequest,
+  onSeriesClick,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [activeSeason, setActiveSeason] = useState<number>(
@@ -127,7 +130,7 @@ const SeriesCard: React.FC<SeriesCardProps> = ({
     <div className="min-w-[300px] md:min-w-[340px] w-[300px] md:w-[340px] flex-shrink-0">
       <div className={`bg-zinc-900 border rounded-2xl overflow-hidden transition-all duration-300 ${expanded ? 'border-red-600/40 shadow-lg shadow-red-900/10' : 'border-zinc-800 hover:border-zinc-600'}`}>
         {/* Poster / Hero */}
-        <div className="relative aspect-video group cursor-pointer" onClick={() => setExpanded(e => !e)}>
+        <div className="relative aspect-video group cursor-pointer" onClick={() => onSeriesClick ? onSeriesClick(sg.seriesTitle) : setExpanded(e => !e)}>
           <img
             src={sg.thumbnail}
             alt={sg.seriesTitle}
@@ -136,17 +139,15 @@ const SeriesCard: React.FC<SeriesCardProps> = ({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
 
-          {/* Play overlay — plays E1 S1 directly */}
-          {firstEp && (
-            <div
-              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={e => { e.stopPropagation(); playEpisode(firstEp.id); }}
-            >
-              <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-full flex items-center justify-center border border-white/30 hover:bg-white/30 hover:scale-110 transition-all">
-                <Play className="w-6 h-6 text-white ml-1" fill="white" />
-              </div>
+          {/* Play overlay — opens series title page */}
+          <div
+            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={e => { e.stopPropagation(); onSeriesClick ? onSeriesClick(sg.seriesTitle) : (firstEp && playEpisode(firstEp.id)); }}
+          >
+            <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-full flex items-center justify-center border border-white/30 hover:bg-white/30 hover:scale-110 transition-all">
+              <Play className="w-6 h-6 text-white ml-1" fill="white" />
             </div>
-          )}
+          </div>
 
           {/* Badges */}
           <div className="absolute top-2.5 left-2.5 flex gap-1.5">
@@ -257,6 +258,7 @@ const SeriesCarousel: React.FC<SeriesCarouselProps> = ({
   watchLaterIds,
   isAuthenticated,
   onSubscribeRequest,
+  onSeriesClick,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -313,6 +315,7 @@ const SeriesCarousel: React.FC<SeriesCarouselProps> = ({
             onToggleWatchLater={onToggleWatchLater}
             isAuthenticated={isAuthenticated}
             onSubscribeRequest={onSubscribeRequest}
+            onSeriesClick={onSeriesClick}
           />
         ))}
       </div>

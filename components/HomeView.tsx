@@ -14,6 +14,7 @@ import CBCStudyMode from './CBCStudyMode';
 import KilimoPanel from './KilimoPanel';
 import ChurchHub from './ChurchHub';
 import CreatorProfile from './CreatorProfile';
+import SeriesTitlePage from './SeriesTitlePage';
 import CreatorLeaderboard from './CreatorLeaderboard';
 import OfflineLibrary from './OfflineLibrary';
 import DataBudgetPanel from './DataBudgetPanel';
@@ -912,6 +913,7 @@ const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const onCreatorClick = (name: string) => setCurrentView(`creator:${name}`);
+  const onSeriesClick  = (title: string) => setCurrentView(`series:${title}`);
 
   // ─── Watch history view ──────────────────────────────────────────────────────
   if (currentView === ViewState.HISTORY) {
@@ -943,6 +945,20 @@ const HomeView: React.FC<HomeViewProps> = ({
           onCreatorClick={onCreatorClick}
         />
       </div>
+    );
+  }
+
+  // ─── Series title page ───────────────────────────────────────────────────────
+  if (typeof currentView === 'string' && currentView.startsWith('series:')) {
+    const title = currentView.slice(7);
+    return (
+      <SeriesTitlePage
+        seriesTitle={title}
+        videos={videos}
+        watchLaterIds={watchLater}
+        onToggleWatchLater={toggleWatchLater}
+        onBack={() => setCurrentView(ViewState.HOME)}
+      />
     );
   }
 
@@ -1071,10 +1087,10 @@ const HomeView: React.FC<HomeViewProps> = ({
               {/* CTA buttons */}
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => playVideo(hero.id)}
+                  onClick={() => hero.seriesTitle ? onSeriesClick(hero.seriesTitle) : playVideo(hero.id)}
                   className="flex items-center gap-2.5 bg-white text-black font-bold px-7 md:px-9 py-3 md:py-3.5 rounded text-sm md:text-base hover:bg-zinc-100 transition-all shadow-2xl active:scale-[0.97] flex-shrink-0"
                 >
-                  <Play size={20} fill="black" className="flex-shrink-0" /> Play
+                  <Play size={20} fill="black" className="flex-shrink-0" /> {hero.seriesTitle ? 'View Series' : 'Play'}
                 </button>
                 <button
                   onClick={() => scrollToVideo(hero.id)}
@@ -1338,6 +1354,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                   onToggleWatchLater={toggleWatchLater}
                   isAuthenticated={hasFullAccess}
                   onSubscribeRequest={onPremiumClick ?? (() => setShowLogin(true))}
+                  onSeriesClick={onSeriesClick}
                 />
               ) : null;
             })()}
@@ -1391,6 +1408,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                   onToggleWatchLater={toggleWatchLater}
                   isAuthenticated={hasFullAccess}
                   onSubscribeRequest={() => setShowLogin(true)}
+                  onSeriesClick={onSeriesClick}
                 />
               );
             })}
@@ -1405,6 +1423,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                   onToggleWatchLater={toggleWatchLater}
                   isAuthenticated={hasFullAccess}
                   onSubscribeRequest={() => setShowLogin(true)}
+                  onSeriesClick={onSeriesClick}
                 />
               ) : null;
             })()}
