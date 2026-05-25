@@ -564,7 +564,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
         setShowSettings(false);
       }}
     >
-      <div className="relative aspect-video bg-black overflow-hidden">
+      <div
+        className="relative aspect-video bg-black overflow-hidden cursor-pointer"
+        onClick={() => window.dispatchEvent(new CustomEvent('tube-open-player', { detail: { videoId: video.id } }))}
+      >
         {!isPlaying && !isHoverPlay && !isBuffering ? (
           <>
             <img
@@ -654,7 +657,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               !isPremiumLocked && isHovering ? 'opacity-100' : 'opacity-0'
             }`}>
                <button
-                 onClick={togglePlay}
+                 onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('tube-open-player', { detail: { videoId: video.id } })); }}
                  className={`bg-white text-black rounded-full p-2.5 hover:scale-110 transition-transform shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}`}
                >
                    <Play fill="black" className="w-5 h-5 ml-0.5" />

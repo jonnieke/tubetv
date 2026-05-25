@@ -15,6 +15,7 @@ import KilimoPanel from './KilimoPanel';
 import ChurchHub from './ChurchHub';
 import CreatorProfile from './CreatorProfile';
 import SeriesTitlePage from './SeriesTitlePage';
+import VideoPlayerPage from './VideoPlayerPage';
 import CreatorLeaderboard from './CreatorLeaderboard';
 import OfflineLibrary from './OfflineLibrary';
 import DataBudgetPanel from './DataBudgetPanel';
@@ -914,6 +915,17 @@ const HomeView: React.FC<HomeViewProps> = ({
 
   const onCreatorClick = (name: string) => setCurrentView(`creator:${name}`);
   const onSeriesClick  = (title: string) => setCurrentView(`series:${title}`);
+  const onVideoOpen    = (id: string)    => setCurrentView(`watch:${id}`);
+
+  // Listen for tube-open-player fired by VideoCard clicks
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { videoId } = (e as CustomEvent<{ videoId: string }>).detail;
+      if (videoId) setCurrentView(`watch:${videoId}`);
+    };
+    window.addEventListener('tube-open-player', handler);
+    return () => window.removeEventListener('tube-open-player', handler);
+  }, [setCurrentView]);
 
   // ─── Watch history view ──────────────────────────────────────────────────────
   if (currentView === ViewState.HISTORY) {
@@ -946,6 +958,25 @@ const HomeView: React.FC<HomeViewProps> = ({
         />
       </div>
     );
+  }
+
+  // ─── Watch page ──────────────────────────────────────────────────────────────
+  if (typeof currentView === 'string' && currentView.startsWith('watch:')) {
+    const videoId = currentView.slice(6);
+    const video = videos.find(v => v.id === videoId);
+    if (video) {
+      return (
+        <VideoPlayerPage
+          video={video}
+          videos={videos}
+          watchLaterIds={watchLater}
+          onToggleWatchLater={toggleWatchLater}
+          onBack={() => setCurrentView(ViewState.HOME)}
+          onVideoClick={onVideoOpen}
+          isAuthenticated={isAuthenticated}
+        />
+      );
+    }
   }
 
   // ─── Series title page ───────────────────────────────────────────────────────
