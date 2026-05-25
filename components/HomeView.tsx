@@ -809,10 +809,11 @@ const HomeView: React.FC<HomeViewProps> = ({
   // Dynamic categories — all unique category values found in the library,
   // sorted by number of videos desc, with elevated cats excluded (they appear above)
   const dynamicCategories = useMemo(() => {
+    const BAD_CATS = new Set(['Uncategorized', 'uncategorized', '', 'undefined', 'null']);
     const counts: Record<string, number> = {};
     videos.forEach(v => { if (v.category) counts[v.category] = (counts[v.category] || 0) + 1; });
     return Object.entries(counts)
-      .filter(([cat]) => !ELEVATED_CATS.has(cat))
+      .filter(([cat]) => !ELEVATED_CATS.has(cat) && !BAD_CATS.has(cat))
       .sort((a, b) => b[1] - a[1])
       .map(([cat]) => cat);
   }, [videos]);
@@ -1308,25 +1309,21 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             ); })()}
 
-            {/* ── MORE FROM THE LIBRARY: top 2 remaining categories by volume ── */}
+            {/* ── SERIES: episodic content grouped by show ── */}
 
-            {dynamicCategories.slice(0, 2).map(cat => {
-              const catVids = videos.filter(v => v.category === cat);
-              if (catVids.length === 0) return null;
-              const { accent, sub } = CAT_META[cat] ?? fallbackMeta(cat);
-              return (
-                <VideoCarousel
-                  key={cat}
-                  title={cat}
-                  subtitle={sub}
-                  accentColor={accent}
-                  videos={catVids}
+            {(() => {
+              const seriesVids = videos.filter(v => v.seriesTitle || (v.season != null && v.episode != null));
+              return seriesVids.length > 0 ? (
+                <SeriesCarousel
+                  title="Series"
+                  videos={seriesVids}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
                   isAuthenticated={hasFullAccess}
+                  onSubscribeRequest={onPremiumClick ?? (() => setShowLogin(true))}
                 />
-              );
-            })}
+              ) : null;
+            })()}
 
             {/* AI Picks — only when Gemini has actual results */}
             {isRecLoading && watchLater.length > 0 ? (
