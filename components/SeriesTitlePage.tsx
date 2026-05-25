@@ -48,16 +48,16 @@ const SeriesTitlePage: React.FC<Props> = ({
   const totalViews = episodes.reduce((s, e) => s + (e.views ?? 0), 0);
 
   const playEpisode = (videoId: string) => {
-    window.dispatchEvent(
-      new CustomEvent('tube-deep-link', { detail: { videoId, timestamp: 0 } })
-    );
-    // Give the event a moment to register, then scroll the card into view
+    // Navigate home first so VideoCards are mounted, then fire playback
+    onBack();
     setTimeout(() => {
-      onBack(); // go back to home so the card is visible
+      window.dispatchEvent(
+        new CustomEvent('tube-deep-link', { detail: { videoId, timestamp: 0 } })
+      );
       setTimeout(() => {
         document.getElementById(`video-${videoId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 300);
-    }, 50);
+      }, 150);
+    }, 300);
   };
 
   if (episodes.length === 0) {
