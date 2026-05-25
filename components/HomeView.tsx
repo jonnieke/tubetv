@@ -185,7 +185,7 @@ const Top10Card: React.FC<{
         {/* Hover overlay */}
         <div className={`absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-2 transition-opacity duration-300 ${hovered ? 'opacity-100' : 'opacity-0'}`}>
           <button
-            onClick={() => document.getElementById(`video-${video.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+            onClick={() => window.dispatchEvent(new CustomEvent('tube-open-player', { detail: { videoId: video.id } }))}
             className="w-10 h-10 bg-white/25 backdrop-blur rounded-full flex items-center justify-center border border-white/30 hover:bg-white/40 transition-colors"
           >
             <Play size={14} className="fill-white text-white ml-0.5" />
@@ -297,7 +297,7 @@ const NewThisWeekCard: React.FC<{
       style={{ aspectRatio: isBig ? '16/7' : '16/9' }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onClick={() => onPlay(video.id)}
+      onClick={() => window.dispatchEvent(new CustomEvent('tube-open-player', { detail: { videoId: video.id } }))}
     >
       {/* Static thumbnail — fades out once video is ready */}
       <img
@@ -902,26 +902,18 @@ const HomeView: React.FC<HomeViewProps> = ({
     !searchQuery &&
     (activeSubCategory === 'All' || activeSubCategory === 'Movies');
 
-  const scrollToVideo = (id: string) =>
-    document.getElementById(`video-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-  /** Scroll to a video card and immediately start playing it */
-  const playVideo = (id: string) => {
-    scrollToVideo(id);
-    window.dispatchEvent(
-      new CustomEvent('tube-deep-link', { detail: { videoId: id, timestamp: 0 } })
-    );
-  };
+  /** Open the dedicated player page for a video */
+  const playVideo = (id: string) => onVideoOpen(id);
 
   const onCreatorClick = (name: string) => setCurrentView(`creator:${name}`);
   const onSeriesClick  = (title: string) => setCurrentView(`series:${title}`);
   const onVideoOpen    = (id: string)    => setCurrentView(`watch:${id}`);
 
-  // Listen for tube-open-player fired by VideoCard clicks
+  // Listen for tube-open-player fired by any video click
   useEffect(() => {
     const handler = (e: Event) => {
-      const { videoId } = (e as CustomEvent<{ videoId: string }>).detail;
-      if (videoId) setCurrentView(`watch:${videoId}`);
+      const { videoId, timestamp } = (e as CustomEvent<{ videoId: string; timestamp?: number }>).detail;
+      if (videoId) setCurrentView(`watch:${videoId}${timestamp ? `@${Math.floor(timestamp)}` : ''}`);
     };
     window.addEventListener('tube-open-player', handler);
     return () => window.removeEventListener('tube-open-player', handler);
@@ -962,12 +954,16 @@ const HomeView: React.FC<HomeViewProps> = ({
 
   // ─── Watch page ──────────────────────────────────────────────────────────────
   if (typeof currentView === 'string' && currentView.startsWith('watch:')) {
-    const videoId = currentView.slice(6);
+    const raw = currentView.slice(6);
+    const atIdx = raw.indexOf('@');
+    const videoId  = atIdx >= 0 ? raw.slice(0, atIdx) : raw;
+    const startAt  = atIdx >= 0 ? parseInt(raw.slice(atIdx + 1)) || 0 : 0;
     const video = videos.find(v => v.id === videoId);
     if (video) {
       return (
         <VideoPlayerPage
           video={video}
+          startAt={startAt}
           videos={videos}
           watchLaterIds={watchLater}
           onToggleWatchLater={toggleWatchLater}

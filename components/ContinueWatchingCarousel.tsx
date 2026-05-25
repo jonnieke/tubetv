@@ -32,14 +32,10 @@ const ContinueWatchingCarousel: React.FC<Props> = ({ videos }) => {
   };
 
   const resume = (videoId: string, position: number) => {
+    // Open the dedicated player page; it will auto-seek to saved position
     window.dispatchEvent(
-      new CustomEvent('tube-deep-link', { detail: { videoId, timestamp: position } })
+      new CustomEvent('tube-open-player', { detail: { videoId, timestamp: position } })
     );
-    // Scroll the matching card into view if it exists in the DOM
-    setTimeout(() => {
-      const el = document.querySelector(`[data-video-id="${videoId}"]`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 100);
   };
 
   const fmtTime = (s: number) => {

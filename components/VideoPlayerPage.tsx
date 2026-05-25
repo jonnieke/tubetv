@@ -7,12 +7,13 @@ import {
 import type HlsType from 'hls.js';
 import { Video } from '../types';
 import { onThumbError } from '../lib/thumbnail';
-import { saveProgress } from '../lib/watchProgress';
+import { saveProgress, getProgress } from '../lib/watchProgress';
 import ShareSheet from './ShareSheet';
 import CommentsModal from './CommentsModal';
 
 interface Props {
   video: Video;
+  startAt?: number;
   videos: Video[];
   watchLaterIds: string[];
   onToggleWatchLater: (id: string) => void;
@@ -37,7 +38,7 @@ const fmtTime = (s: number) => {
 
 // ── HLS Player ────────────────────────────────────────────────────────────────
 
-const Player: React.FC<{ video: Video; onEnded?: () => void }> = ({ video, onEnded }) => {
+const Player: React.FC<{ video: Video; startAt?: number; onEnded?: () => void }> = ({ video, startAt = 0, onEnded }) => {
   const videoRef  = useRef<HTMLVideoElement>(null);
   const hlsRef    = useRef<HlsType | null>(null);
   const [isPlaying,     setIsPlaying]     = useState(false);
@@ -48,6 +49,9 @@ const Player: React.FC<{ video: Video; onEnded?: () => void }> = ({ video, onEnd
   const [duration,      setDuration]      = useState(0);
   const [buffered,      setBuffered]      = useState(0);
   const [isFullscreen,  setIsFullscreen]  = useState(false);
+
+  // Resume position: explicit startAt takes priority, else saved progress
+  const resumeAt = startAt > 0 ? startAt : (getProgress(video.id)?.position ?? 0);
 
   useEffect(() => {
     const vid = videoRef.current;
@@ -60,9 +64,15 @@ const Player: React.FC<{ video: Video; onEnded?: () => void }> = ({ video, onEnd
         hlsRef.current = hls;
         hls.loadSource(video.url!);
         hls.attachMedia(vid);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => { vid.play().catch(() => {}); });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (resumeAt > 0) vid.currentTime = resumeAt;
+          vid.play().catch(() => {});
+        });
       } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
         vid.src = video.url!;
+        vid.addEventListener('loadedmetadata', () => {
+          if (resumeAt > 0) vid.currentTime = resumeAt;
+        }, { once: true });
         vid.play().catch(() => {});
       }
     };
@@ -190,7 +200,7 @@ const Player: React.FC<{ video: Video; onEnded?: () => void }> = ({ video, onEnd
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const VideoPlayerPage: React.FC<Props> = ({
-  video, videos, watchLaterIds, onToggleWatchLater, onBack, onVideoClick, isAuthenticated,
+  video, startAt = 0, videos, watchLaterIds, onToggleWatchLater, onBack, onVideoClick, isAuthenticated,
 }) => {
   const [showShare,    setShowShare]    = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -214,7 +224,7 @@ const VideoPlayerPage: React.FC<Props> = ({
 
       {/* ── Player ── */}
       <div className="w-full bg-black sticky top-0 z-30">
-        <Player video={video} />
+        <Player video={video} startAt={startAt} />
       </div>
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 pt-4 flex flex-col lg:flex-row gap-6">
