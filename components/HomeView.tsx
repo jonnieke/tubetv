@@ -19,7 +19,6 @@ import OfflineLibrary from './OfflineLibrary';
 import DataBudgetPanel from './DataBudgetPanel';
 import ContinueWatchingCarousel from './ContinueWatchingCarousel';
 import WatchHistoryView from './WatchHistoryView';
-import { getAllProgress } from '../lib/watchProgress';
 import { getCategoryAffinities, getWatchedIds } from '../lib/watchHistory';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -806,14 +805,6 @@ const HomeView: React.FC<HomeViewProps> = ({
     return matched;
   }, [videos]);
 
-  // Continue Watching — join saved progress records with loaded videos
-  const continueWatchingVideos = useMemo<Video[]>(() => {
-    const records = getAllProgress(); // sorted newest-first, 5–95%
-    return records
-      .map(r => videos.find(v => v.id === r.videoId))
-      .filter((v): v is Video => !!v)
-      .slice(0, 12);
-  }, [videos]);
 
   // Dynamic categories — all unique category values found in the library,
   // sorted by number of videos desc, with elevated cats excluded (they appear above)
@@ -1239,19 +1230,6 @@ const HomeView: React.FC<HomeViewProps> = ({
           <div className="space-y-2 animate-in fade-in duration-500">
 
             {/* ── RETURNING USERS: resume & personalisation (hidden for new visitors) ── */}
-
-            {/* Continue Watching — first thing a returning user needs */}
-            {continueWatchingVideos.length > 0 && (
-              <VideoCarousel
-                title="Continue Watching"
-                subtitle="Pick up where you left off"
-                accentColor="from-zinc-400 to-zinc-600"
-                videos={continueWatchingVideos}
-                watchLaterIds={watchLater}
-                onToggleWatchLater={toggleWatchLater}
-                isAuthenticated={true}
-              />
-            )}
 
             {/* For You — quiz interests + watch history (only when meaningful) */}
             {forYouVideos.length >= 3 && (
