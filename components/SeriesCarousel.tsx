@@ -114,6 +114,15 @@ const SeriesCard: React.FC<SeriesCardProps> = ({
   const episodes = sg.seasons[activeSeason] || [];
   const firstEp = episodes[0];
 
+  const playEpisode = (videoId: string) => {
+    window.dispatchEvent(
+      new CustomEvent('tube-deep-link', { detail: { videoId, timestamp: 0 } })
+    );
+    setTimeout(() => {
+      document.getElementById(`video-${videoId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+  };
+
   return (
     <div className="min-w-[300px] md:min-w-[340px] w-[300px] md:w-[340px] flex-shrink-0">
       <div className={`bg-zinc-900 border rounded-2xl overflow-hidden transition-all duration-300 ${expanded ? 'border-red-600/40 shadow-lg shadow-red-900/10' : 'border-zinc-800 hover:border-zinc-600'}`}>
@@ -127,12 +136,17 @@ const SeriesCard: React.FC<SeriesCardProps> = ({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
 
-          {/* Play overlay */}
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-full flex items-center justify-center border border-white/30">
-              <Play className="w-6 h-6 text-white ml-1" fill="white" />
+          {/* Play overlay — plays E1 S1 directly */}
+          {firstEp && (
+            <div
+              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={e => { e.stopPropagation(); playEpisode(firstEp.id); }}
+            >
+              <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-full flex items-center justify-center border border-white/30 hover:bg-white/30 hover:scale-110 transition-all">
+                <Play className="w-6 h-6 text-white ml-1" fill="white" />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Badges */}
           <div className="absolute top-2.5 left-2.5 flex gap-1.5">
@@ -192,9 +206,7 @@ const SeriesCard: React.FC<SeriesCardProps> = ({
                 <div
                   key={ep.id}
                   className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-zinc-800/60 transition-colors group/ep cursor-pointer border-b border-zinc-800/40 last:border-0"
-                  onClick={() => {
-                    document.getElementById(`video-${ep.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }}
+                  onClick={() => playEpisode(ep.id)}
                 >
                   {/* Ep number */}
                   <div className="w-7 h-7 bg-zinc-800 group-hover/ep:bg-red-600/20 rounded-lg flex items-center justify-center flex-shrink-0 text-[10px] font-bold text-zinc-400 group-hover/ep:text-red-400 transition-colors border border-zinc-700 group-hover/ep:border-red-600/40">
