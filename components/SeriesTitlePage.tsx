@@ -107,32 +107,37 @@ const EpisodePlayer: React.FC<{ episode: Video; onEnded: () => void }> = ({ epis
 
   return (
     <div className="relative w-full bg-black aspect-video group/player">
+      {/* Video — no onClick here; a dedicated overlay handles it reliably */}
       <video
         ref={videoRef}
-        className="w-full h-full object-contain cursor-pointer"
+        className="w-full h-full object-contain"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={handleTimeUpdate}
         onEnded={onEnded}
-        onClick={togglePlay}
         playsInline
       />
 
-      {/* Controls overlay */}
+      {/* Transparent click-to-pause/resume layer — sits above video, below controls */}
+      <div
+        className="absolute inset-0 cursor-pointer"
+        onClick={togglePlay}
+      />
+
+      {/* Controls overlay — pointer-events-none so clicks fall through to the layer above,
+          individual buttons re-enable pointer-events and stopPropagation */}
       <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover/player:opacity-100 transition-opacity duration-300 pointer-events-none">
 
         {/* Progress bar */}
         <div
           className="w-full px-3 mb-2 cursor-pointer pointer-events-auto"
-          onClick={seek}
+          onClick={e => { e.stopPropagation(); seek(e); }}
         >
           <div className="relative h-1 bg-white/20 rounded-full">
-            {/* Buffered */}
             <div
               className="absolute inset-y-0 left-0 bg-white/30 rounded-full"
               style={{ width: duration ? `${(buffered / duration) * 100}%` : '0%' }}
             />
-            {/* Played */}
             <div
               className="absolute inset-y-0 left-0 bg-red-500 rounded-full"
               style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
@@ -142,35 +147,40 @@ const EpisodePlayer: React.FC<{ episode: Video; onEnded: () => void }> = ({ epis
 
         {/* Buttons row */}
         <div className="flex items-center gap-3 px-3 pb-3 pointer-events-auto">
-          <button onClick={togglePlay} className="text-white hover:text-red-400 transition-colors">
+          <button
+            onClick={e => { e.stopPropagation(); togglePlay(); }}
+            className="text-white hover:text-red-400 transition-colors"
+          >
             {isPlaying
               ? <Pause size={20} className="fill-current" />
               : <Play  size={20} className="fill-current ml-0.5" />
             }
           </button>
-          <button onClick={() => { if (videoRef.current) videoRef.current.muted = !videoRef.current.muted; setIsMuted(m => !m); }}
-            className="text-white hover:text-red-400 transition-colors">
+          <button
+            onClick={e => { e.stopPropagation(); if (videoRef.current) videoRef.current.muted = !videoRef.current.muted; setIsMuted(m => !m); }}
+            className="text-white hover:text-red-400 transition-colors"
+          >
             {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </button>
           <span className="text-white/70 text-xs tabular-nums flex-1">
             {fmtTime(progress)} / {fmtTime(duration)}
           </span>
-          <button onClick={toggleFullscreen} className="text-white hover:text-red-400 transition-colors">
+          <button
+            onClick={e => { e.stopPropagation(); toggleFullscreen(); }}
+            className="text-white hover:text-red-400 transition-colors"
+          >
             <Maximize size={16} />
           </button>
         </div>
       </div>
 
-      {/* Big play button when paused */}
+      {/* Centre play icon when paused — purely visual, click handled by overlay */}
       {!isPlaying && (
-        <button
-          onClick={togglePlay}
-          className="absolute inset-0 flex items-center justify-center pointer-events-auto"
-        >
-          <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-full flex items-center justify-center border border-white/30 hover:bg-white/30 hover:scale-110 transition-all">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-full flex items-center justify-center border border-white/30">
             <Play size={26} fill="white" className="text-white ml-1" />
           </div>
-        </button>
+        </div>
       )}
     </div>
   );
