@@ -1309,6 +1309,23 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             ); })()}
 
+            {/* ── MOVIES ── */}
+
+            {(() => {
+              const movieVids = videos.filter(v => v.category === 'Movies' || v.category === 'Originals');
+              return movieVids.length > 0 ? (
+                <VideoCarousel
+                  title="Movies"
+                  subtitle="Kenyan-made films & dramas"
+                  accentColor="from-red-600 to-orange-500"
+                  videos={movieVids}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                  isAuthenticated={hasFullAccess}
+                />
+              ) : null;
+            })()}
+
             {/* ── SERIES: episodic content grouped by show ── */}
 
             {(() => {
