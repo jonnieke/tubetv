@@ -32,11 +32,13 @@ const fmtTime = (s: number) => {
 const EpisodePlayer: React.FC<{ episode: Video; onEnded: () => void }> = ({ episode, onEnded }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef   = useRef<HlsType | null>(null);
-  const [isPlaying, setIsPlaying]   = useState(false);
-  const [isMuted,   setIsMuted]     = useState(false);
-  const [progress,  setProgress]    = useState(0);
-  const [duration,  setDuration]    = useState(0);
-  const [buffered,  setBuffered]    = useState(0);
+  const [isPlaying,    setIsPlaying]    = useState(false);
+  const [isMuted,      setIsMuted]      = useState(false);
+  const [volume,       setVolume]       = useState(1);
+  const [showVolSlider, setShowVolSlider] = useState(false);
+  const [progress,     setProgress]     = useState(0);
+  const [duration,     setDuration]     = useState(0);
+  const [buffered,     setBuffered]     = useState(0);
 
   // Load HLS stream whenever episode changes
   useEffect(() => {
@@ -98,6 +100,30 @@ const EpisodePlayer: React.FC<{ episode: Video; onEnded: () => void }> = ({ epis
     vid.currentTime = ratio * duration;
   };
 
+  const changeVolume = (v: number) => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    vid.volume = v;
+    vid.muted  = v === 0;
+    setVolume(v);
+    setIsMuted(v === 0);
+  };
+
+  const toggleMute = () => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    if (vid.muted || vid.volume === 0) {
+      const restore = volume > 0 ? volume : 1;
+      vid.muted  = false;
+      vid.volume = restore;
+      setIsMuted(false);
+      setVolume(restore);
+    } else {
+      vid.muted = true;
+      setIsMuted(true);
+    }
+  };
+
   const toggleFullscreen = () => {
     const vid = videoRef.current;
     if (!vid) return;
@@ -156,12 +182,33 @@ const EpisodePlayer: React.FC<{ episode: Video; onEnded: () => void }> = ({ epis
               : <Play  size={20} className="fill-current ml-0.5" />
             }
           </button>
-          <button
-            onClick={e => { e.stopPropagation(); if (videoRef.current) videoRef.current.muted = !videoRef.current.muted; setIsMuted(m => !m); }}
-            className="text-white hover:text-red-400 transition-colors"
+          {/* Volume: mute icon + hover slider */}
+          <div
+            className="flex items-center gap-2 pointer-events-auto"
+            onMouseEnter={() => setShowVolSlider(true)}
+            onMouseLeave={() => setShowVolSlider(false)}
           >
-            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-          </button>
+            <button
+              onClick={e => { e.stopPropagation(); toggleMute(); }}
+              className="text-white hover:text-red-400 transition-colors flex-shrink-0"
+            >
+              {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            </button>
+            <div
+              className={`overflow-hidden transition-all duration-200 ${showVolSlider ? 'w-20 opacity-100' : 'w-0 opacity-0'}`}
+              onClick={e => e.stopPropagation()}
+            >
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.02}
+                value={isMuted ? 0 : volume}
+                onChange={e => changeVolume(parseFloat(e.target.value))}
+                className="w-full h-1 accent-red-500 cursor-pointer"
+              />
+            </div>
+          </div>
           <span className="text-white/70 text-xs tabular-nums flex-1">
             {fmtTime(progress)} / {fmtTime(duration)}
           </span>
