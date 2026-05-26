@@ -22,6 +22,8 @@ import DataBudgetPanel from './DataBudgetPanel';
 import ContinueWatchingCarousel from './ContinueWatchingCarousel';
 import WatchHistoryView from './WatchHistoryView';
 import BridgesOfLoveCarousel from './BridgesOfLoveCarousel';
+import LazySection from './LazySection';
+import LowBandwidthBanner from './LowBandwidthBanner';
 import { getCategoryAffinities, getWatchedIds } from '../lib/watchHistory';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1282,6 +1284,9 @@ const HomeView: React.FC<HomeViewProps> = ({
           <>
           <div className="space-y-2 animate-in fade-in duration-500">
 
+            {/* ── Low-bandwidth auto-notice ── */}
+            <LowBandwidthBanner />
+
             {/* ── RETURNING USERS: resume & personalisation (hidden for new visitors) ── */}
 
             {/* For You — quiz interests + watch history (only when meaningful) */}
@@ -1332,93 +1337,103 @@ const HomeView: React.FC<HomeViewProps> = ({
 
             {/* ── KENYA'S IDENTITY: the three pillars unique to this platform ── */}
 
-            {(() => { const v = videos.filter(x => x.category === 'Farmers'); return v.length > 0 && (
-              <VideoCarousel
-                title="Kilimo"
-                subtitle="Kilimo cha kisasa · Modern farming & agribusiness"
-                accentColor="from-green-500 to-emerald-500"
-                videos={v}
-                watchLaterIds={watchLater}
-                onToggleWatchLater={toggleWatchLater}
-                isAuthenticated={hasFullAccess}
-              />
-            ); })()}
+            <LazySection>
+              {(() => { const v = videos.filter(x => x.category === 'Farmers'); return v.length > 0 && (
+                <VideoCarousel
+                  title="Kilimo"
+                  subtitle="Kilimo cha kisasa · Modern farming & agribusiness"
+                  accentColor="from-green-500 to-emerald-500"
+                  videos={v}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                  isAuthenticated={hasFullAccess}
+                />
+              ); })()}
+            </LazySection>
 
-            {(() => { const v = videos.filter(x => x.category === 'Faith'); return v.length > 0 && (
-              <VideoCarousel
-                title="Imani"
-                subtitle="Mahubiri, ibada na sala · Sermons, worship & devotion"
-                accentColor="from-amber-500 to-yellow-500"
-                videos={v}
-                watchLaterIds={watchLater}
-                onToggleWatchLater={toggleWatchLater}
-                isAuthenticated={hasFullAccess}
-              />
-            ); })()}
+            <LazySection>
+              {(() => { const v = videos.filter(x => x.category === 'Faith'); return v.length > 0 && (
+                <VideoCarousel
+                  title="Imani"
+                  subtitle="Mahubiri, ibada na sala · Sermons, worship & devotion"
+                  accentColor="from-amber-500 to-yellow-500"
+                  videos={v}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                  isAuthenticated={hasFullAccess}
+                />
+              ); })()}
+            </LazySection>
 
-            {(() => { const v = videos.filter(x => x.category === 'Education'); return v.length > 0 && (
-              <VideoCarousel
-                title="Elimu"
-                subtitle="CBC, KCSE na chuo kikuu · Kenyan curriculum"
-                accentColor="from-blue-500 to-cyan-500"
-                videos={v}
-                watchLaterIds={watchLater}
-                onToggleWatchLater={toggleWatchLater}
-                isAuthenticated={hasFullAccess}
-              />
-            ); })()}
+            <LazySection>
+              {(() => { const v = videos.filter(x => x.category === 'Education'); return v.length > 0 && (
+                <VideoCarousel
+                  title="Elimu"
+                  subtitle="CBC, KCSE na chuo kikuu · Kenyan curriculum"
+                  accentColor="from-blue-500 to-cyan-500"
+                  videos={v}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                  isAuthenticated={hasFullAccess}
+                />
+              ); })()}
+            </LazySection>
 
             {/* ── MOVIES ── */}
-
-            {(() => {
-              const movieVids = videos.filter(v => v.category === 'Movies' || v.category === 'Originals');
-              return movieVids.length > 0 ? (
-                <VideoCarousel
-                  title="Movies"
-                  subtitle="Kenyan-made films & dramas"
-                  accentColor="from-red-600 to-orange-500"
-                  videos={movieVids}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={hasFullAccess}
-                />
-              ) : null;
-            })()}
+            <LazySection>
+              {(() => {
+                const movieVids = videos.filter(v => v.category === 'Movies' || v.category === 'Originals');
+                return movieVids.length > 0 ? (
+                  <VideoCarousel
+                    title="Movies"
+                    subtitle="Kenyan-made films & dramas"
+                    accentColor="from-red-600 to-orange-500"
+                    videos={movieVids}
+                    watchLaterIds={watchLater}
+                    onToggleWatchLater={toggleWatchLater}
+                    isAuthenticated={hasFullAccess}
+                  />
+                ) : null;
+              })()}
+            </LazySection>
 
             {/* ── SERIES: episodic content grouped by show ── */}
-
-            {(() => {
-              const seriesVids = videos.filter(v => v.seriesTitle || (v.season != null && v.episode != null));
-              return seriesVids.length > 0 ? (
-                <SeriesCarousel
-                  title="Series"
-                  videos={seriesVids}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={hasFullAccess}
-                  onSubscribeRequest={onPremiumClick ?? (() => setShowLogin(true))}
-                  onSeriesClick={onSeriesClick}
-                />
-              ) : null;
-            })()}
+            <LazySection>
+              {(() => {
+                const seriesVids = videos.filter(v => v.seriesTitle || (v.season != null && v.episode != null));
+                return seriesVids.length > 0 ? (
+                  <SeriesCarousel
+                    title="Series"
+                    videos={seriesVids}
+                    watchLaterIds={watchLater}
+                    onToggleWatchLater={toggleWatchLater}
+                    isAuthenticated={hasFullAccess}
+                    onSubscribeRequest={onPremiumClick ?? (() => setShowLogin(true))}
+                    onSeriesClick={onSeriesClick}
+                  />
+                ) : null;
+              })()}
+            </LazySection>
 
             {/* AI Picks — only when Gemini has actual results */}
-            {isRecLoading && watchLater.length > 0 ? (
-              <div className="flex items-center gap-3 py-5 px-2">
-                <Loader2 className="w-4 h-4 text-purple-400 animate-spin flex-shrink-0" />
-                <span className="text-zinc-500 text-sm">AI is personalising your feed…</span>
-              </div>
-            ) : recommendedVideos.length > 0 ? (
-              <VideoCarousel
-                title="Recommended For You"
-                subtitle="Curated by AI based on your Watch List"
-                accentColor="from-purple-500 to-pink-500"
-                videos={recommendedVideos}
-                watchLaterIds={watchLater}
-                onToggleWatchLater={toggleWatchLater}
-                isAuthenticated={true}
-              />
-            ) : null}
+            <LazySection>
+              {isRecLoading && watchLater.length > 0 ? (
+                <div className="flex items-center gap-3 py-5 px-2">
+                  <Loader2 className="w-4 h-4 text-purple-400 animate-spin flex-shrink-0" />
+                  <span className="text-zinc-500 text-sm">AI is personalising your feed…</span>
+                </div>
+              ) : recommendedVideos.length > 0 ? (
+                <VideoCarousel
+                  title="Recommended For You"
+                  subtitle="Curated by AI based on your Watch List"
+                  accentColor="from-purple-500 to-pink-500"
+                  videos={recommendedVideos}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                  isAuthenticated={true}
+                />
+              ) : null}
+            </LazySection>
 
             {/* ── UPSELL: shown after user has seen the content value ── */}
             {!hasFullAccess && (

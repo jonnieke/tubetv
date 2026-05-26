@@ -197,10 +197,21 @@ export const getStreamUrl = (videoId: string): string => {
  * thumbnail is uploaded, giving automatic invalidation without defeating
  * Bunny's edge cache.
  */
-export const getThumbnailUrl = (videoId: string, filename?: string): string => {
+/**
+ * @param width   Resize to this pixel width (Bunny Optimizer). Default 480.
+ *                Pass 0 to skip resizing (admin preview where full-res matters).
+ */
+export const getThumbnailUrl = (
+  videoId: string,
+  filename?: string,
+  width = 480,
+): string => {
   const host = PULL_ZONE ? PULL_ZONE.replace(/\/$/, '') : 'vz-0fe79b1a-8ad.b-cdn.net';
   const name = filename || 'thumbnail.jpg';
-  return `https://${host}/${videoId}/${name}`;
+  const base = `https://${host}/${videoId}/${name}`;
+  // Bunny Optimizer: WebP + resize. Silently ignored if Optimizer is not enabled
+  // on the pull zone, so safe to add unconditionally.
+  return width > 0 ? `${base}?width=${width}&format=webp&quality=82` : base;
 };
 
 /**

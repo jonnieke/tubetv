@@ -100,7 +100,8 @@ const EditModal = ({
   onClose: () => void;
 }) => {
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
-  const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName);
+  // Edit modal — full-res (width=0) so admins see the actual quality
+  const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName, 0);
 
   const handleThumbUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -722,7 +723,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="flex items-center gap-3">
                         <div className="relative w-20 h-12 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
                           <img
-                            src={o?.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName)}
+                            src={o?.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName, 160)}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform bg-zinc-800"
                             onError={onThumbError}
                           />

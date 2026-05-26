@@ -110,7 +110,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const seekOnPlayRef = useRef<number>(0);
 
   // Global bandwidth preference — updates live via window event
-  const { resolved: resolvedQuality } = useResolvedQuality();
+  const { resolved: resolvedQuality, network } = useResolvedQuality();
+  // Disable muted hover-preview on slow connections to save data
+  const isSlowConnection = resolvedQuality === '360p' || network.saveData ||
+    ['2g', 'slow-2g'].includes(network.effectiveType);
   
   // Use a sample video for demonstration if video.url is missing
   const SAMPLE_VIDEO_URL = "https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4";
@@ -262,13 +265,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
     return () => window.removeEventListener('tube-video-control', handler);
   }, [video.id]);
 
-  // Netflix-style Hover Play logic
+  // Netflix-style Hover Play logic — disabled on slow/metered connections
   useEffect(() => {
-    if (isHovering && !isPlaying) {
+    if (isHovering && !isPlaying && !isSlowConnection) {
       hoverTimerRef.current = setTimeout(() => {
         setIsHoverPlay(true);
-      }, 600); // Delay to avoid accidental plays while scrolling
-    } else if (!isHovering) {
+      }, 600);
+    } else if (!isHovering || isSlowConnection) {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       setIsHoverPlay(false);
     }
@@ -276,7 +279,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     return () => {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     };
-  }, [isHovering, isPlaying]);
+  }, [isHovering, isPlaying, isSlowConnection]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -716,7 +719,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               autoPlay
               loop={isHoverPlay && !isPlaying}
               playsInline
-              preload="auto"
+              preload="none"
               crossOrigin="anonymous"
             />
             
