@@ -21,6 +21,7 @@ import OfflineLibrary from './OfflineLibrary';
 import DataBudgetPanel from './DataBudgetPanel';
 import ContinueWatchingCarousel from './ContinueWatchingCarousel';
 import WatchHistoryView from './WatchHistoryView';
+import BridgesOfLoveCarousel from './BridgesOfLoveCarousel';
 import { getCategoryAffinities, getWatchedIds } from '../lib/watchHistory';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1320,6 +1321,13 @@ const HomeView: React.FC<HomeViewProps> = ({
               watchLaterIds={watchLater}
               onToggleWatchLater={toggleWatchLater}
               onPlay={playVideo}
+            />
+
+            {/* ── BRIDGES OF LOVE: featured series spotlight ── */}
+            <BridgesOfLoveCarousel
+              videos={videos}
+              onSeriesClick={onSeriesClick}
+              onVideoClick={onVideoOpen}
             />
 
             {/* ── KENYA'S IDENTITY: the three pillars unique to this platform ── */}
