@@ -6,6 +6,7 @@ import {
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, getStreamUrl, uploadCustomThumbnail, updateVideoMetadata } from '../services/bunnyService';
 import { sanitizeText } from '../lib/sanitize';
 import { error as logError } from '../lib/logger';
+import { onThumbError, THUMB_PLACEHOLDER } from '../lib/thumbnail';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { NavItem, Video } from '../types';
@@ -98,7 +99,6 @@ const EditModal = ({
   onSave: () => void;
   onClose: () => void;
 }) => {
-  const [thumbError, setThumbError] = useState(false);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
   const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName);
 
@@ -181,13 +181,12 @@ const EditModal = ({
           <div>
             <label className="block text-xs text-zinc-400 mb-2 font-medium">Thumbnail Preview</label>
             <div className="relative aspect-video rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800">
-              {!thumbError ? (
-                <img src={thumbSrc} alt="thumbnail" className="w-full h-full object-cover" onError={() => setThumbError(true)} />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Image className="w-10 h-10 text-zinc-600" />
-                </div>
-              )}
+              <img
+                src={thumbSrc}
+                alt="thumbnail"
+                className="w-full h-full object-cover"
+                onError={onThumbError}
+              />
               {isUploadingThumb && (
                 <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 backdrop-blur-sm">
                   <Loader2 className="w-8 h-8 text-white animate-spin mb-2" />
@@ -713,10 +712,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="relative w-20 h-12 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
-                          <img 
-                            src={o?.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName)} 
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform bg-zinc-800" 
-                            onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+                          <img
+                            src={o?.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName)}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform bg-zinc-800"
+                            onError={onThumbError}
                           />
                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/50 transition-opacity">
                             <Play className="w-4 h-4 text-white" />
