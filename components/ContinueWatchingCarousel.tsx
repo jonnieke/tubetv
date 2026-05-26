@@ -3,6 +3,7 @@ import React, { useRef } from 'react';
 import { Play, ChevronLeft, ChevronRight, History } from 'lucide-react';
 import { getAllProgress, WatchRecord } from '../lib/watchProgress';
 import { Video } from '../types';
+import { onThumbError } from '../lib/thumbnail';
 
 interface Props {
   videos: Video[];
@@ -84,7 +85,7 @@ const ContinueWatchingCarousel: React.FC<Props> = ({ videos }) => {
                 src={video.thumbnail}
                 alt={video.title}
                 className="w-full h-full object-cover opacity-80 group-hover/item:opacity-100 transition-opacity"
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                onError={onThumbError}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
 

@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Download, Trash2, WifiOff, Play, Clock } from 'lucide-react';
 import { getOfflineSaves, removeOffline, OfflineSave } from '../lib/dataTracker';
+import { onThumbError } from '../lib/thumbnail';
 
 interface Props {
   onWatchVideo?: (id: string) => void;
@@ -55,7 +56,7 @@ const OfflineLibrary: React.FC<Props> = ({ onWatchVideo }) => {
                   src={save.thumbnail}
                   alt={save.title}
                   className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity"
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  onError={onThumbError}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
 

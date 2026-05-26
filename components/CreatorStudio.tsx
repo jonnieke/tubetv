@@ -5,6 +5,7 @@ import {
   Loader2, AlertCircle, ChevronDown, ChevronUp, Smartphone,
 } from 'lucide-react';
 import { Video } from '../types';
+import { onThumbError } from '../lib/thumbnail';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -331,7 +332,7 @@ const CreatorStudio: React.FC<Props> = ({ videos, creatorName }) => {
 
                   {/* Thumbnail */}
                   <div className="w-16 h-10 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
-                    <img src={video.thumbnail} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+                    <img src={video.thumbnail} alt="" className="w-full h-full object-cover" onError={onThumbError} />
                   </div>
 
                   {/* Info */}

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { NavItem } from '../types';
 import { BunnyVideoItem, bunnyVideoToVideo, getThumbnailUrl, setVideoMuted } from '../services/bunnyService';
+import { onThumbError } from '../lib/thumbnail';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../contexts/LanguageContext';
 import { error as logError } from '../lib/logger';
@@ -397,7 +398,7 @@ export default function AnalyticsDashboard({
             src={selectedVideo.thumbnail_url}
             alt={selectedVideo.title}
             className="w-32 h-20 object-cover rounded-xl bg-zinc-800"
-            onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+            onError={onThumbError}
           />
           <div>
             <h1 className="text-2xl font-bold text-white">{selectedVideo.title}</h1>
@@ -609,7 +610,7 @@ export default function AnalyticsDashboard({
                 className="flex items-center gap-4 px-6 py-3 hover:bg-zinc-800/50 cursor-pointer border-b border-zinc-800/50 last:border-0 transition-colors"
               >
                 <span className="text-zinc-500 text-sm font-mono w-4">{i + 1}</span>
-                <img src={v.thumbnail_url} alt={v.title} className="w-14 h-8 object-cover rounded bg-zinc-800" onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+                <img src={v.thumbnail_url} alt={v.title} className="w-14 h-8 object-cover rounded bg-zinc-800" onError={onThumbError} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-white truncate font-medium">{v.title}</p>
                   <p className="text-xs text-zinc-500">{v.category}</p>
@@ -826,7 +827,7 @@ export default function AnalyticsDashboard({
                             src={video.thumbnail_url}
                             className={`w-16 h-9 object-cover rounded bg-zinc-800 ${isMuted ? 'grayscale' : ''}`}
                             alt=""
-                            onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+                            onError={onThumbError}
                           />
                           {isMuted && (
                             <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded">

@@ -11,6 +11,7 @@ import {
   timeAgo,
 } from '../lib/notifications';
 import { requestPushPermission, getPushPermission, isPushSubscribed } from '../lib/pushNotify';
+import { onThumbError } from '../lib/thumbnail';
 
 interface Props {
   onNavigateVideo?: (id: string) => void;
@@ -170,7 +171,7 @@ const NotificationPanel: React.FC<Props> = ({ onNavigateVideo }) => {
                   {/* Thumbnail */}
                   <div className="relative flex-shrink-0 w-12 h-9 rounded-lg overflow-hidden bg-zinc-800">
                     {n.thumbnail ? (
-                      <img src={n.thumbnail} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      <img src={n.thumbnail} alt="" className="w-full h-full object-cover" onError={onThumbError} />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Bell size={14} className="text-zinc-600" />

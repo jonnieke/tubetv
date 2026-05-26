@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Play, Clock, Star, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
 import { Video } from '../types';
+import { onThumbError } from '../lib/thumbnail';
 
 interface SeriesCarouselProps {
   title?: string;
@@ -135,7 +136,7 @@ const SeriesCard: React.FC<SeriesCardProps> = ({
             src={sg.thumbnail}
             alt={sg.seriesTitle}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 bg-zinc-800"
-            onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+            onError={onThumbError}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
 
@@ -216,7 +217,7 @@ const SeriesCard: React.FC<SeriesCardProps> = ({
 
                   {/* Thumbnail */}
                   <div className="relative w-16 h-9 rounded overflow-hidden flex-shrink-0 bg-zinc-800">
-                    <img src={ep.thumbnail} alt={ep.title} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <img src={ep.thumbnail} alt={ep.title} className="w-full h-full object-cover" onError={onThumbError} />
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/ep:opacity-100 bg-black/50 transition-opacity">
                       <Play size={12} className="text-white" fill="white" />
                     </div>

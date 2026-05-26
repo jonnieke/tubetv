@@ -2,6 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { History, Trash2, CheckCircle, Clock, X } from 'lucide-react';
 import { getHistory, clearHistory, removeFromHistory, HistoryRecord } from '../lib/watchHistory';
+import { onThumbError } from '../lib/thumbnail';
 
 const bucket = (ts: number): string => {
   const now = Date.now();
@@ -113,7 +114,7 @@ const WatchHistoryView: React.FC = () => {
                         src={rec.thumbnail}
                         alt={rec.title}
                         className="w-full h-full object-cover"
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        onError={onThumbError}
                       />
                       {rec.completed && (
                         <div className="absolute inset-0 bg-black/50 flex items-center justify-center">

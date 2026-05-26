@@ -43,6 +43,7 @@ const INTEREST_TO_CATEGORY: Record<string, string[]> = {
 import BandwidthToggle from './BandwidthToggle';
 import type { ShortVideo } from '../types';
 import Hls from 'hls.js';
+import { onThumbError } from '../lib/thumbnail';
 
 const PREVIEW_FALLBACK = 'https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4';
 
@@ -180,7 +181,7 @@ const Top10Card: React.FC<{
           src={video.thumbnail}
           alt={video.title}
           className="w-full h-full object-cover transition-transform duration-500 group-hover/t10:scale-105"
-          onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+          onError={onThumbError}
         />
         {/* Hover overlay */}
         <div className={`absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-2 transition-opacity duration-300 ${hovered ? 'opacity-100' : 'opacity-0'}`}>
@@ -304,7 +305,7 @@ const NewThisWeekCard: React.FC<{
         src={video.thumbnail}
         alt={video.title}
         className={`absolute inset-0 w-full h-full object-cover bg-zinc-800 transition-opacity duration-700 ${isLive ? 'opacity-0' : 'opacity-100'}`}
-        onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+        onError={onThumbError}
       />
 
       {/* Muted preview video */}
@@ -485,7 +486,7 @@ const GenreMoodRow: React.FC<{ videos: Video[]; onNavigate: () => void }> = ({ v
                 <img
                   src={genreVideo.thumbnail}
                   alt={mood.label}
-                  onError={e => { e.currentTarget.style.opacity = '0'; }}
+                  onError={e => { e.currentTarget.style.opacity = '0'; }} // decorative bg — hide on error is intentional
                   className="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-30 transition-opacity"
                 />
               )}
