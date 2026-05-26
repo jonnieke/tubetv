@@ -439,12 +439,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     
     try {
       // 1. Prepare the updated metadata
-      // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailUrl', 'trailerUrl', 'productionYear', 'isPremium', 'featured', 'tags', 'season', 'episode', 'seriesTitle'];
+      // Use a lowercase Set for case-insensitive deduplication (camelCase keys like
+      // 'seriesTitle' must match existing tags stored as 'seriestitle' etc.)
+      const keysToUpdate = new Set([
+        'category', 'author', 'genre', 'description',
+        'thumbnailurl', 'trailerurl', 'productionyear',
+        'ispremium', 'featured', 'tags',
+        'season', 'episode', 'seriestitle',
+      ]);
       const filteredMetaTags = (editingItem.metaTags || []).filter(
-        t => !keysToUpdate.includes(t.property.toLowerCase())
+        t => !keysToUpdate.has(t.property.toLowerCase())
       );
-      
+
       const sanitizedForm = {
         ...editForm,
         title: sanitizeText(editForm.title),
@@ -456,32 +462,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       const newMetaTags = [
         ...filteredMetaTags,
-        ...Object.entries(sanitizedForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) }))
+        ...Object.entries(sanitizedForm)
+          .filter(([_, v]) => v !== undefined && v !== '' && v !== false)
+          .map(([k, v]) => ({ property: k, value: String(v) })),
       ];
 
-      // 2. Save to Bunny CDN via Supabase Proxy
+      // 2. Always persist edits to localStorage FIRST as a reliable backup.
+      //    Bunny's API can have propagation delays; we never want the UI to revert
+      //    on refresh just because the CDN hasn't caught up yet.
+      const overrides = getOverrides();
+      overrides[editingItem.guid] = sanitizedForm;
+      localStorage.setItem('tube_content_overrides', JSON.stringify(overrides));
+
+      // 3. Save to Bunny CDN via Supabase Proxy
       const updatePayload = {
         title: sanitizedForm.title,
-        metaTags: newMetaTags
+        metaTags: newMetaTags,
       };
-      
-      const result = await updateVideoMetadata(editingItem.guid, updatePayload);
-      
-      if (result) {
-        // 3. Update the item in our local state to reflect the change immediately
-        const updatedItem = { ...editingItem, title: editForm.title, metaTags: newMetaTags };
-        setItems(prev => prev.map(item => item.guid === editingItem.guid ? updatedItem : item));
-        
-        // Remove from local overrides if it was there, since it's now permanently saved
-        const overrides = getOverrides();
-        if (overrides[editingItem.guid]) {
-          delete overrides[editingItem.guid];
-          localStorage.setItem('tube_content_overrides', JSON.stringify(overrides));
-        }
 
+      const result = await updateVideoMetadata(editingItem.guid, updatePayload);
+
+      if (result) {
+        // 4. Update local React state immediately so the table reflects the change
+        const updatedItem = { ...editingItem, title: sanitizedForm.title, metaTags: newMetaTags };
+        setItems(prev => prev.map(item => item.guid === editingItem.guid ? updatedItem : item));
         setSavedIds(prev => new Set(prev).add(editingItem.guid));
       } else {
-        setSaveError('Failed to save changes to the server. Please try again.');
+        // API failed — localStorage still has the edits so the UI stays correct,
+        // but warn the admin that the server save didn't go through.
+        setSaveError('Saved locally but failed to sync to the server. Changes will persist here but may not appear on other devices. Please try saving again.');
       }
     } catch (error) {
       logError(error);

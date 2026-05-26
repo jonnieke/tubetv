@@ -6,13 +6,15 @@
 //   • Supabase / Bunny API     → Network-only (never cache auth'd requests)
 //   • Push notifications       → showNotification + click-to-open
 
-const SHELL_CACHE   = 'tube-tv-shell-v1';
-const STATIC_CACHE  = 'tube-tv-static-v1';
-const IMAGE_CACHE   = 'tube-tv-images-v1';
-const VIDEO_CACHE   = 'tube-tv-videos-v1';
+const SHELL_CACHE   = 'tube-tv-shell-v2';
+const STATIC_CACHE  = 'tube-tv-static-v2';
+const IMAGE_CACHE   = 'tube-tv-images-v2';
+const VIDEO_CACHE   = 'tube-tv-videos-v2';
 const MAX_IMAGES    = 40;
 const MAX_VIDEOS    = 20; // max cached video files
 
+// Only list current v2 caches — anything else (v1, Workbox caches, etc.) will be
+// deleted by the activate handler, forcing a clean slate on every SW update.
 const KNOWN_CACHES  = [SHELL_CACHE, STATIC_CACHE, IMAGE_CACHE, VIDEO_CACHE];
 
 const OFFLINE_URL = '/offline.html';
@@ -26,13 +28,15 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// ─── Activate: delete stale caches ───────────────────────────────────────────
+// ─── Activate: delete stale caches + nuke any old Workbox SWs ───────────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) =>
         Promise.all(
           keys
+            // Delete any cache not in our known list (covers old Workbox caches like
+            // workbox-precache-v2, etc. that were left by a prior build)
             .filter((k) => !KNOWN_CACHES.includes(k))
             .map((k) => caches.delete(k))
         )
