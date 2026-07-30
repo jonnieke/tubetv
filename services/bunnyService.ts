@@ -1,19 +1,23 @@
 // 🔒 SECURED: Calls are now proxied through Supabase Edge Functions
 // The sensitive BUNNY_ACCESS_KEY is now stored in Supabase Secrets.
 import { normalizeContentRating } from '../lib/contentRating';
+import { supabase } from '../lib/supabase';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const BASE_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/bunny-api` : '';
 const PULL_ZONE = (import.meta.env.VITE_BUNNY_PULL_ZONE as string) || '';
 const ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
 
-const getHeaders = (extra = {}) => ({
-  'Content-Type': 'application/json',
-  'Accept': 'application/json',
-  'apikey': ANON_KEY,
-  'Authorization': `Bearer ${ANON_KEY}`,
-  ...extra
-});
+const getHeaders = async (extra = {}) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'apikey': ANON_KEY,
+    'Authorization': `Bearer ${session?.access_token || ANON_KEY}`,
+    ...extra
+  };
+};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -69,7 +73,7 @@ export const createVideoEntry = async (title: string): Promise<{ guid: string } 
   try {
     const response = await fetch(BASE_URL, {
       method: 'POST',
-      headers: getHeaders(),
+      headers: await getHeaders(),
       body: JSON.stringify({ title }),
     });
     if (!response.ok) throw new Error(`Failed to create video: ${response.statusText}`);
@@ -90,7 +94,7 @@ export const updateVideoMetadata = async (
   try {
     const response = await fetch(`${BASE_URL}/${videoId}`, {
       method: 'POST',
-      headers: getHeaders(),
+      headers: await getHeaders(),
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -107,17 +111,18 @@ export const updateVideoMetadata = async (
 /**
  * Uploads a video file using XMLHttpRequest so we can track progress.
  */
-export const uploadVideoFile = (
+export const uploadVideoFile = async (
   file: File,
   videoId: string,
   onProgress: (percent: number) => void
 ): Promise<void> => {
+  const headers = await getHeaders();
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', `${BASE_URL}/${videoId}`, true);
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
     xhr.setRequestHeader('apikey', ANON_KEY);
-    xhr.setRequestHeader('Authorization', `Bearer ${ANON_KEY}`);
+    xhr.setRequestHeader('Authorization', headers.Authorization);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress((e.loaded / e.total) * 100);
     };
@@ -156,11 +161,7 @@ export const uploadCustomThumbnail = async (videoId: string, file: File): Promis
 
     const response = await fetch(`${BASE_URL}/${videoId}/thumbnail`, {
       method: 'POST',
-      headers: {
-        'apikey': ANON_KEY,
-        'Authorization': `Bearer ${ANON_KEY}`,
-        'Content-Type': file.type || 'image/jpeg',
-      },
+      headers: await getHeaders({ 'Content-Type': file.type || 'image/jpeg' }),
       body: arrayBuffer,
     });
 
@@ -172,10 +173,7 @@ export const uploadCustomThumbnail = async (videoId: string, file: File): Promis
 
     // Re-fetch the video to get the updated thumbnailFileName Bunny assigned
     const videoRes = await fetch(`${BASE_URL}/${videoId}`, {
-      headers: {
-        'apikey': ANON_KEY,
-        'Authorization': `Bearer ${ANON_KEY}`,
-      },
+      headers: await getHeaders(),
     });
     if (videoRes.ok) {
       const videoData = await videoRes.json();
@@ -196,7 +194,7 @@ export const uploadCustomThumbnail = async (videoId: string, file: File): Promis
 export const getVideoStatus = async (videoId: string): Promise<{ status: number; encodeProgress: number }> => {
   try {
     const response = await fetch(`${BASE_URL}/${videoId}`, {
-      headers: getHeaders(),
+      headers: await getHeaders(),
     });
     if (!response.ok) return { status: 0, encodeProgress: 0 };
     const data = await response.json();
@@ -225,7 +223,7 @@ export const fetchBunnyVideos = async (): Promise<BunnyVideoItem[]> => {
     while (true) {
       const res = await fetch(
         `${BASE_URL}?page=${page}&itemsPerPage=100&orderBy=date`,
-        { headers: getHeaders() }
+        { headers: await getHeaders() }
       );
 
       if (!res.ok) {

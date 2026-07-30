@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, Clock, Tag, User, Calendar, Info, UploadCloud
+  ChevronDown, ChevronUp, BarChart2, Eye, Clock, Tag, User, Calendar, Info, UploadCloud, ShieldAlert
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, getStreamUrl, uploadCustomThumbnail, updateVideoMetadata } from '../services/bunnyService';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { NavItem, Video } from '../types';
+import { normalizeContentRating, ratingDescription, type ContentRating } from '../lib/contentRating';
 
 interface AdminDashboardProps {
   onUploadComplete?: (video: Video) => void;
@@ -49,6 +50,8 @@ const EMPTY_FORM = {
   thumbnailUrl: '',
   trailerUrl: '',
   productionYear: '',
+  contentRating: 'UNRATED' as ContentRating,
+  classificationNumber: '',
   isPremium: false,
   tags: '',
 };
@@ -305,6 +308,16 @@ const EditModal = ({
             {field('Production Year', 'productionYear', { type: 'number', placeholder: new Date().getFullYear().toString() })}
           </div>
 
+          <div className="grid grid-cols-1 gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-2">
+            <div>
+              {field('KFCB content rating', 'contentRating', { as: 'select', options: ['GE', 'PG', '16', '18', 'UNRATED'] })}
+              <p className={`mt-1.5 text-xs ${form.contentRating === 'UNRATED' || form.contentRating === '18' ? 'text-amber-400' : 'text-zinc-500'}`}>
+                {ratingDescription(form.contentRating)}{form.contentRating === '18' || form.contentRating === 'UNRATED' ? ' - hidden from the public catalogue.' : ''}
+              </p>
+            </div>
+            {field('Classification number', 'classificationNumber', { placeholder: 'Optional KFCB certificate number' })}
+          </div>
+
           {/* Tags */}
           {field('Tags', 'tags', { placeholder: 'farming, maize, kenya (comma-separated)' })}
 
@@ -357,6 +370,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('All');
   const [sortBy, setSortBy] = useState<'date' | 'views' | 'title'>('date');
+  const [filterRating, setFilterRating] = useState<'All' | ContentRating>('All');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [editingItem, setEditingItem] = useState<BunnyVideoItem | null>(null);
   const [editForm, setEditForm] = useState<EditForm>(EMPTY_FORM);
@@ -394,6 +408,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       trailerUrl: saved.trailerUrl ?? getMeta(item.metaTags, 'trailerUrl'),
       productionYear: saved.productionYear ?? getMeta(item.metaTags, 'productionYear'),
       isPremium: saved.isPremium ?? getMeta(item.metaTags, 'isPremium') === 'true',
+      contentRating: normalizeContentRating(saved.contentRating ?? mapped.contentRating),
+      classificationNumber: saved.classificationNumber ?? getMeta(item.metaTags, 'classificationNumber'),
       tags: saved.tags ?? getMeta(item.metaTags, 'tags'),
     });
     setEditingItem(item);
@@ -406,7 +422,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       // 1. Prepare the updated metadata
       // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailUrl', 'trailerUrl', 'productionYear', 'isPremium', 'tags', 'season', 'episode', 'seriesTitle'];
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
@@ -468,6 +484,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const filtered = enriched
     .filter(v => {
       const mapped = bunnyVideoToVideo(v);
+      if (filterRating !== 'All' && mapped.contentRating !== filterRating) return false;
       if (filterCat !== 'All' && mapped.category !== filterCat && filterCat !== mapped.category) {
         return false;
       }
@@ -496,6 +513,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Stats
   const totalViews = items.reduce((s, v) => s + (v.views ?? 0), 0);
+  const unratedCount = enriched.filter(v => bunnyVideoToVideo(v).contentRating === 'UNRATED').length;
   const catBreakdown: Record<string, number> = {};
   enriched.forEach(v => {
     const cat = bunnyVideoToVideo(v).category;
@@ -576,11 +594,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <StatCard label="Total Videos" value={items.length} icon={Film} color="bg-red-600/80" />
         <StatCard label="Total Views" value={totalViews >= 1000 ? `${(totalViews / 1000).toFixed(1)}K` : totalViews} icon={Eye} color="bg-blue-600/80" />
         <StatCard label="Originals" value={(catBreakdown['Originals'] || 0)} icon={Play} color="bg-purple-600/80" />
         <StatCard label="Categories" value={Object.keys(catBreakdown).length} icon={Tag} color="bg-green-600/80" />
+        <StatCard label="Needs Rating" value={unratedCount} icon={ShieldAlert} color="bg-amber-600/80" />
       </div>
 
       {/* Category breakdown bar */}
@@ -612,20 +631,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Search */}
-      <div className="relative mb-4">
-        <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
-        <input
-          type="text"
-          placeholder="Search by title..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 transition-colors"
-        />
-        {search && (
-          <button onClick={() => setSearch('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white">
-            <X size={14} />
-          </button>
-        )}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+        <div className="relative min-w-0 flex-1">
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search by title..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 transition-colors"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white" aria-label="Clear search">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <select
+          aria-label="Filter by content rating"
+          value={filterRating}
+          onChange={e => setFilterRating(e.target.value as 'All' | ContentRating)}
+          className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-white focus:border-red-500 focus:outline-none"
+        >
+          <option value="All">All ratings</option>
+          <option value="UNRATED">Needs rating</option>
+          <option value="GE">GE</option>
+          <option value="PG">PG</option>
+          <option value="16">16</option>
+          <option value="18">18</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -688,6 +722,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <User size={10} /> {o?.author || mapped.author}
                           </p>
                           <div className="flex items-center gap-1.5 mt-1">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded border ${mapped.contentRating === 'UNRATED' ? 'bg-amber-600/20 text-amber-400 border-amber-600/30' : 'bg-zinc-800 text-zinc-300 border-zinc-700'}`}>
+                              {mapped.contentRating}
+                            </span>
                             {mapped.isPremium && <span className="text-[9px] bg-purple-600/30 text-purple-300 px-1.5 py-0.5 rounded border border-purple-600/30">PREMIUM</span>}
                             {isSaved && <span className="text-[9px] bg-green-600/20 text-green-400 px-1.5 py-0.5 rounded border border-green-600/30">EDITED</span>}
                           </div>
