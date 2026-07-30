@@ -1,162 +1,30 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-KE">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="format-detection" content="telephone=no" />
-
-    <!-- Primary SEO -->
-    <title>Tube TV — Watch Kenyan Videos, News, Comedy &amp; Education</title>
-    <meta name="description" content="Kenya's home for original content, education, farming, faith and live streams. Watch comedy, drama, KCSE revision, farming tips and more. 100% Made in Kenya." />
-    <meta name="keywords" content="Kenya videos, Kenyan content, Tube TV, online TV Kenya, Kenyan comedy, KCSE revision, Kenyan series, Nairobi, farming Kenya" />
-    <meta name="author" content="Tube TV" />
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TubeTV | Kenyan videos, news, comedy and education</title>
+    <meta name="description" content="Watch Kenyan originals, education, farming, faith and live programmes on TubeTV." />
+    <meta name="author" content="TubeTV" />
     <meta name="theme-color" content="#dc2626" />
-    <link rel="canonical" href="https://tubekenya.co.ke" />
-
-    <!-- Open Graph (WhatsApp, Facebook, LinkedIn previews) -->
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://www.tube.co.ke/" />
+    <link rel="manifest" href="/manifest.json" />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://tubekenya.co.ke" />
-    <meta property="og:title" content="Tube TV — Watch Kenyan Videos Online" />
-    <meta property="og:description" content="Kenya's home for original content, education, farming, faith and live streams. 100% Made in Kenya." />
-    <meta property="og:image" content="https://tubekenya.co.ke/og-image.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="https://www.tube.co.ke/" />
+    <meta property="og:title" content="TubeTV | Watch Kenyan videos" />
+    <meta property="og:description" content="Watch Kenyan originals, education, farming, faith and live programmes." />
     <meta property="og:locale" content="en_KE" />
-    <meta property="og:site_name" content="Tube TV" />
-
-    <!-- Twitter Card -->
+    <meta property="og:site_name" content="TubeTV" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@TubeKenya" />
-    <meta name="twitter:title" content="Tube TV — Watch Kenyan Videos Online" />
-    <meta name="twitter:description" content="Kenya's home for original content, education, farming, faith and live streams. 100% Made in Kenya." />
-    <meta name="twitter:image" content="https://tubekenya.co.ke/og-image.png" />
-
-    <!-- PWA / Mobile -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Tube TV" />
-
-    <!-- Performance: preconnect to external origins used at startup -->
-    <link rel="preconnect" href="https://aistudiocdn.com" crossorigin />
-    <link rel="dns-prefetch" href="https://aistudiocdn.com" />
-    <!-- Bunny CDN — optimised poster/thumbnail images -->
-    <link rel="preconnect" href="https://utv-posters.b-cdn.net" crossorigin />
-    <link rel="dns-prefetch" href="https://utv-posters.b-cdn.net" />
-    <!-- Bunny CDN — video stream manifests and segments -->
-    <link rel="preconnect" href="https://vz-0fe79b1a-8ad.b-cdn.net" crossorigin />
-    <link rel="dns-prefetch" href="https://vz-0fe79b1a-8ad.b-cdn.net" />
-    <link rel="dns-prefetch" href="https://b-cdn.net" />
-    <!-- Google AI / Gemini -->
-    <link rel="preconnect" href="https://generativelanguage.googleapis.com" crossorigin />
-    <link rel="dns-prefetch" href="https://generativelanguage.googleapis.com" />
-    <!-- Supabase realtime + auth -->
-    <link rel="preconnect" href="https://supabase.co" crossorigin />
-    <link rel="dns-prefetch" href="https://supabase.co" />
-
-    <!-- Favicon -->
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-
-    <!-- Structured data: Organization + WebSite + FAQ (AIO/rich-results) -->
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@graph": [
-        {
-          "@type": "Organization",
-          "@id": "https://tubekenya.co.ke/#organization",
-          "name": "Tube TV",
-          "url": "https://tubekenya.co.ke",
-          "logo": {
-            "@type": "ImageObject",
-            "url": "https://tubekenya.co.ke/og-image.png",
-            "width": 1200,
-            "height": 630
-          },
-          "description": "Kenya's home for original video content, education, farming tips, faith, and live streams.",
-          "sameAs": ["https://twitter.com/TubeKenya"],
-          "areaServed": "KE",
-          "knowsAbout": ["Kenyan entertainment","KCSE revision","farming in Kenya","Kenyan comedy","Kenyan series","CBC curriculum","Kiswahili content"]
-        },
-        {
-          "@type": "WebSite",
-          "@id": "https://tubekenya.co.ke/#website",
-          "url": "https://tubekenya.co.ke",
-          "name": "Tube TV",
-          "description": "Kenya's home for original content, education, farming, faith and live streams.",
-          "publisher": { "@id": "https://tubekenya.co.ke/#organization" },
-          "inLanguage": "en-KE",
-          "potentialAction": {
-            "@type": "SearchAction",
-            "target": {
-              "@type": "EntryPoint",
-              "urlTemplate": "https://tubekenya.co.ke/?search={search_term_string}"
-            },
-            "query-input": "required name=search_term_string"
-          }
-        },
-        {
-          "@type": "FAQPage",
-          "mainEntity": [
-            {
-              "@type": "Question",
-              "name": "What is Tube TV Kenya?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Tube TV is Kenya's premier online streaming platform offering original Kenyan content including comedy, drama, KCSE and CBC revision, farming tips, faith content, and live streams — 100% Made in Kenya."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Is Tube TV free to watch?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Yes. Tube TV offers free content for all registered users. Ndovu (premium) subscribers unlock exclusive originals and an ad-free experience."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Can I watch Tube TV on my phone?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Yes. Tube TV is fully mobile-optimised and can be installed as a PWA app on Android or iPhone for offline access and push notifications — no app store needed."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Does Tube TV have educational content for KCSE and CBC?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Yes. Tube TV has a dedicated Education section with KCSE revision videos, CBC curriculum content, and subject-specific tutorials for Kenyan students."
-              }
-            }
-          ]
-        }
-      ]
-    }
+      {"@context":"https://schema.org","@type":"WebSite","name":"TubeTV","url":"https://www.tube.co.ke/","inLanguage":["en-KE","sw-KE"],"publisher":{"@type":"Organization","name":"TubeTV","url":"https://www.tube.co.ke/"}}
     </script>
-
-  <script type="importmap">
-{
-  "imports": {
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "hls.js": "https://aistudiocdn.com/hls.js@^1.5.0"
-  }
-}
-</script>
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="https://placehold.co/192x192/dc2626/ffffff?text=T">
-</head>
-  <body class="bg-zinc-950 text-white">
+  </head>
+  <body class="bg-zinc-950 text-white overflow-hidden">
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

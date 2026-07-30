@@ -1,6 +1,7 @@
 
 import { LucideIcon } from 'lucide-react';
 
+import type { ContentRating } from './lib/contentRating';
 export enum ViewState {
   HOME = 'HOME',
   ORIGINALS = 'ORIGINALS',
@@ -10,18 +11,12 @@ export enum ViewState {
   FAITH = 'FAITH',
   KIDS = 'KIDS',
   DIASPORA = 'DIASPORA',
-  FASHION = 'FASHION',
-  WILDLIFE = 'WILDLIFE',
   LIVE = 'LIVE',
   ANALYTICS = 'ANALYTICS',
   UPLOAD = 'UPLOAD',
   WATCH_LATER = 'WATCH_LATER',
   SETTINGS = 'SETTINGS',
-  ADMIN = 'ADMIN',
-  OFFLINE = 'OFFLINE',
-  HISTORY = 'HISTORY',
-  LIKED = 'LIKED',
-  STUDIO = 'STUDIO'
+  ADMIN = 'ADMIN'
 }
 
 // Allow ViewState to be treated as string for dynamic categories
@@ -50,6 +45,12 @@ export interface Video {
   category: string;
   tags?: string[];
   url?: string;
+  captionsUrl?: string;
+  contentRating?: ContentRating;
+  classificationNumber?: string;
+  transcript?: string;
+  transcriptUrl?: string;
+  uploadDate?: string;
   // Series metadata
   seriesTitle?: string;   // Parent series name, e.g. "Nairobi Noir"
   season?: number;        // Season number
@@ -57,29 +58,30 @@ export interface Video {
   genre?: string;         // e.g. "Drama"
   productionYear?: number;
   trailerUrl?: string;
-  dateUploaded?: string;  // ISO 8601 from Bunny
-  featured?: boolean;     // Pinned to the hero carousel by admin
-  muted?: boolean;        // Hidden from public view by admin
 }
 
 export interface ShortVideo {
   id: string;
-  url: string;
-  title?: string;
+  thumbnail: string;
+  videoUrl: string;
   author: string;
   description: string;
   likes: number;
   comments: number;
   isAd?: boolean;
-  isRecommended?: boolean;
-  category?: string;
-  videoUrl?: string;
 }
 
+export interface AnalyticsMetric {
+  name: string;
+  value: number;
+  change: number; 
+}
 
 export interface DailyStat {
   day: string;
   views: number;
+  revenue: number;
+  subs: number;
 }
 
 export interface Caption {

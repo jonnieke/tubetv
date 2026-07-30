@@ -1,0 +1,20 @@
+import React, { createContext, useContext } from 'react';
+import type { PlaybackPreferences, WatchProgress } from '../lib/viewerState';
+import { DEFAULT_PLAYBACK_PREFERENCES } from '../lib/viewerState';
+
+interface PlaybackContextValue {
+  preferences: PlaybackPreferences;
+  getProgress: (videoId: string) => WatchProgress | undefined;
+  onProgress: (videoId: string, progress: WatchProgress) => void;
+  onEnded: (videoId: string) => void;
+}
+
+const PlaybackContext = createContext<PlaybackContextValue>({
+  preferences: DEFAULT_PLAYBACK_PREFERENCES,
+  getProgress: () => undefined,
+  onProgress: () => undefined,
+  onEnded: () => undefined,
+});
+
+export const PlaybackProvider = PlaybackContext.Provider;
+export const usePlayback = () => useContext(PlaybackContext);

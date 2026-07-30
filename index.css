@@ -2,51 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Scrollbar hiding ─────────────────────────────────────────────────────── */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-/* ─── Mobile performance & UX ─────────────────────────────────────────────── */
-
-/* Smooth momentum scrolling on iOS (bounce effect) */
-.overflow-y-auto,
-.overflow-x-auto,
-main {
-  -webkit-overflow-scrolling: touch;
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
 }
 
-/* Remove 300 ms tap delay on all interactive elements */
-a, button, [role="button"] {
-  touch-action: manipulation;
+:focus-visible {
+    outline: 3px solid #f87171;
+    outline-offset: 3px;
 }
 
-/* Prevent text selection flash on rapid taps */
-button {
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-
-/* Safe-area padding utility for bottom nav */
-.pb-safe {
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
-}
-
-/* Aspect-ratio placeholder for video thumbnails (prevents CLS) */
-.aspect-video {
-  aspect-ratio: 16 / 9;
-}
-
-/* GPU-composited layer for animated elements */
-.will-change-transform {
-  will-change: transform;
-}
-
-/* ─── Reduced motion: respect system preference ───────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

@@ -1,59 +1,22 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Music2, ExternalLink, Volume2, VolumeX, Play, Sparkles } from 'lucide-react';
-import { ShortVideo, Video } from '../types';
+import React, { useRef, useEffect, useState } from 'react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, Music2, ExternalLink, Volume2, VolumeX, Play } from 'lucide-react';
+import { ShortVideo } from '../types';
 import { MOCK_SHORTS } from '../constants';
-import Hls from 'hls.js';
+import type Hls from 'hls.js';
+import { loadHls } from '../lib/hlsLoader';
 import ShortsComments from './ShortsComments';
-
-// Sample vertical-friendly videos for demo purposes
-const SAMPLE_VIDEOS = [
-  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
-  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-  "https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
-];
 
 interface ShortsPlayerProps {
   shorts?: ShortVideo[];
-  recommendedVideos?: Video[];
   onLoginRequest?: () => void;
 }
 
-const ShortsPlayer: React.FC<ShortsPlayerProps> = ({
+const ShortsPlayer: React.FC<ShortsPlayerProps> = ({ 
   shorts = MOCK_SHORTS,
-  recommendedVideos = [],
-  onLoginRequest
+  onLoginRequest 
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Build feed: inject recommended shorts every 3 regular shorts
-  const feed = useMemo<ShortVideo[]>(() => {
-    const recShorts: ShortVideo[] = recommendedVideos.map(v => ({
-      id: `rec-${v.id}`,
-      url: v.thumbnail,
-      title: v.title,
-      author: v.author,
-      description: v.description || '',
-      category: v.category,
-      likes: Math.floor(v.views / 10) + 12,
-      comments: Math.floor(v.views / 100) + 2,
-      videoUrl: v.url,
-      isRecommended: true,
-    }));
-
-    if (recShorts.length === 0) return shorts;
-
-    const result: ShortVideo[] = [];
-    shorts.forEach((s, i) => {
-      result.push(s);
-      // Insert a recommended short after every 3rd regular short
-      if ((i + 1) % 3 === 0 && recShorts.length > 0) {
-        result.push(recShorts[(Math.floor(i / 3)) % recShorts.length]);
-      }
-    });
-    return result;
-  }, [shorts, recommendedVideos]);
 
   useEffect(() => {
     const options = {
@@ -75,27 +38,27 @@ const ShortsPlayer: React.FC<ShortsPlayerProps> = ({
     return () => {
       observer.disconnect();
     };
-  }, [feed]);
+  }, []);
 
   // Set initial active ID if none
   useEffect(() => {
-    if (!activeId && feed.length > 0) {
-      setActiveId(feed[0].id);
+    if (!activeId && shorts.length > 0) {
+      setActiveId(shorts[0].id);
     }
-  }, [activeId, feed]);
+  }, [activeId, shorts]);
 
   return (
     <div className="h-[calc(100vh-64px)] md:h-screen w-full flex justify-center bg-black overflow-hidden relative">
-      <div
+      <div 
         ref={containerRef}
         className="h-full w-full md:w-[450px] overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
       >
-        {feed.map((short, index) => (
-            <ShortItem
-              key={short.id}
-              short={short}
+        {shorts.map((short) => (
+            <ShortItem 
+              key={short.id} 
+              short={short} 
               isActive={activeId === short.id}
-              videoSrc={short.videoUrl || SAMPLE_VIDEOS[index % SAMPLE_VIDEOS.length]}
+              videoSrc={short.videoUrl}
               onLoginRequest={onLoginRequest}
             />
         ))}
@@ -116,6 +79,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
     const [isMuted, setIsMuted] = useState(true); // Default to muted for better autoplay support
     const [isPlaying, setIsPlaying] = useState(false);
     const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+    const [hasPlaybackError, setHasPlaybackError] = useState(false);
     const videoRef = useRef<HTMLVideoElement>(null);
     const hlsRef = useRef<Hls | null>(null);
 
@@ -125,7 +89,15 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
 
         if (isActive) {
             // Initialize HLS if needed
-            if (Hls.isSupported() && videoSrc.endsWith('.m3u8')) {
+            if (videoSrc.endsWith('.m3u8')) {
+                void loadHls().then((Hls) => {
+                if (!Hls.isSupported() || !videoRef.current) {
+                    if (videoRef.current) {
+                        videoRef.current.src = videoSrc;
+                        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => setHasPlaybackError(true));
+                    }
+                    return;
+                }
                 if (hlsRef.current) hlsRef.current.destroy();
                 
                 const hls = new Hls();
@@ -135,6 +107,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
                     videoRef.current?.play().then(() => setIsPlaying(true)).catch(e => console.error("HLS Play failed:", e));
                 });
                 hlsRef.current = hls;
+                });
             } else if (!videoRef.current.src || videoRef.current.src !== videoSrc) {
                 // Native playback
                 videoRef.current.src = videoSrc;
@@ -216,8 +189,16 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
                 loop
                 muted={isMuted}
                 playsInline
-                poster={short.url}
+                poster={short.thumbnail}
+                preload="metadata"
+                onError={() => { setHasPlaybackError(true); setIsPlaying(false); }}
             />
+            {hasPlaybackError && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black px-8 text-center">
+                    <p className="text-sm text-zinc-300">This short is temporarily unavailable.</p>
+                </div>
+            )}
+
 
             {/* Play/Pause Center Indicator */}
             {!isPlaying && (
@@ -277,52 +258,36 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
                 </div>
 
                 {/* Bottom Info */}
-                <div className="max-w-[80%] space-y-2 pb-4 pointer-events-auto">
-                    {/* Category + Recommended badges */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                        {short.isRecommended && (
-                            <span className="flex items-center gap-1 text-[10px] font-black bg-gradient-to-r from-violet-600 to-purple-600 text-white px-2.5 py-0.5 rounded-full uppercase tracking-wide shadow">
-                                <Sparkles size={9} /> For You
-                            </span>
-                        )}
-                        {short.category && (
-                            <span className="text-[10px] font-bold bg-white/15 backdrop-blur text-white px-2.5 py-0.5 rounded-full border border-white/20">
-                                {short.category}
-                            </span>
+                <div className="max-w-[80%] space-y-3 pb-4 pointer-events-auto">
+                    <div className="flex items-center gap-2">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center font-bold text-sm">
+                            {short.author[1].toUpperCase()}
+                        </div>
+                        <h3 className="font-bold text-lg hover:underline cursor-pointer">{short.author}</h3>
+                        {!short.isAd && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onLoginRequest?.(); }}
+                                className="text-xs bg-white text-black px-3 py-1 rounded-full font-bold ml-2 pointer-events-auto"
+                            >
+                                Subscribe
+                            </button>
                         )}
                     </div>
-
-                    {/* Title */}
-                    <h3 className="font-black text-lg leading-tight line-clamp-2">
-                        {short.title || short.description}
-                    </h3>
-
-                    {/* Description — only shown if different from title */}
-                    {short.description && short.title && short.description !== short.title && (
-                        <p className="text-sm text-zinc-300 line-clamp-2">
-                            {short.description}
-                        </p>
-                    )}
-
-                    {!short.isAd && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onLoginRequest?.(); }}
-                            className="text-xs bg-white text-black px-4 py-1.5 rounded-full font-bold pointer-events-auto"
-                        >
-                            Subscribe
-                        </button>
-                    )}
+                    
+                    <p className="text-sm md:text-base text-zinc-100 line-clamp-2">
+                        {short.description}
+                    </p>
 
                     {short.isAd && (
-                        <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
+                         <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
                             Shop Now <ExternalLink size={16} />
-                        </button>
+                         </button>
                     )}
 
                     {!short.isAd && (
                         <div className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-800/40 w-fit px-3 py-1 rounded-full backdrop-blur-sm">
                             <Music2 size={14} className="animate-spin-slow" />
-                            <span>Original Sound — Tube TV</span>
+                            <span>Original Sound - {short.author}</span>
                         </div>
                     )}
                 </div>

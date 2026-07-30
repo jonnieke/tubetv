@@ -13,10 +13,6 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
 
-    // Sample video for preview (vertical-ish aspect ratio content)
-    // Using a reliable sample video that mimics vertical content
-    const PREVIEW_VIDEO = "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4";
-
     const handleMouseEnter = () => {
         setIsHovering(true);
         // Delay playback to avoid triggering while just scrolling past
@@ -34,10 +30,14 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
     };
 
     return (
-        <div 
+        <button
+            type="button"
+            aria-label={`Open short: ${short.description}`}
             onClick={onShortClick}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            onFocus={handleMouseEnter}
+            onBlur={handleMouseLeave}
             className="flex-shrink-0 w-[160px] md:w-[200px] h-[280px] md:h-[350px] relative rounded-xl overflow-hidden cursor-pointer group snap-start ring-1 ring-white/10 shadow-lg bg-zinc-900"
             style={{ animationDelay: `${index * 50}ms` }}
         >
@@ -46,7 +46,7 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
                 <div className="absolute inset-0 z-10 animate-in fade-in duration-500 bg-black">
                     <video
                         ref={videoRef}
-                        src={short.videoUrl || PREVIEW_VIDEO}
+                        src={short.videoUrl}
                         className="w-full h-full object-contain opacity-80"
                         autoPlay
                         muted
@@ -61,7 +61,7 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
              ) : (
                 /* Image Layer */
                 <img 
-                    src={short.url} 
+                    src={short.thumbnail}
                     alt={short.description} 
                     className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110 absolute inset-0 z-0"
                 />
@@ -81,22 +81,21 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
 
             {/* Metadata */}
             <div className="absolute bottom-0 left-0 p-3 w-full transform transition-transform duration-300 translate-y-2 group-hover:translate-y-0 z-30 pointer-events-none">
-                {short.isAd && (
-                    <span className="bg-yellow-500 text-black px-1.5 rounded text-[10px] font-bold mb-1 inline-block">AD</span>
-                )}
-                <p className="text-white font-bold text-sm line-clamp-1 leading-tight drop-shadow-md">
-                    {short.title || short.description}
+                <p className="text-white font-bold text-sm line-clamp-2 leading-tight mb-1 drop-shadow-md">
+                    {short.description}
                 </p>
-                {short.description && short.title && short.description !== short.title && (
-                    <p className="text-zinc-300 text-xs line-clamp-2 leading-snug mt-0.5 drop-shadow">
-                        {short.description}
-                    </p>
-                )}
+                <p className="text-zinc-300 text-xs font-medium flex items-center gap-1">
+                    {short.isAd ? (
+                        <span className="bg-yellow-500 text-black px-1.5 rounded text-[10px] font-bold">AD</span>
+                    ) : (
+                        short.author
+                    )}
+                </p>
                 <p className="text-zinc-500 text-[10px] mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     {(short.likes / 1000).toFixed(1)}K likes
                 </p>
             </div>
-        </div>
+        </button>
     );
 };
 
@@ -104,7 +103,7 @@ const ShortsShelf: React.FC<ShortsShelfProps> = ({ shorts, onShortClick }) => {
     return (
         <div className="mb-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
             <div className="flex items-center justify-between mb-4 px-1">
-                 <h2 className="text-xl font-bold text-white flex items-center gap-2 group cursor-pointer" onClick={onShortClick}>
+                 <h2 className="text-xl font-bold text-white flex items-center gap-2 group">
                     <span className="text-red-500 text-2xl group-hover:scale-125 transition-transform"><Zap className="fill-current" /></span> 
                     Shorts & Stories
                 </h2>

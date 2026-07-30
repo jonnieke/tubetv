@@ -1,6 +1,13 @@
 
-import { Video, ShortVideo } from './types';
+import { Video, ShortVideo, DailyStat } from './types';
 
+// ─── Feature Flags ────────────────────────────────────────────────────────────
+/**
+ * Set to true to re-enable the premium paywall.
+ * Phase 1 (Month 1): false — all content is FREE to build community.
+ * Phase 2: true  — M-Pesa subscription required for locked content.
+ */
+export const PAYWALL_ENABLED = import.meta.env.VITE_PAYWALL_ENABLED === 'true';
 
 export const MOCK_VIDEOS: Video[] = [
   // Trending / General
@@ -200,59 +207,66 @@ export const MOCK_VIDEOS: Video[] = [
 export const MOCK_SHORTS: ShortVideo[] = [
   {
     id: 's1',
-    url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-    author: '@crazy_kennar',
-    description: 'When the teacher asks for homework #comedy #kenya',
-    likes: 15400,
-    comments: 342
+    thumbnail: 'https://picsum.photos/seed/tubetv-short-1/450/800',
+    videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    author: '@tubetv_demo',
+    description: 'Comedy preview from the TubeTV demo catalogue',
+    likes: 0,
+    comments: 0
   },
   {
     id: 's2',
-    url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    author: '@chef_ali',
-    description: 'Quick Chapati recipe! #food #kenya',
-    likes: 89000,
-    comments: 1200
+    thumbnail: 'https://picsum.photos/seed/tubetv-short-2/450/800',
+    videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    author: '@tubetv_demo',
+    description: 'Food preview from the TubeTV demo catalogue',
+    likes: 0,
+    comments: 0
   },
   {
     id: 'ad1',
-    url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-    author: 'Sponsor: Safaricom',
-    description: 'Get the new 5G bundles today! Link in bio.',
+    thumbnail: 'https://picsum.photos/seed/tubetv-short-ad/450/800',
+    videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    author: 'TubeTV demo sponsor',
+    description: 'Example sponsored placement',
     likes: 0,
     comments: 0,
     isAd: true
   },
   {
     id: 's3',
-    url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    author: '@travel_kenya',
-    description: 'Diani Beach Vibes #tembeakenya',
-    likes: 45000,
-    comments: 890
+    thumbnail: 'https://picsum.photos/seed/tubetv-short-3/450/800',
+    videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    author: '@tubetv_demo',
+    description: 'Travel preview from the TubeTV demo catalogue',
+    likes: 0,
+    comments: 0
   },
   {
     id: 's4',
-    url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    author: '@rugby_ke',
-    description: 'Shujaa training session #kenya7s',
-    likes: 12000,
-    comments: 450
+    thumbnail: 'https://picsum.photos/seed/tubetv-short-4/450/800',
+    videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    author: '@tubetv_demo',
+    description: 'Sports preview from the TubeTV demo catalogue',
+    likes: 0,
+    comments: 0
   },
   {
     id: 's5',
-    url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOverDriver.mp4',
-    author: '@flaqo411',
-    description: 'Mama Otis returns! #comedy',
-    likes: 88000,
-    comments: 2100
+    thumbnail: 'https://picsum.photos/seed/tubetv-short-5/450/800',
+    videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    author: '@tubetv_demo',
+    description: 'Series preview from the TubeTV demo catalogue',
+    likes: 0,
+    comments: 0
   },
   {
     id: 's6',
-    url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-    author: '@tech_today',
-    description: 'Unboxing the new phone in Nairobi #tech',
-    likes: 34000,
-    comments: 900
+    thumbnail: 'https://picsum.photos/seed/tubetv-short-6/450/800',
+    videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    author: '@tubetv_demo',
+    description: 'Technology preview from the TubeTV demo catalogue',
+    likes: 0,
+    comments: 0
   }
 ];

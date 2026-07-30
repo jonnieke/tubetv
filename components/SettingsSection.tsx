@@ -1,161 +1,92 @@
-import React, { useState, useEffect } from 'react';
-import { User, Bell, Shield, CreditCard, Smartphone, Globe, Monitor, LogOut, KeyRound, Eye, EyeOff, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
-import { updatePin, signOut, supabase } from '../lib/supabase';
+import React, { useEffect, useState } from 'react';
+import { Check, CreditCard, Download, Globe, Loader2, LogOut, Monitor, Shield, Smartphone, Trash2, User } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { signOut } from '../lib/supabase';
+import type { ActiveSubscription, SubscriptionPlanCode } from '../lib/subscriptions';
+import { fetchPaymentStatus, startMpesaPayment, SUBSCRIPTION_PLANS } from '../lib/subscriptions';
+import type { PlaybackPreferences } from '../lib/viewerState';
 import { useLanguage } from '../contexts/LanguageContext';
-import { error as logError } from '../lib/logger';
-
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
-
-/** Convert a VAPID base64 key to the Uint8Array format pushManager.subscribe() expects */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
-}
+import { deleteAccount, exportAccountData } from '../lib/privacy';
+import { trackEvent } from '../lib/analytics';
 
 interface SettingsSectionProps {
   currentUser?: SupabaseUser | null;
+  initialTab?: 'general' | 'billing';
   userPhone?: string | null;
   onLogout?: () => void;
+  preferences: PlaybackPreferences;
+  onPreferencesChange: (preferences: PlaybackPreferences) => void;
+  activeSubscription: ActiveSubscription | null;
+  onSubscriptionRefresh: () => Promise<void>;
 }
 
-const SettingsSection: React.FC<SettingsSectionProps> = ({ currentUser, userPhone, onLogout }) => {
-  const { t, language, setLanguage } = useLanguage();
-  const [activeTab, setActiveTab] = useState('general');
-  // Push notification state — synced with the browser permission
-  const [pushEnabled, setPushEnabled]   = useState(false);
-  const [pushLoading, setPushLoading]   = useState(false);
-  const [pushError,   setPushError]     = useState('');
-  const [notifications, setNotifications] = useState({
-    recommendations: false,
-    updates: true,
-  });
+const SettingsSection: React.FC<SettingsSectionProps> = ({
+  currentUser,
+  userPhone,
+  onLogout,
+  preferences,
+  initialTab = 'general',
+  onPreferencesChange,
+  activeSubscription,
+  onSubscriptionRefresh,
+}) => {
+  const { language, setLanguage } = useLanguage();
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [paymentState, setPaymentState] = useState<'idle' | 'requesting' | 'waiting' | 'succeeded' | 'failed'>('idle');
+  const [paymentMessage, setPaymentMessage] = useState('');
+  const [privacyBusy, setPrivacyBusy] = useState(false);
+  const [privacyMessage, setPrivacyMessage] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
-  // Reflect current browser permission on mount
   useEffect(() => {
-    if (!('Notification' in window)) return;
-    if (Notification.permission === 'granted') {
-      navigator.serviceWorker.ready
-        .then((reg) => reg.pushManager.getSubscription())
-        .then((sub) => { if (sub) setPushEnabled(true); })
-        .catch(() => {});
-    }
-  }, []);
-  const [preferences, setPreferences] = useState({
-    autoplay: true,
-    captions: false,
-    quality: 'Auto',
-    dataSaver: false,
-  });
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
-  // Change PIN state
-  const [currentPin, setCurrentPin] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [confirmNewPin, setConfirmNewPin] = useState('');
-  const [showPins, setShowPins] = useState(false);
-  const [pinLoading, setPinLoading] = useState(false);
-  const [pinError, setPinError] = useState('');
-  const [pinSuccess, setPinSuccess] = useState(false);
-
-  const toggleNotification = (key: keyof typeof notifications) => {
-    setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
+  const updatePreference = <K extends keyof PlaybackPreferences>(key: K, value: PlaybackPreferences[K]) => {
+    onPreferencesChange({ ...preferences, [key]: value });
   };
 
-  const togglePreference = (key: keyof typeof preferences) => {
-    if (typeof preferences[key] === 'boolean') {
-      setPreferences(prev => ({ ...prev, [key]: !prev[key] }));
-    }
-  };
-
-  const togglePush = async () => {
-    setPushError('');
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      setPushError('Push notifications are not supported in this browser.');
-      return;
-    }
-    if (!VAPID_PUBLIC_KEY) {
-      setPushError('Push notifications are not configured yet (missing VITE_VAPID_PUBLIC_KEY).');
-      return;
-    }
+  const handlePurchase = async (planCode: SubscriptionPlanCode) => {
     if (!currentUser) {
-      setPushError('Sign in to enable push notifications.');
+      setPaymentState('failed');
+      setPaymentMessage('Sign in with your verified phone number before subscribing.');
       return;
     }
 
-    setPushLoading(true);
+    const amountKes = SUBSCRIPTION_PLANS[planCode].amountKes;
+    trackEvent('checkout_start', { plan: planCode, amountKes });
     try {
-      const reg = await navigator.serviceWorker.ready;
+      setPaymentState('requesting');
+      setPaymentMessage('');
+      const transaction = await startMpesaPayment(planCode);
+      setPaymentState('waiting');
+      setPaymentMessage(transaction.message || 'Check your phone and enter your M-Pesa PIN.');
+      trackEvent('checkout_submitted', { plan: planCode, amountKes });
 
-      if (pushEnabled) {
-        // ── Unsubscribe ────────────────────────────────────────────────────────
-        const sub = await reg.pushManager.getSubscription();
-        if (sub) {
-          const endpoint = sub.endpoint;
-          await sub.unsubscribe();
-          await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
-        }
-        setPushEnabled(false);
-      } else {
-        // ── Subscribe ──────────────────────────────────────────────────────────
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-          setPushError('Permission denied. Enable notifications in your browser settings.');
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        const status = await fetchPaymentStatus(transaction.id);
+        if (status.status === 'succeeded') {
+          setPaymentState('succeeded');
+          setPaymentMessage('Payment received. Premium access is active.');
+          trackEvent('subscription_activated', { plan: planCode, amountKes });
+          await onSubscriptionRefresh();
           return;
         }
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-        });
-        const key  = sub.getKey('p256dh');
-        const auth = sub.getKey('auth');
-        await supabase.from('push_subscriptions').upsert({
-          user_id:  currentUser.id,
-          endpoint: sub.endpoint,
-          p256dh:   key  ? btoa(String.fromCharCode(...new Uint8Array(key)))  : '',
-          auth:     auth ? btoa(String.fromCharCode(...new Uint8Array(auth))) : '',
-        }, { onConflict: 'endpoint' });
-        setPushEnabled(true);
+        if (status.status === 'failed' || status.status === 'cancelled') {
+          setPaymentState('failed');
+          setPaymentMessage(status.result_description || 'Payment was not completed.');
+          trackEvent('checkout_failed', { plan: planCode, reason: status.status });
+          return;
+        }
       }
-    } catch (err) {
-      logError('Push subscription error:', err);
-      setPushError('Something went wrong. Please try again.');
-    } finally {
-      setPushLoading(false);
-    }
-  };
 
-  const handleChangePin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPinError('');
-    setPinSuccess(false);
-    if (currentPin.length !== 6 || newPin.length !== 6 || confirmNewPin.length !== 6) {
-      setPinError('All PIN fields must be exactly 6 digits.');
-      return;
-    }
-    if (newPin !== confirmNewPin) {
-      setPinError('New PINs do not match.');
-      return;
-    }
-    if (newPin === currentPin) {
-      setPinError('New PIN must be different from your current PIN.');
-      return;
-    }
-    if (!userPhone) {
-      setPinError('Unable to identify account. Please sign out and back in.');
-      return;
-    }
-    setPinLoading(true);
-    const { error } = await updatePin(currentPin, newPin, userPhone);
-    setPinLoading(false);
-    if (error) {
-      setPinError(error.message);
-    } else {
-      setPinSuccess(true);
-      setCurrentPin('');
-      setNewPin('');
-      setConfirmNewPin('');
+      setPaymentState('waiting');
+      setPaymentMessage('Payment is still processing. Your access will activate automatically when M-Pesa confirms it.');
+    } catch (error) {
+      setPaymentState('failed');
+      setPaymentMessage(error instanceof Error ? error.message : 'Unable to start the M-Pesa request.');
+      trackEvent('checkout_failed', { plan: planCode, reason: 'request_error' });
     }
   };
 
@@ -164,408 +95,194 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({ currentUser, userPhon
     onLogout?.();
   };
 
-  const displayPhone = userPhone || '—';
-  const displayName = currentUser?.user_metadata?.display_name || displayPhone;
 
+  const handleExport = async () => {
+    if (!currentUser) return setPrivacyMessage('Sign in to export your account data.');
+    try {
+      setPrivacyBusy(true);
+      setPrivacyMessage('');
+      const data = await exportAccountData();
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `tubetv-account-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setPrivacyMessage('Your account export has downloaded.');
+    } catch (error) {
+      setPrivacyMessage(error instanceof Error ? error.message : 'Could not export your data.');
+    } finally {
+      setPrivacyBusy(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmation !== 'DELETE') return;
+    try {
+      setPrivacyBusy(true);
+      await deleteAccount(deleteConfirmation);
+      await signOut();
+      onLogout?.();
+    } catch (error) {
+      setPrivacyMessage(error instanceof Error ? error.message : 'Could not delete your account.');
+      setPrivacyBusy(false);
+    }
+  };
   const tabs = [
-    { id: 'general',       label: 'General',           icon: Monitor },
-    { id: 'account',       label: 'Account',            icon: User },
-    { id: 'notifications', label: 'Notifications',      icon: Bell },
-    { id: 'billing',       label: 'Billing',            icon: CreditCard },
-    { id: 'privacy',       label: 'Privacy & Security', icon: Shield },
+    { id: 'general', label: 'Playback', icon: Monitor },
+    { id: 'account', label: 'Account', icon: User },
+    { id: 'billing', label: 'Billing', icon: CreditCard },
+    { id: 'privacy', label: 'Privacy', icon: Shield },
   ];
 
+  const subscriptionEnd = activeSubscription?.end_date
+    ? new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(activeSubscription.end_date))
+    : null;
+
   return (
-    <div className="p-4 md:p-8 h-screen overflow-y-auto pb-24 bg-zinc-950 text-white">
-      <div className="max-w-6xl mx-auto">
+    <div className="h-screen overflow-y-auto bg-zinc-950 p-4 pb-24 text-white md:p-8">
+      <div className="mx-auto max-w-5xl">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">{t('nav.settings')}</h1>
-          <p className="text-zinc-400">{t('studio.subtitle')}</p>
+          <h1 className="text-3xl font-bold">Settings</h1>
+          <p className="mt-2 text-sm text-zinc-400">Manage playback, your verified account and TubeTV access.</p>
         </header>
 
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar Navigation */}
-          <div className="w-full lg:w-64 flex-shrink-0">
-            <nav className="space-y-1">
-              {tabs.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm
-                    ${activeTab === tab.id 
-                      ? 'bg-white text-black shadow-lg' 
-                      : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'}`}
-                >
-                  <tab.icon size={18} />
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-          </div>
+        <div className="flex flex-col gap-8 lg:flex-row">
+          <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto lg:w-52 lg:flex-col">
+            {tabs.map((tab) => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex shrink-0 items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? 'bg-white text-black' : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'}`}>
+                <tab.icon size={18} /> {tab.label}
+              </button>
+            ))}
+          </nav>
 
-          {/* Main Content Area */}
-          <div className="flex-1 space-y-6">
-            
-            {/* --- GENERAL SETTINGS --- */}
+          <div className="min-w-0 flex-1">
             {activeTab === 'general' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                  <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                    <Monitor className="text-blue-500" /> Playback & Performance
-                  </h2>
-                  
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between pb-6 border-b border-zinc-800">
-                      <div>
-                        <p className="font-medium text-white">Autoplay next video</p>
-                        <p className="text-sm text-zinc-400">Automatically play suggested videos when one finishes.</p>
-                      </div>
-                      <button 
-                        onClick={() => togglePreference('autoplay')}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${preferences.autoplay ? 'bg-green-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${preferences.autoplay ? 'left-7' : 'left-1'}`} />
-                      </button>
+              <section aria-labelledby="playback-heading" className="space-y-6">
+                <div>
+                  <h2 id="playback-heading" className="text-xl font-bold">Playback and data</h2>
+                  <p className="mt-1 text-sm text-zinc-400">Changes are saved to this account and applied to the player.</p>
+                </div>
+                <div className="divide-y divide-zinc-800 border-y border-zinc-800">
+                  <SettingToggle label="Autoplay next video" description="Continue with the next programme when one finishes." checked={preferences.autoplay} onChange={(value) => updatePreference('autoplay', value)} />
+                  <SettingToggle label="Data Saver" description="Prefer 360p and avoid preloading full videos." checked={preferences.dataSaver} onChange={(value) => updatePreference('dataSaver', value)} />
+                  <SettingToggle label="Captions by default" description="Show provided caption tracks automatically." checked={preferences.captions} onChange={(value) => updatePreference('captions', value)} />
+                  <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium">Default quality</p>
+                      <p className="text-sm text-zinc-400">Data Saver overrides this to 360p.</p>
                     </div>
-
-                    <div className="flex items-center justify-between pb-6 border-b border-zinc-800">
-                      <div>
-                        <p className="font-medium text-white">Data Saver Mode</p>
-                        <p className="text-sm text-zinc-400">Auto-selects 360p to save your bundles. Good for 4G.</p>
-                      </div>
-                      <button 
-                        onClick={() => togglePreference('dataSaver')}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${preferences.dataSaver ? 'bg-green-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${preferences.dataSaver ? 'left-7' : 'left-1'}`} />
-                      </button>
+                    <select value={preferences.quality} onChange={(event) => updatePreference('quality', event.target.value as PlaybackPreferences['quality'])} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white">
+                      <option value="auto">Auto</option>
+                      <option value="1080p">1080p</option>
+                      <option value="720p">720p</option>
+                      <option value="480p">480p</option>
+                      <option value="360p">360p</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium">Maximum content rating</p>
+                      <p className="text-sm text-zinc-400">18-rated and unrated content remains unavailable.</p>
                     </div>
-
-                    <div className="flex items-center justify-between pb-6 border-b border-zinc-800">
-                       <div>
-                        <p className="font-medium text-white">Default Quality</p>
-                        <p className="text-sm text-zinc-400">Adjust video quality for your network connection.</p>
-                      </div>
-                      <select 
-                        value={preferences.quality}
-                        onChange={(e) => setPreferences(prev => ({ ...prev, quality: e.target.value }))}
-                        className="bg-zinc-800 border border-zinc-700 text-white text-sm rounded-lg focus:ring-red-500 focus:border-red-500 block p-2.5"
-                      >
-                        <option>Auto</option>
-                        <option>1080p HD</option>
-                        <option>720p</option>
-                        <option>480p</option>
-                        <option>360p (Data Saver)</option>
-                      </select>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-white">Always show captions</p>
-                        <p className="text-sm text-zinc-400">Display subtitles on videos by default.</p>
-                      </div>
-                      <button 
-                        onClick={() => togglePreference('captions')}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${preferences.captions ? 'bg-green-500' : 'bg-zinc-700'}`}
-                      >
-                        <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${preferences.captions ? 'left-7' : 'left-1'}`} />
-                      </button>
-                    </div>
+                    <select aria-label="Maximum content rating" value={preferences.maximumRating} onChange={(event) => updatePreference('maximumRating', event.target.value as PlaybackPreferences['maximumRating'])} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white">
+                      <option value="GE">GE, all ages</option>
+                      <option value="PG">PG, parental guidance</option>
+                      <option value="16">16 and below</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3"><Globe className="text-zinc-500" size={20} /><div><p className="font-medium">Language</p><p className="text-sm text-zinc-400">Interface language for this device.</p></div></div>
+                    <select value={language} onChange={(event) => setLanguage(event.target.value as 'en' | 'sw')} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white">
+                      <option value="en">English</option>
+                      <option value="sw">Kiswahili</option>
+                    </select>
                   </div>
                 </div>
-
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                  <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                    <Globe className="text-purple-500" /> Language & Region
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block mb-2 text-sm font-medium text-zinc-400">{t('common.language')}</label>
-                      <select 
-                        value={language}
-                        onChange={(e) => setLanguage(e.target.value as any)}
-                        className="bg-zinc-800 border border-zinc-700 text-white text-sm rounded-lg focus:ring-red-500 focus:border-red-500 block w-full p-2.5"
-                      >
-                        <option value="en">English</option>
-                        <option value="sw">Kiswahili</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block mb-2 text-sm font-medium text-zinc-400">Content Location</label>
-                      <select className="bg-zinc-800 border border-zinc-700 text-white text-sm rounded-lg focus:ring-red-500 focus:border-red-500 block w-full p-2.5">
-                        <option>Kenya 🇰🇪</option>
-                        <option>Uganda 🇺🇬</option>
-                        <option>Tanzania 🇹🇿</option>
-                        <option>Diaspora (Global)</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              </section>
             )}
 
-            {/* --- ACCOUNT SETTINGS --- */}
             {activeTab === 'account' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                  <div className="flex items-center gap-6 mb-8">
-                    <div className="w-20 h-20 bg-gradient-to-tr from-red-600 to-orange-500 rounded-full flex items-center justify-center text-2xl font-bold shadow-lg">
-                      {displayPhone.slice(-2)}
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold">{displayName}</h2>
-                      <p className="text-zinc-400 text-sm mt-1">Joined via Phone Number</p>
-                      <span className="inline-block mt-2 px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-bold rounded border border-green-500/20">
-                        FREE PLAN
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                     <div className="p-4 bg-zinc-950 rounded-xl border border-zinc-800 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <Smartphone className="text-zinc-500" size={20} />
-                            <div>
-                                <p className="text-sm text-zinc-400">Phone Number</p>
-                                <p className="font-medium">{displayPhone}</p>
-                            </div>
-                        </div>
-                        <span className="text-zinc-600 text-xs">Primary</span>
-                     </div>
+              <section aria-labelledby="account-heading">
+                <h2 id="account-heading" className="text-xl font-bold">Verified account</h2>
+                <div className="mt-6 border-y border-zinc-800 py-6">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/15 text-green-400"><Smartphone size={22} /></div>
+                    <div><p className="font-medium">{currentUser?.user_metadata?.display_name || 'TubeTV viewer'}</p><p className="text-sm text-zinc-400">{userPhone || 'Not signed in'}</p></div>
+                    {currentUser?.phone_confirmed_at && <span className="ml-auto flex items-center gap-1 text-xs font-bold text-green-400"><Check size={14} /> Verified</span>}
                   </div>
                 </div>
+                <button onClick={handleSignOut} className="mt-6 flex items-center gap-2 text-sm font-medium text-red-400 hover:text-red-300"><LogOut size={17} /> Sign out</button>
+              </section>
+            )}
 
-                {/* Sign Out */}
-                {currentUser && (
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                    <h3 className="text-lg font-bold mb-2">Session</h3>
-                    <p className="text-zinc-400 text-sm mb-4">Signed in as {displayPhone}</p>
-                    <button
-                      onClick={handleSignOut}
-                      className="flex items-center gap-2 border border-red-500/40 text-red-400 hover:bg-red-500/10 px-4 py-2 rounded-lg font-medium transition-colors"
-                    >
-                      <LogOut size={16} /> Sign Out
+            {activeTab === 'billing' && (
+              <section aria-labelledby="billing-heading">
+                <h2 id="billing-heading" className="text-xl font-bold">Premium access</h2>
+                {activeSubscription ? (
+                  <div className="mt-5 border-l-2 border-green-500 pl-4">
+                    <p className="font-bold text-green-400">Premium is active</p>
+                    <p className="mt-1 text-sm text-zinc-400">{activeSubscription.tier} pass, valid until {subscriptionEnd}.</p>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-zinc-400">Choose a pass. Payment is confirmed securely through M-Pesa.</p>
+                )}
+                <div className="mt-7 grid gap-4 md:grid-cols-3">
+                  {Object.values(SUBSCRIPTION_PLANS).map((plan) => (
+                    <div key={plan.code} className={`rounded-lg border bg-zinc-900 p-5 ${plan.code === 'daily' ? 'border-green-500' : 'border-zinc-800'}`}>
+                      {plan.code === 'daily' && <p className="mb-3 text-xs font-bold uppercase text-green-400">Start here</p>}
+                      <p className="font-bold">{plan.label}</p>
+                      <p className="mt-2 text-2xl font-black">KSh {plan.amountKes}</p>
+                      <p className="mt-2 min-h-10 text-sm text-zinc-400">{plan.description}</p>
+                      <button disabled={paymentState === 'requesting' || paymentState === 'waiting'} onClick={() => handlePurchase(plan.code)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2.5 text-sm font-bold hover:bg-green-500 disabled:opacity-50">
+                        {paymentState === 'requesting' ? <Loader2 className="animate-spin" size={16} /> : <Smartphone size={16} />} Pay with M-Pesa
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {paymentMessage && <p role="status" className={`mt-5 text-sm ${paymentState === 'failed' ? 'text-red-400' : paymentState === 'succeeded' ? 'text-green-400' : 'text-zinc-300'}`}>{paymentMessage}</p>}
+              </section>
+            )}
+
+            {activeTab === 'privacy' && (
+              <section aria-labelledby="privacy-heading">
+                <h2 id="privacy-heading" className="text-xl font-bold">Privacy</h2>
+                <p className="mt-2 text-sm text-zinc-400">Access a portable copy of your account or permanently erase it.</p>
+                <div className="mt-6 border-y border-zinc-800 py-5">
+                  <h3 className="font-medium">Download my data</h3>
+                  <p className="mt-1 text-sm text-zinc-400">Includes profile, billing records, watch list, progress and preferences.</p>
+                  <button disabled={privacyBusy || !currentUser} onClick={handleExport} className="mt-4 flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-bold hover:bg-zinc-700 disabled:opacity-50">
+                    {privacyBusy ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />} Download JSON
+                  </button>
+                </div>
+                <div className="border-b border-zinc-800 py-5">
+                  <h3 className="font-medium text-red-400">Delete account</h3>
+                  <p className="mt-1 text-sm text-zinc-400">This permanently deletes your login and linked TubeTV records. This cannot be undone.</p>
+                  <label htmlFor="delete-confirmation" className="mt-4 block text-sm font-medium">Type DELETE to confirm</label>
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                    <input id="delete-confirmation" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
+                    <button disabled={privacyBusy || deleteConfirmation !== 'DELETE' || !currentUser} onClick={handleDeleteAccount} className="flex items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-bold hover:bg-red-600 disabled:opacity-40">
+                      <Trash2 size={16} /> Delete permanently
                     </button>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* --- NOTIFICATIONS SETTINGS --- */}
-            {activeTab === 'notifications' && (
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                    <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                        <Bell className="text-yellow-500" /> Notification Preferences
-                    </h2>
-
-                    <div className="space-y-6">
-                        {/* ── Push notifications (real browser API) ───────────── */}
-                        <div className="pb-6 border-b border-zinc-800">
-                            <div className="flex items-start gap-4">
-                                <div className="mt-1">
-                                    {pushLoading ? (
-                                        <Loader2 size={20} className="animate-spin text-zinc-400" />
-                                    ) : (
-                                        <button
-                                            onClick={togglePush}
-                                            disabled={!currentUser}
-                                            className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${
-                                                pushEnabled ? 'bg-red-600' : 'bg-zinc-700'
-                                            } disabled:opacity-40`}
-                                            aria-label="Toggle push notifications"
-                                        >
-                                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${pushEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="flex-1">
-                                    <p className="font-medium text-white">Push Notifications</p>
-                                    <p className="text-sm text-zinc-400 mt-0.5">
-                                        Get notified about new uploads, live streams, and replies — directly on your device.
-                                    </p>
-                                    {!currentUser && (
-                                        <p className="text-xs text-zinc-500 mt-1">Sign in to enable push notifications.</p>
-                                    )}
-                                    {pushError && (
-                                        <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
-                                            <AlertCircle size={12} /> {pushError}
-                                        </p>
-                                    )}
-                                    {pushEnabled && (
-                                        <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                                            <CheckCircle2 size={12} /> Active on this device
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* ── Simple preference toggles ────────────────────────── */}
-                        {(Object.entries(notifications) as [keyof typeof notifications, boolean][]).map(([key, value]) => (
-                            <div key={key} className="flex items-start gap-4 pb-6 border-b border-zinc-800 last:border-0 last:pb-0">
-                                <div className="mt-1">
-                                    <input
-                                        type="checkbox"
-                                        checked={value}
-                                        onChange={() => setNotifications(prev => ({ ...prev, [key]: !prev[key] }))}
-                                        className="w-5 h-5 rounded border-zinc-700 bg-zinc-800 text-red-600 focus:ring-red-500 focus:ring-offset-zinc-900"
-                                    />
-                                </div>
-                                <div>
-                                    <p className="font-medium capitalize text-white">{(key as string).replace(/([A-Z])/g, ' $1').trim()}</p>
-                                    <p className="text-sm text-zinc-400">
-                                        {key === 'recommendations' && 'Notify me about videos I might like based on my watch history.'}
-                                        {key === 'updates' && 'Important announcements about service features and policy changes.'}
-                                    </p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
                 </div>
+                {privacyMessage && <p role="status" className="mt-4 text-sm text-zinc-300">{privacyMessage}</p>}
+              </section>
             )}
-
-            {/* --- BILLING SETTINGS --- */}
-            {activeTab === 'billing' && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                    {/* Current Plan */}
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 flex items-center justify-between">
-                        <div>
-                            <p className="text-zinc-400 text-xs uppercase tracking-wider mb-1">Current Plan</p>
-                            <h2 className="text-2xl font-bold text-white">Free — All Access</h2>
-                            <p className="text-zinc-400 text-sm mt-1">All content is free during our community-building phase.</p>
-                        </div>
-                        <span className="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded-full border border-green-500/30 flex-shrink-0">
-                            ACTIVE
-                        </span>
-                    </div>
-
-                    {/* Coming soon banner */}
-                    <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-red-900/30 to-zinc-900 border border-red-500/20 p-8 text-center">
-                        <div className="flex items-center justify-center gap-3 mb-4">
-                            <div className="p-3 bg-red-600/20 rounded-full">
-                                <CreditCard className="w-7 h-7 text-red-400" />
-                            </div>
-                        </div>
-                        <h3 className="text-2xl font-black text-white mb-2">Subscription Plans Coming Soon</h3>
-                        <p className="text-zinc-400 text-sm max-w-md mx-auto leading-relaxed">
-                            We're building a seamless M-Pesa billing experience powered by header enrichment —
-                            subscribe with a single tap, no card required.
-                        </p>
-                        <div className="mt-6 flex flex-wrap justify-center gap-3 text-sm">
-                            {['One-tap M-Pesa', 'No card needed', 'Ksh 150 / mo', 'Cancel anytime'].map(feat => (
-                                <span key={feat} className="px-3 py-1.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">
-                                    {feat}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* --- PRIVACY SETTINGS --- */}
-            {activeTab === 'privacy' && (
-                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                    {/* Change PIN */}
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                        <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
-                            <KeyRound className="text-red-500" /> Change PIN
-                        </h2>
-                        <p className="text-sm text-zinc-400 mb-6">Your PIN is used to sign into your account — keep it private like your M-Pesa PIN.</p>
-
-                        {pinSuccess ? (
-                            <div className="flex items-center gap-3 p-4 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400">
-                                <CheckCircle2 size={20} />
-                                <p className="font-medium">PIN updated successfully!</p>
-                            </div>
-                        ) : (
-                            <form onSubmit={handleChangePin} className="space-y-4">
-                                <div className="relative">
-                                    <label className="block text-xs text-zinc-500 mb-1.5 ml-1">Current PIN</label>
-                                    <input
-                                        type={showPins ? 'text' : 'password'}
-                                        inputMode="numeric"
-                                        maxLength={6}
-                                        value={currentPin}
-                                        onChange={(e) => { setCurrentPin(e.target.value.replace(/\D/g, '')); setPinError(''); }}
-                                        placeholder="6-digit PIN"
-                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors font-mono tracking-widest text-lg"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs text-zinc-500 mb-1.5 ml-1">New PIN</label>
-                                    <input
-                                        type={showPins ? 'text' : 'password'}
-                                        inputMode="numeric"
-                                        maxLength={6}
-                                        value={newPin}
-                                        onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, '')); setPinError(''); }}
-                                        placeholder="6-digit PIN"
-                                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors font-mono tracking-widest text-lg"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs text-zinc-500 mb-1.5 ml-1">Confirm New PIN</label>
-                                    <input
-                                        type={showPins ? 'text' : 'password'}
-                                        inputMode="numeric"
-                                        maxLength={6}
-                                        value={confirmNewPin}
-                                        onChange={(e) => { setConfirmNewPin(e.target.value.replace(/\D/g, '')); setPinError(''); }}
-                                        placeholder="Repeat new PIN"
-                                        className={`w-full bg-zinc-950 border rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none transition-colors font-mono tracking-widest text-lg
-                                            ${pinError ? 'border-red-500' : 'border-zinc-800 focus:border-zinc-600'}`}
-                                    />
-                                </div>
-
-                                {pinError && (
-                                    <p className="text-red-400 text-xs flex items-center gap-1 ml-1">
-                                        <AlertCircle size={12} /> {pinError}
-                                    </p>
-                                )}
-
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPins(!showPins)}
-                                    className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 text-xs transition-colors"
-                                >
-                                    {showPins ? <EyeOff size={12} /> : <Eye size={12} />}
-                                    {showPins ? 'Hide PINs' : 'Show PINs'}
-                                </button>
-
-                                <button
-                                    type="submit"
-                                    disabled={pinLoading || currentPin.length < 6 || newPin.length < 6 || confirmNewPin.length < 6}
-                                    className="w-full bg-red-600 hover:bg-red-700 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
-                                >
-                                    {pinLoading ? <Loader2 size={18} className="animate-spin" /> : <KeyRound size={18} />}
-                                    Update PIN
-                                </button>
-                            </form>
-                        )}
-                    </div>
-
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                        <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                            <Shield className="text-green-500" /> Privacy
-                        </h2>
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="font-medium">Active Sessions</p>
-                                    <p className="text-sm text-zinc-400">Manage devices where you're currently logged in.</p>
-                                </div>
-                                <button className="text-zinc-400 hover:text-white text-sm">View all</button>
-                            </div>
-                        </div>
-                    </div>
-                 </div>
-            )}
-
           </div>
         </div>
       </div>
     </div>
   );
 };
+
+const SettingToggle = ({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (value: boolean) => void }) => (
+  <div className="flex items-center justify-between gap-5 py-5">
+    <div><p className="font-medium">{label}</p><p className="text-sm text-zinc-400">{description}</p></div>
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? 'bg-green-500' : 'bg-zinc-700'}`}>
+      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+    </button>
+  </div>
+);
 
 export default SettingsSection;

@@ -9,3 +9,23 @@ entrypoint = "./functions/send-push/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-push/*.html" ]
+
+[functions.mpesa-stk-push]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/mpesa-stk-push/index.ts"
+
+[functions.mpesa-callback]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/mpesa-callback/index.ts"
+
+[functions.account-data]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/account-data/index.ts"
+
+[functions.analytics-event]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/analytics-event/index.ts"

@@ -1,20 +1,31 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Tube TV
 
-# Run and deploy your AI Studio app
+Tube TV is a Kenyan-first streaming app for local video, shorts, live events, creator uploads, education, farming, faith, kids content, and diaspora programming.
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/drive/16zDacLEBzDh9ZShknBzPGXMrco1Y3bX_
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
+## Local Setup
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Create `.env.local` with the required Vite keys:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_BUNNY_PULL_ZONE`
+   - `VITE_API_KEY` for optional Gemini features
+   - `VITE_VAPID_PUBLIC_KEY` for optional push notifications
+3. Start the app:
    `npm run dev`
+4. Build for production:
+   `npm run build`
+
+## Supabase Edge Function Secrets
+
+The Bunny proxy expects these server-side secrets:
+
+- `BUNNY_ACCESS_KEY`
+- `BUNNY_LIBRARY_ID`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `BUNNY_ADMIN_EMAILS`
+- `BUNNY_ADMIN_PHONES`
+
+Only authenticated admins can create, update, or upload Bunny Stream content through the proxy.

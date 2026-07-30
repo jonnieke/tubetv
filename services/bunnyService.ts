@@ -1,6 +1,7 @@
-import { log, error as logError } from '../lib/logger';
 // 🔒 SECURED: Calls are now proxied through Supabase Edge Functions
 // The sensitive BUNNY_ACCESS_KEY is now stored in Supabase Secrets.
+import { normalizeContentRating } from '../lib/contentRating';
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const BASE_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/bunny-api` : '';
 const PULL_ZONE = (import.meta.env.VITE_BUNNY_PULL_ZONE as string) || '';
@@ -43,49 +44,7 @@ interface BunnyVideoListResponse {
   items: BunnyVideoItem[];
 }
 
-// ─── Mute helpers (admin-only, stored locally) ───────────────────────────────
-
-/**
- * Mutes or unmutes a video (admin-only) by writing a 'muted' metaTag
- * directly to Bunny via the API proxy. This is server-side and affects
- * every browser / device — not just the admin's local machine.
- *
- * @param currentMetaTags  The video's existing metaTags (to preserve them)
- * @returns true on success, false on failure
- */
-export const setVideoMuted = async (
-  videoId: string,
-  muted: boolean,
-  currentMetaTags: { property: string; value: string }[] = [],
-): Promise<boolean> => {
-  // Strip any existing 'muted' tag, then re-add if muting
-  const filtered = currentMetaTags.filter(t => t.property.toLowerCase() !== 'muted');
-  const newMetaTags = muted
-    ? [...filtered, { property: 'muted', value: 'true' }]
-    : filtered;
-
-  const result = await updateVideoMetadata(videoId, { metaTags: newMetaTags });
-  if (result !== null) {
-    // Notify App.tsx to instantly remove / restore the video from the public list
-    window.dispatchEvent(
-      new CustomEvent('tube-mute-change', { detail: { videoId, muted } })
-    );
-  }
-  return result !== null;
-};
-
 // ─── Private helpers ──────────────────────────────────────────────────────────
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-async function fetchWithRetry(url: string, options: RequestInit, retries = 3): Promise<Response> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url, options);
-    if (res.ok || res.status < 500) return res;
-    if (attempt < retries) await sleep(500 * 2 ** attempt);
-  }
-  return fetch(url, options);
-}
 
 /** Formats seconds → "M:SS" or "H:MM:SS" */
 const formatDuration = (seconds: number): string => {
@@ -177,41 +136,12 @@ export const getStreamUrl = (videoId: string): string => {
   return `https://${host}/${videoId}/playlist.m3u8`;
 };
 
-/**
- * Constructs the CDN thumbnail URL for a video GUID.
- *
- * NOTE: No cache-buster is appended here on purpose.
- * Bunny assigns a new `thumbnailFileName` whenever a custom thumbnail is uploaded,
- * so the URL changes naturally. Adding a ?v= query string would defeat Bunny's
- * edge cache and force an origin hit on every page load — exactly why thumbnails
- * were loading slowly.
- *
- * Bunny Optimizer params (?width=480&format=webp) are appended so the CDN
- * downscales and converts to WebP before delivery — ~3–5× smaller than the raw JPEG.
- * If your pull zone does not have Optimizer enabled, Bunny silently ignores the params.
- */
-/**
- * Constructs the CDN thumbnail URL for a video GUID.
- * Served directly from the Bunny Stream pull zone — always available.
- * No cache-buster param: thumbnailFileName changes naturally when a custom
- * thumbnail is uploaded, giving automatic invalidation without defeating
- * Bunny's edge cache.
- */
-/**
- * @param width   Resize to this pixel width (Bunny Optimizer). Default 480.
- *                Pass 0 to skip resizing (admin preview where full-res matters).
- */
-export const getThumbnailUrl = (
-  videoId: string,
-  filename?: string,
-  width = 480,
-): string => {
+/** Constructs the CDN thumbnail URL for a video GUID. */
+export const getThumbnailUrl = (videoId: string, filename?: string): string => {
   const host = PULL_ZONE ? PULL_ZONE.replace(/\/$/, '') : 'vz-0fe79b1a-8ad.b-cdn.net';
   const name = filename || 'thumbnail.jpg';
-  const base = `https://${host}/${videoId}/${name}`;
-  // Bunny Optimizer: WebP + resize. Silently ignored if Optimizer is not enabled
-  // on the pull zone, so safe to add unconditionally.
-  return width > 0 ? `${base}?width=${width}&format=webp&quality=82` : base;
+  // Add a cache-busting random string to the end so when we upload a new one, it updates instantly
+  return `https://${host}/${videoId}/${name}?v=${Math.floor(Date.now() / 3600000)}`;
 };
 
 /**
@@ -236,7 +166,7 @@ export const uploadCustomThumbnail = async (videoId: string, file: File): Promis
 
     if (!response.ok) {
       const errText = await response.text();
-      logError('Thumbnail upload failed:', response.status, errText);
+      console.error('Thumbnail upload failed:', response.status, errText);
       return null;
     }
 
@@ -283,18 +213,23 @@ export const getVideoStatus = async (videoId: string): Promise<{ status: number;
  * Auto-paginates in batches of 100 until all videos are retrieved.
  */
 export const fetchBunnyVideos = async (): Promise<BunnyVideoItem[]> => {
+  if (!BASE_URL || !ANON_KEY) {
+    console.warn('Bunny/Supabase environment variables are missing. Using demo content.');
+    return [];
+  }
+
   const all: BunnyVideoItem[] = [];
   let page = 1;
 
   try {
     while (true) {
-      const res = await fetchWithRetry(
+      const res = await fetch(
         `${BASE_URL}?page=${page}&itemsPerPage=100&orderBy=date`,
         { headers: getHeaders() }
       );
 
       if (!res.ok) {
-        logError(`Bunny library fetch failed: ${res.status} ${res.statusText}`);
+        console.error(`Bunny library fetch failed: ${res.status} ${res.statusText}`);
         break;
       }
 
@@ -311,7 +246,7 @@ export const fetchBunnyVideos = async (): Promise<BunnyVideoItem[]> => {
     // Deduplicate by GUID in case of overlapping pages or CDN sync issues
     const uniqueAll = Array.from(new Map(all.map(item => [item.guid, item])).values());
 
-    log(`✅ Loaded ${uniqueAll.length} unique videos from Bunny library`);
+    console.log(`✅ Loaded ${uniqueAll.length} unique videos from Bunny library`);
     return uniqueAll;
   } catch (error) {
     console.error('fetchBunnyVideos failed:', error);
@@ -341,7 +276,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
           ...item,
           title: o.title || item.title,
           metaTags: [
-            ...(item.metaTags || []).filter(t => !['category','author','genre','description','thumbnailUrl','trailerUrl','productionYear','isPremium','tags', 'season', 'episode', 'seriesTitle'].includes(t.property.toLowerCase())),
+            ...(item.metaTags || []).filter(t => !['category','author','genre','description','thumbnailurl','trailerurl','productionyear','ispremium','tags','season','episode','seriestitle','contentrating','classificationnumber','transcript','transcripturl'].includes(t.property.toLowerCase())),
             ...(Object.entries(o).map(([k, v]) => ({ property: k, value: String(v) }))),
           ],
         } as BunnyVideoItem;
@@ -369,13 +304,6 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     'series': 'Series',
     'originals – series': 'Series',
     'originals': 'Movies', // Legacy fallback
-    'fashion': 'Fashion',
-    'style': 'Fashion',
-    'mitindo': 'Fashion',
-    'wildlife': 'Wildlife',
-    'nature': 'Wildlife',
-    'safari': 'Wildlife',
-    'wanyama': 'Wildlife',
     'trending': 'Trending',
     'live': 'Live',
   };
@@ -388,12 +316,11 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   const rawEpisode = getMeta(activeItem.metaTags, 'episode');
   const rawSeriesTitle = getMeta(activeItem.metaTags, 'seriesTitle') || getMeta(activeItem.metaTags, 'series');
 
-  // Strip file extensions Bunny leaves in titles (trim first so $ anchor isn't blocked by trailing whitespace)
-  const titleNoExt = (activeItem.title ?? '').trim().replace(/\.(mp4|mkv|avi|mov|webm|flv|wmv)\s*$/i, '').trim();
-  const seMatch = titleNoExt.match(/^S(\d+)\s*E(\d+)\s*[-–:]?\s*/i);
+  // Also attempt to extract S/E from title if not in metaTags
+  const seMatch = activeItem.title?.match(/^S(\d+)\s*E(\d+)\s*[-–:]?\s*/i);
   const parsedSeason = rawSeason ? parseInt(rawSeason) : (seMatch ? parseInt(seMatch[1]) : undefined);
   const parsedEpisode = rawEpisode ? parseInt(rawEpisode) : (seMatch ? parseInt(seMatch[2]) : undefined);
-  const cleanTitle = seMatch ? titleNoExt.replace(seMatch[0], '').trim() : titleNoExt;
+  const cleanTitle = seMatch ? activeItem.title.replace(seMatch[0], '').trim() : activeItem.title;
 
   const productionYearRaw = getMeta(activeItem.metaTags, 'productionYear') || getMeta(activeItem.metaTags, 'year');
 
@@ -418,9 +345,10 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     genre: getMeta(activeItem.metaTags, 'genre') || undefined,
     productionYear: productionYearRaw ? parseInt(productionYearRaw) : undefined,
     trailerUrl: getMeta(activeItem.metaTags, 'trailerUrl') || undefined,
-    dateUploaded: activeItem.dateUploaded || undefined,
-    featured: getMeta(activeItem.metaTags, 'featured') === 'true',
-    muted: getMeta(activeItem.metaTags, 'muted') === 'true',
+    contentRating: normalizeContentRating(getMeta(activeItem.metaTags, 'contentRating')),
+    classificationNumber: getMeta(activeItem.metaTags, 'classificationNumber') || undefined,
+    transcript: getMeta(activeItem.metaTags, 'transcript') || undefined,
+    transcriptUrl: getMeta(activeItem.metaTags, 'transcriptUrl') || undefined,
+    uploadDate: activeItem.dateUploaded || undefined,
   };
 };
-

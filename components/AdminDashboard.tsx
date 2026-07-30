@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, Clock, Tag, User, Calendar, Info, UploadCloud, Star
+  ChevronDown, ChevronUp, BarChart2, Eye, Clock, Tag, User, Calendar, Info, UploadCloud
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, getStreamUrl, uploadCustomThumbnail, updateVideoMetadata } from '../services/bunnyService';
-import { sanitizeText } from '../lib/sanitize';
-import { error as logError } from '../lib/logger';
-import { onThumbError, THUMB_PLACEHOLDER } from '../lib/thumbnail';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { NavItem, Video } from '../types';
@@ -53,7 +50,6 @@ const EMPTY_FORM = {
   trailerUrl: '',
   productionYear: '',
   isPremium: false,
-  featured: false,
   tags: '',
 };
 
@@ -83,7 +79,6 @@ const EditModal = ({
   form,
   setForm,
   saving,
-  saveError,
   existingSeries,
   existingAuthors,
   onSave,
@@ -93,15 +88,14 @@ const EditModal = ({
   form: EditForm;
   setForm: React.Dispatch<React.SetStateAction<EditForm>>;
   saving: boolean;
-  saveError: string | null;
   existingSeries: string[];
   existingAuthors: string[];
   onSave: () => void;
   onClose: () => void;
 }) => {
+  const [thumbError, setThumbError] = useState(false);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
-  // Edit modal — full-res (width=0) so admins see the actual quality
-  const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName, 0);
+  const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName);
 
   const handleThumbUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -182,12 +176,13 @@ const EditModal = ({
           <div>
             <label className="block text-xs text-zinc-400 mb-2 font-medium">Thumbnail Preview</label>
             <div className="relative aspect-video rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800">
-              <img
-                src={thumbSrc}
-                alt="thumbnail"
-                className="w-full h-full object-cover"
-                onError={onThumbError}
-              />
+              {!thumbError ? (
+                <img src={thumbSrc} alt="thumbnail" className="w-full h-full object-cover" onError={() => setThumbError(true)} />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Image className="w-10 h-10 text-zinc-600" />
+                </div>
+              )}
               {isUploadingThumb && (
                 <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 backdrop-blur-sm">
                   <Loader2 className="w-8 h-8 text-white animate-spin mb-2" />
@@ -326,47 +321,21 @@ const EditModal = ({
               <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.isPremium ? 'translate-x-6' : 'translate-x-0.5'}`} />
             </button>
           </div>
-
-          {/* Featured in Hero Toggle */}
-          <div className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-colors ${
-            form.featured
-              ? 'bg-amber-500/10 border-amber-500/40'
-              : 'bg-zinc-900 border-zinc-800'
-          }`}>
-            <div>
-              <div className="flex items-center gap-2 mb-0.5">
-                <Star size={14} className={form.featured ? 'text-amber-400 fill-amber-400' : 'text-zinc-500'} />
-                <p className="text-sm font-medium text-white">Featured in Hero Carousel</p>
-              </div>
-              <p className="text-xs text-zinc-500">Pins this video to the homepage hero banner (max 5 featured)</p>
-            </div>
-            <button
-              onClick={() => setForm(f => ({ ...f, featured: !f.featured }))}
-              className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${form.featured ? 'bg-amber-500' : 'bg-zinc-700'}`}
-            >
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.featured ? 'translate-x-6' : 'translate-x-0.5'}`} />
-            </button>
-          </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="flex flex-col gap-2 p-6 border-t border-zinc-800 sticky bottom-0 bg-zinc-950">
-          {saveError && (
-            <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{saveError}</p>
-          )}
-          <div className="flex items-center justify-end gap-3">
-            <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors">
-              Cancel
-            </button>
-            <button
-              onClick={onSave}
-              disabled={saving}
-              className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-zinc-700 text-white text-sm font-bold flex items-center gap-2 transition-colors"
-            >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              Save Changes
-            </button>
-          </div>
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-zinc-800 sticky bottom-0 bg-zinc-950">
+          <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-zinc-700 text-white text-sm font-bold flex items-center gap-2 transition-colors"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            Save Changes
+          </button>
         </div>
       </div>
     </div>
@@ -393,7 +362,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editForm, setEditForm] = useState<EditForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Load overrides from localStorage
   const getOverrides = useCallback((): Record<string, Partial<EditForm>> => {
@@ -426,76 +394,55 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       trailerUrl: saved.trailerUrl ?? getMeta(item.metaTags, 'trailerUrl'),
       productionYear: saved.productionYear ?? getMeta(item.metaTags, 'productionYear'),
       isPremium: saved.isPremium ?? getMeta(item.metaTags, 'isPremium') === 'true',
-      featured: saved.featured ?? getMeta(item.metaTags, 'featured') === 'true',
       tags: saved.tags ?? getMeta(item.metaTags, 'tags'),
     });
     setEditingItem(item);
-    setSaveError(null);
   };
 
   const saveEdit = async () => {
-    setSaveError(null);
     if (!editingItem) return;
     setSaving(true);
     
     try {
       // 1. Prepare the updated metadata
-      // Use a lowercase Set for case-insensitive deduplication (camelCase keys like
-      // 'seriesTitle' must match existing tags stored as 'seriestitle' etc.)
-      const keysToUpdate = new Set([
-        'category', 'author', 'genre', 'description',
-        'thumbnailurl', 'trailerurl', 'productionyear',
-        'ispremium', 'featured', 'tags',
-        'season', 'episode', 'seriestitle',
-      ]);
+      // Strip out old values for the keys we are about to update, then append our new values
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailUrl', 'trailerUrl', 'productionYear', 'isPremium', 'tags', 'season', 'episode', 'seriesTitle'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
-        t => !keysToUpdate.has(t.property.toLowerCase())
+        t => !keysToUpdate.includes(t.property.toLowerCase())
       );
-
-      const sanitizedForm = {
-        ...editForm,
-        title: sanitizeText(editForm.title),
-        description: sanitizeText(editForm.description),
-        author: sanitizeText(editForm.author),
-        seriesTitle: sanitizeText(editForm.seriesTitle),
-        tags: sanitizeText(editForm.tags),
-      };
-
+      
       const newMetaTags = [
         ...filteredMetaTags,
-        ...Object.entries(sanitizedForm)
-          .filter(([_, v]) => v !== undefined && v !== '' && v !== false)
-          .map(([k, v]) => ({ property: k, value: String(v) })),
+        ...Object.entries(editForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) }))
       ];
 
-      // 2. Always persist edits to localStorage FIRST as a reliable backup.
-      //    Bunny's API can have propagation delays; we never want the UI to revert
-      //    on refresh just because the CDN hasn't caught up yet.
-      const overrides = getOverrides();
-      overrides[editingItem.guid] = sanitizedForm;
-      localStorage.setItem('tube_content_overrides', JSON.stringify(overrides));
-
-      // 3. Save to Bunny CDN via Supabase Proxy
+      // 2. Save to Bunny CDN via Supabase Proxy
       const updatePayload = {
-        title: sanitizedForm.title,
-        metaTags: newMetaTags,
+        title: editForm.title,
+        metaTags: newMetaTags
       };
-
+      
       const result = await updateVideoMetadata(editingItem.guid, updatePayload);
-
+      
       if (result) {
-        // 4. Update local React state immediately so the table reflects the change
-        const updatedItem = { ...editingItem, title: sanitizedForm.title, metaTags: newMetaTags };
+        // 3. Update the item in our local state to reflect the change immediately
+        const updatedItem = { ...editingItem, title: editForm.title, metaTags: newMetaTags };
         setItems(prev => prev.map(item => item.guid === editingItem.guid ? updatedItem : item));
+        
+        // Remove from local overrides if it was there, since it's now permanently saved
+        const overrides = getOverrides();
+        if (overrides[editingItem.guid]) {
+          delete overrides[editingItem.guid];
+          localStorage.setItem('tube_content_overrides', JSON.stringify(overrides));
+        }
+
         setSavedIds(prev => new Set(prev).add(editingItem.guid));
       } else {
-        // API failed — localStorage still has the edits so the UI stays correct,
-        // but warn the admin that the server save didn't go through.
-        setSaveError('Saved locally but failed to sync to the server. Changes will persist here but may not appear on other devices. Please try saving again.');
+        alert('Failed to save changes to the server. Please try again.');
       }
     } catch (error) {
-      logError(error);
-      setSaveError('An unexpected error occurred while saving.');
+      console.error(error);
+      alert('An error occurred while saving.');
     } finally {
       setSaving(false);
       setEditingItem(null);
@@ -722,10 +669,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="relative w-20 h-12 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
-                          <img
-                            src={o?.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName, 160)}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform bg-zinc-800"
-                            onError={onThumbError}
+                          <img 
+                            src={o?.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName)} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform bg-zinc-800" 
+                            onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
                           />
                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/50 transition-opacity">
                             <Play className="w-4 h-4 text-white" />
@@ -797,11 +744,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           form={editForm}
           setForm={setEditForm}
           saving={saving}
-          saveError={saveError}
           existingSeries={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'seriesTitle')).filter(Boolean))) as string[]).sort()}
           existingAuthors={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'author') || getMeta(v.metaTags, 'creator') || 'Tube Creator').filter(Boolean))) as string[]).sort()}
           onSave={saveEdit}
-          onClose={() => { setEditingItem(null); setSaveError(null); }}
+          onClose={() => setEditingItem(null)}
         />
       )}
         </div>

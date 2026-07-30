@@ -1,99 +1,57 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase environment variables are missing. Check your .env file (see .env.example).');
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+if (!isSupabaseConfigured) {
+  console.warn('Supabase environment variables are missing. Running in local demo mode.');
 }
 
 export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key'
+  supabaseUrl || 'https://demo.supabase.co',
+  supabaseAnonKey || 'demo-anon-key'
 );
 
-/**
- * Normalizes a Kenyan phone number to a consistent format.
- * Accepts: 07XX, 01XX, +2547XX, 2547XX
- * Returns: 07XXXXXXXX (local format) for display, and a deterministic email for Supabase auth.
- */
 export const normalizePhone = (raw: string): string => {
   const digits = raw.replace(/\D/g, '');
-  // +254 or 254 prefix → replace with 0
-  if (digits.startsWith('254') && digits.length === 12) {
-    return '0' + digits.slice(3);
-  }
-  // Already starts with 0
-  if (digits.startsWith('0') && digits.length === 10) {
-    return digits;
-  }
+  if (digits.startsWith('254') && digits.length === 12) return `0${digits.slice(3)}`;
+  if (digits.startsWith('0') && digits.length === 10) return digits;
   return digits;
 };
 
-/**
- * Converts a local phone number to a deterministic Supabase-compatible email.
- * e.g. 0712345678 → 0712345678@tube.ke
- */
-export const phoneToEmail = (phone: string): string => {
-  return `${normalizePhone(phone)}@tubekenya.com`;
+export const phoneToE164 = (raw: string): string => {
+  const local = normalizePhone(raw);
+  return /^0[17]\d{8}$/.test(local) ? `+254${local.slice(1)}` : '';
 };
 
-/**
- * Validates a Kenyan phone number.
- * Supports Safaricom (07X, 01X) and international prefix.
- */
-export const isValidKenyanPhone = (phone: string): boolean => {
-  const normalized = normalizePhone(phone);
-  return /^0[71][0-9]{8}$/.test(normalized);
-};
+export const isValidKenyanPhone = (phone: string): boolean => Boolean(phoneToE164(phone));
 
-/**
- * Sign up a new user with phone number + 6-digit PIN.
- * Stores extra profile data in the `profiles` table.
- */
-export const signUpWithPhone = async (phone: string, pin: string, displayName?: string) => {
-  const email = phoneToEmail(phone);
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password: pin,
+export async function requestPhoneOtp(
+  phone: string,
+  shouldCreateUser: boolean,
+  displayName?: string
+) {
+  const phoneE164 = phoneToE164(phone);
+  if (!phoneE164) return { error: new Error('Enter a valid Kenyan phone number.') };
+
+  const { error } = await supabase.auth.signInWithOtp({
+    phone: phoneE164,
     options: {
-      data: {
-        phone,
-        display_name: displayName || phone,
-      },
+      shouldCreateUser,
+      data: shouldCreateUser ? { display_name: displayName?.trim() || phoneE164 } : undefined,
     },
   });
-  return { data, error };
-};
+  return { phoneE164, error };
+}
 
-/**
- * Sign in an existing user with phone number + 6-digit PIN.
- */
-export const signInWithPhone = async (phone: string, pin: string) => {
-  const email = phoneToEmail(phone);
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password: pin,
-  });
-  return { data, error };
-};
+export async function verifyPhoneOtp(phone: string, token: string) {
+  const phoneE164 = phoneToE164(phone);
+  if (!phoneE164) return { data: null, error: new Error('Invalid phone number.') };
+  return supabase.auth.verifyOtp({ phone: phoneE164, token, type: 'sms' });
+}
 
-/**
- * Update PIN for an authenticated user.
- */
-export const updatePin = async (currentPin: string, newPin: string, phone: string) => {
-  // Re-authenticate first
-  const { error: authError } = await signInWithPhone(phone, currentPin);
-  if (authError) return { error: { message: 'Current PIN is incorrect.' } };
-
-  const { error } = await supabase.auth.updateUser({ password: newPin });
-  return { error };
-};
-
-/**
- * Sign out the current session.
- */
-export const signOut = async () => {
-  const { error } = await supabase.auth.signOut();
-  return { error };
-};
+export async function signOut() {
+  return supabase.auth.signOut();
+}
