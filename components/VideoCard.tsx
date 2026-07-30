@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Lock, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles } from 'lucide-react';
 import { Video } from '../types';
-import { PAYWALL_ENABLED } from '../constants';
+import { CONTENT_RATING_ENFORCED, PAYWALL_ENABLED } from '../constants';
 import type Hls from 'hls.js';
 import { loadHls } from '../lib/hlsLoader';
 import { usePlayback } from '../contexts/PlaybackContext';
@@ -31,7 +31,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
 }) => {
   const { preferences, getProgress, onProgress, onEnded } = usePlayback();
   const contentRating = normalizeContentRating(video.contentRating);
-  const isRatingLocked = !canWatchContent(contentRating, preferences.maximumRating);
+  const isUnratedAllowedInTest = !CONTENT_RATING_ENFORCED && contentRating === 'UNRATED';
+  const isRatingLocked = !isUnratedAllowedInTest && !canWatchContent(contentRating, preferences.maximumRating);
   const savedProgress = getProgress(video.id);
   const effectiveDataSaver = shouldSaveData(preferences.dataSaver);
   const preferredQuality = effectiveDataSaver ? '360p' : preferences.quality === 'auto' ? 'Auto' : preferences.quality;

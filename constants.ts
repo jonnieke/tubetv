@@ -9,6 +9,10 @@ import { Video, ShortVideo, DailyStat } from './types';
  */
 export const PAYWALL_ENABLED = import.meta.env.VITE_PAYWALL_ENABLED === 'true';
 
+// Test phase: unrated titles remain visible until TubeTV completes KFCB onboarding.
+// Set to true before public market launch to hide UNRATED content.
+export const CONTENT_RATING_ENFORCED = import.meta.env.VITE_CONTENT_RATING_ENFORCED === 'true';
+
 export const MOCK_VIDEOS: Video[] = [
   // Trending / General
   {

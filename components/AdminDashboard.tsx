@@ -8,6 +8,7 @@ import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { NavItem, Video } from '../types';
 import { normalizeContentRating, ratingDescription, type ContentRating } from '../lib/contentRating';
+import { CONTENT_RATING_ENFORCED } from '../constants';
 
 interface AdminDashboardProps {
   onUploadComplete?: (video: Video) => void;
@@ -312,7 +313,7 @@ const EditModal = ({
             <div>
               {field('KFCB content rating', 'contentRating', { as: 'select', options: ['GE', 'PG', '16', '18', 'UNRATED'] })}
               <p className={`mt-1.5 text-xs ${form.contentRating === 'UNRATED' || form.contentRating === '18' ? 'text-amber-400' : 'text-zinc-500'}`}>
-                {ratingDescription(form.contentRating)}{form.contentRating === '18' || form.contentRating === 'UNRATED' ? ' - hidden from the public catalogue.' : ''}
+                {ratingDescription(form.contentRating)}{form.contentRating === '18' ? ' - hidden from the public catalogue.' : form.contentRating === 'UNRATED' ? (CONTENT_RATING_ENFORCED ? ' - hidden from the public catalogue.' : ' - visible during the test phase only.') : ''}
               </p>
             </div>
             {field('Classification number', 'classificationNumber', { placeholder: 'Optional KFCB certificate number' })}

@@ -3,7 +3,7 @@ import React, { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import ShortsShelf from './components/ShortsShelf';
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
-import { MOCK_VIDEOS, MOCK_SHORTS, PAYWALL_ENABLED } from './constants';
+import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS, PAYWALL_ENABLED } from './constants';
 import { Menu, Search, Bell, X, LogIn, Sparkles, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo } from './services/bunnyService';
 import { supabase } from './lib/supabase';
@@ -188,13 +188,15 @@ const App: React.FC = () => {
         if (cancelled) return;
         if (bunnyItems.length > 0) {
           const mapped = bunnyItems.map(bunnyVideoToVideo) as Video[];
-          const classified = mapped.filter((video) => PUBLIC_CONTENT_RATINGS.includes(normalizeContentRating(video.contentRating)));
+          const visible = CONTENT_RATING_ENFORCED
+            ? mapped.filter((video) => PUBLIC_CONTENT_RATINGS.includes(normalizeContentRating(video.contentRating)))
+            : mapped.filter((video) => normalizeContentRating(video.contentRating) !== '18');
           console.log('Mapped Videos (first 2):', mapped.slice(0, 2));
-          if (classified.length > 0) {
-            setVideos(classified);
+          if (visible.length > 0) {
+            setVideos(visible);
             setIsRealContent(true);
           } else {
-            console.warn('No publicly classified Bunny titles are available; showing labelled demo content.');
+            console.warn('No Bunny titles are available under the current rating policy; showing labelled demo content.');
             setVideos(DEMO_VIDEOS);
             setIsRealContent(false);
           }
