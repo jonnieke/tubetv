@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, Clock, Tag, User, Calendar, Info, UploadCloud, ShieldAlert
+  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert
 } from 'lucide-react';
-import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, getStreamUrl, uploadCustomThumbnail, updateVideoMetadata } from '../services/bunnyService';
+import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { NavItem, Video } from '../types';
@@ -377,6 +377,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editForm, setEditForm] = useState<EditForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [visibilitySavingIds, setVisibilitySavingIds] = useState<Set<string>>(new Set());
 
   // Load overrides from localStorage
   const getOverrides = useCallback((): Record<string, Partial<EditForm>> => {
@@ -463,6 +464,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } finally {
       setSaving(false);
       setEditingItem(null);
+    }
+  };
+
+  const toggleVisibility = async (item: BunnyVideoItem) => {
+    if (visibilitySavingIds.has(item.guid)) return;
+    const isHidden = getMeta(item.metaTags, 'muted') === 'true';
+    setVisibilitySavingIds((current) => new Set(current).add(item.guid));
+
+    try {
+      const saved = await setVideoMuted(item.guid, !isHidden);
+      if (!saved) {
+        alert('Failed to update visibility. Please try again.');
+        return;
+      }
+
+      const metaTags = (item.metaTags || []).filter(
+        (tag) => tag.property.toLowerCase() !== 'muted',
+      );
+      if (!isHidden) metaTags.push({ property: 'muted', value: 'true' });
+      setItems((current) => current.map((video) => (
+        video.guid === item.guid ? { ...video, metaTags } : video
+      )));
+    } finally {
+      setVisibilitySavingIds((current) => {
+        const next = new Set(current);
+        next.delete(item.guid);
+        return next;
+      });
     }
   };
 
@@ -699,13 +728,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 const o = overrides[item.guid];
                 const isSaved = savedIds.has(item.guid);
                 const genre = o?.genre || getMeta(item.metaTags, 'genre');
+                const isHidden = getMeta(item.metaTags, 'muted') === 'true';
+                const visibilitySaving = visibilitySavingIds.has(item.guid);
                 return (
-                  <tr key={item.guid} className="border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors group">
+                  <tr key={item.guid} className={`border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors group ${isHidden ? 'opacity-60' : ''}`}>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="relative w-20 h-12 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
                           <img 
                             src={o?.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName)} 
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform bg-zinc-800" 
                             onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }}
                           />
@@ -727,6 +760,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {mapped.contentRating}
                             </span>
                             {mapped.isPremium && <span className="text-[9px] bg-purple-600/30 text-purple-300 px-1.5 py-0.5 rounded border border-purple-600/30">PREMIUM</span>}
+                            {isHidden && <span className="text-[9px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded border border-zinc-600">HIDDEN</span>}
                             {isSaved && <span className="text-[9px] bg-green-600/20 text-green-400 px-1.5 py-0.5 rounded border border-green-600/30">EDITED</span>}
                           </div>
                         </div>
@@ -751,6 +785,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {item.dateUploaded ? new Date(item.dateUploaded).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                     </td>
                     <td className="p-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => void toggleVisibility(item)}
+                        disabled={visibilitySaving}
+                        aria-label={isHidden ? `Show ${mapped.title} in the public catalogue` : `Hide ${mapped.title} from the public catalogue`}
+                        title={isHidden ? 'Show on customer site' : 'Hide from customer site'}
+                        className={`mr-2 inline-flex items-center justify-center rounded-lg border p-2 transition-all disabled:cursor-wait disabled:opacity-50 ${
+                          isHidden
+                            ? 'border-zinc-600 bg-zinc-800 text-zinc-300 hover:border-green-500/60 hover:text-green-400'
+                            : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-amber-500/60 hover:text-amber-400'
+                        }`}
+                      >
+                        {visibilitySaving ? <Loader2 size={13} className="animate-spin" /> : isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
                       <button
                         onClick={() => startEdit(item)}
                         className="inline-flex items-center gap-1.5 bg-zinc-800 hover:bg-red-600/20 hover:border-red-600/50 text-zinc-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium border border-zinc-700 transition-all"

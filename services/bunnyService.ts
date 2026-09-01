@@ -2,9 +2,11 @@
 // The sensitive BUNNY_ACCESS_KEY is now stored in Supabase Secrets.
 import { normalizeContentRating } from '../lib/contentRating';
 import { supabase } from '../lib/supabase';
+import { LOCAL_ADMIN_PIN } from '../lib/localAuth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const BASE_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/bunny-api` : '';
+const VISIBILITY_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/content-visibility` : '';
 const PULL_ZONE = (import.meta.env.VITE_BUNNY_PULL_ZONE as string) || '';
 const ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
 
@@ -106,6 +108,40 @@ export const updateVideoMetadata = async (
     console.error('Bunny Update Error:', error);
     return null;
   }
+};
+
+/**
+ * Hides or shows a title in the public catalogue by persisting the legacy
+ * `muted` metadata flag in Bunny. Existing installations already understand
+ * this flag, so restoring it keeps previously hidden titles hidden.
+ */
+export const setVideoMuted = async (
+  videoId: string,
+  muted: boolean,
+): Promise<boolean> => {
+  if (!VISIBILITY_URL) return false;
+
+  try {
+    const response = await fetch(VISIBILITY_URL, {
+      method: 'POST',
+      headers: await getHeaders({ 'x-admin-pin': LOCAL_ADMIN_PIN }),
+      body: JSON.stringify({ videoId, hidden: muted }),
+    });
+    if (!response.ok) {
+      console.error('Visibility update failed:', response.status, await response.text());
+      return false;
+    }
+  } catch (error) {
+    console.error('Visibility update failed:', error);
+    return false;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent('tube-visibility-change', {
+      detail: { videoId, hidden: muted },
+    }),
+  );
+  return true;
 };
 
 /**
@@ -348,5 +384,6 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     transcript: getMeta(activeItem.metaTags, 'transcript') || undefined,
     transcriptUrl: getMeta(activeItem.metaTags, 'transcriptUrl') || undefined,
     uploadDate: activeItem.dateUploaded || undefined,
+    muted: getMeta(activeItem.metaTags, 'muted') === 'true',
   };
 };

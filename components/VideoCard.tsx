@@ -410,6 +410,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
             <img 
               src={video.thumbnail} 
               alt={video.title} 
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-700 group-hover:scale-110" 
             />
             

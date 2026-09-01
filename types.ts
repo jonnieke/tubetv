@@ -58,6 +58,7 @@ export interface Video {
   genre?: string;         // e.g. "Drama"
   productionYear?: number;
   trailerUrl?: string;
+  muted?: boolean;        // Hidden from the public catalogue by an admin
 }
 
 export interface ShortVideo {

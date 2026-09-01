@@ -26,6 +26,7 @@ describe('phase 4 performance policy', () => {
     expect(source).toContain('const EVENTS = new Set');
     expect(source).toContain('ALLOWED_ORIGINS');
     expect(source).not.toContain('user_id');
+    expect(source).toContain('Access-Control-Allow-Credentials');
     expect(source).not.toContain('phone');
   });
 

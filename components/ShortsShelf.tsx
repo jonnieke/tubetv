@@ -63,6 +63,8 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
                 <img 
                     src={short.thumbnail}
                     alt={short.description} 
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110 absolute inset-0 z-0"
                 />
              )}

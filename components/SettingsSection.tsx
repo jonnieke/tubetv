@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Check, CreditCard, Download, Globe, Loader2, LogOut, Monitor, Shield, Smartphone, Trash2, User } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { signOut } from '../lib/supabase';
+import { LOCAL_AUTH_SOURCE } from '../lib/localAuth';
 import type { ActiveSubscription, SubscriptionPlanCode } from '../lib/subscriptions';
 import { fetchPaymentStatus, startMpesaPayment, SUBSCRIPTION_PLANS } from '../lib/subscriptions';
 import type { PlaybackPreferences } from '../lib/viewerState';
@@ -47,9 +47,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   };
 
   const handlePurchase = async (planCode: SubscriptionPlanCode) => {
-    if (!currentUser) {
+    if (!currentUser || currentUser.user_metadata?.auth_source === LOCAL_AUTH_SOURCE) {
       setPaymentState('failed');
-      setPaymentMessage('Sign in with your verified phone number before subscribing.');
+      setPaymentMessage('M-Pesa payments require a verified Supabase phone account.');
       return;
     }
 
@@ -91,13 +91,15 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   };
 
   const handleSignOut = async () => {
-    await signOut();
     onLogout?.();
   };
 
-
   const handleExport = async () => {
     if (!currentUser) return setPrivacyMessage('Sign in to export your account data.');
+    if (currentUser.user_metadata?.auth_source === LOCAL_AUTH_SOURCE) {
+      setPrivacyMessage('Local PIN access does not support cloud export.');
+      return;
+    }
     try {
       setPrivacyBusy(true);
       setPrivacyMessage('');
@@ -117,17 +119,21 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   };
 
   const handleDeleteAccount = async () => {
+    if (currentUser?.user_metadata?.auth_source === LOCAL_AUTH_SOURCE) {
+      setPrivacyMessage('Local PIN access does not support cloud account deletion.');
+      return;
+    }
     if (deleteConfirmation !== 'DELETE') return;
     try {
       setPrivacyBusy(true);
       await deleteAccount(deleteConfirmation);
-      await signOut();
       onLogout?.();
     } catch (error) {
       setPrivacyMessage(error instanceof Error ? error.message : 'Could not delete your account.');
       setPrivacyBusy(false);
     }
   };
+
   const tabs = [
     { id: 'general', label: 'Playback', icon: Monitor },
     { id: 'account', label: 'Account', icon: User },
@@ -144,7 +150,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
       <div className="mx-auto max-w-5xl">
         <header className="mb-8">
           <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="mt-2 text-sm text-zinc-400">Manage playback, your verified account and TubeTV access.</p>
+          <p className="mt-2 text-sm text-zinc-400">Manage playback, your local admin access and TubeTV preferences.</p>
         </header>
 
         <div className="flex flex-col gap-8 lg:flex-row">
@@ -204,12 +210,12 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
 
             {activeTab === 'account' && (
               <section aria-labelledby="account-heading">
-                <h2 id="account-heading" className="text-xl font-bold">Verified account</h2>
+                <h2 id="account-heading" className="text-xl font-bold">Local access</h2>
                 <div className="mt-6 border-y border-zinc-800 py-6">
                   <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/15 text-green-400"><Smartphone size={22} /></div>
-                    <div><p className="font-medium">{currentUser?.user_metadata?.display_name || 'TubeTV viewer'}</p><p className="text-sm text-zinc-400">{userPhone || 'Not signed in'}</p></div>
-                    {currentUser?.phone_confirmed_at && <span className="ml-auto flex items-center gap-1 text-xs font-bold text-green-400"><Check size={14} /> Verified</span>}
+                    <div><p className="font-medium">{currentUser?.user_metadata?.display_name || 'TubeTV admin'}</p><p className="text-sm text-zinc-400">{userPhone || 'Not signed in'}</p></div>
+                    {currentUser?.user_metadata?.auth_source === LOCAL_AUTH_SOURCE && <span className="ml-auto flex items-center gap-1 text-xs font-bold text-green-400"><Check size={14} /> PIN</span>}
                   </div>
                 </div>
                 <button onClick={handleSignOut} className="mt-6 flex items-center gap-2 text-sm font-medium text-red-400 hover:text-red-300"><LogOut size={17} /> Sign out</button>

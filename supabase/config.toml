@@ -29,3 +29,8 @@ entrypoint = "./functions/account-data/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/analytics-event/index.ts"
+
+[functions.content-visibility]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/content-visibility/index.ts"

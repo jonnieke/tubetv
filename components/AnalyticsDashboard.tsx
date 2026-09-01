@@ -305,7 +305,7 @@ export default function AnalyticsDashboard({ currentNavItems, onAddCategory, onR
                                 >
                                     <td className="p-4">
                                         <div className="flex items-center gap-3">
-                                            <img src={video.thumbnail_url} className="w-16 h-9 object-cover rounded bg-zinc-800" alt="" onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+                                            <img src={video.thumbnail_url} loading="lazy" decoding="async" className="w-16 h-9 object-cover rounded bg-zinc-800" alt="" onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
                                             <div>
                                                 <p className="text-white font-medium text-sm group-hover:text-red-500 transition-colors">{video.title}</p>
                                                 <p className="text-zinc-500 text-xs">{video.category}</p>

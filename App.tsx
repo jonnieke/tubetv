@@ -1,4 +1,4 @@
-
+﻿
 import React, { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import ShortsShelf from './components/ShortsShelf';
@@ -6,10 +6,10 @@ import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS, PAYWALL_ENABLED } from './constants';
 import { Menu, Search, Bell, X, LogIn, Sparkles, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo } from './services/bunnyService';
-import { supabase } from './lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useLanguage } from './contexts/LanguageContext';
 import { isAdminUser } from './lib/authorization';
+import { clearLocalAuthSession, loadLocalAuthSession, saveLocalAuthSession } from './lib/localAuth';
 import { PlaybackProvider } from './contexts/PlaybackContext';
 import { fetchActiveSubscription, type ActiveSubscription } from './lib/subscriptions';
 import { DEFAULT_PLAYBACK_PREFERENCES, loadPreferences, loadProgress, loadWatchList, savePreferences, saveProgress, setWatchLater as persistWatchLater, type PlaybackPreferences, type WatchProgress } from './lib/viewerState';
@@ -85,36 +85,19 @@ const App: React.FC = () => {
   });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // --- REAL AUTH: Supabase session ---
+  // --- LOCAL AUTH: phone + PIN session ---
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  // Bootstrap Supabase session on mount
+  // Bootstrap local auth session on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setCurrentUser(session.user);
-        setIsAuthenticated(true);
-      }
-      setIsAuthLoading(false);
-    });
-
-    // Listen for sign-in / sign-out events
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setCurrentUser(session.user);
-        setIsAuthenticated(true);
-      } else {
-        setCurrentUser(null);
-        setIsAuthenticated(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    const session = loadLocalAuthSession();
+    setCurrentUser(session);
+    setIsAuthenticated(Boolean(session));
+    setIsAuthLoading(false);
   }, []);
-
   const [preferences, setPreferences] = useState<PlaybackPreferences>(DEFAULT_PLAYBACK_PREFERENCES);
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
   const [activeSubscription, setActiveSubscription] = useState<ActiveSubscription | null>(null);
@@ -171,7 +154,7 @@ const App: React.FC = () => {
     }
   };
 
-  // ─── Detect admin ──────────────────────────────────────────────────────────
+  // ─── Detect admin ───────────────────────────────────────────────────────────
   const isAdmin = isAdminUser(currentUser);
 
   // ─── Videos: load from Bunny CDN on mount ─────────────────────────────────
@@ -188,9 +171,10 @@ const App: React.FC = () => {
         if (cancelled) return;
         if (bunnyItems.length > 0) {
           const mapped = bunnyItems.map(bunnyVideoToVideo) as Video[];
+          const publicItems = mapped.filter((video) => !video.muted);
           const visible = CONTENT_RATING_ENFORCED
-            ? mapped.filter((video) => PUBLIC_CONTENT_RATINGS.includes(normalizeContentRating(video.contentRating)))
-            : mapped.filter((video) => normalizeContentRating(video.contentRating) !== '18');
+            ? publicItems.filter((video) => PUBLIC_CONTENT_RATINGS.includes(normalizeContentRating(video.contentRating)))
+            : publicItems.filter((video) => normalizeContentRating(video.contentRating) !== '18');
           console.log('Mapped Videos (first 2):', mapped.slice(0, 2));
           if (visible.length > 0) {
             setVideos(visible);
@@ -212,7 +196,19 @@ const App: React.FC = () => {
       }
     };
     loadVideos();
-    return () => { cancelled = true; };
+    const onVisibilityChange = (event: Event) => {
+      const { videoId, hidden } = (event as CustomEvent<{ videoId: string; hidden: boolean }>).detail;
+      if (hidden) {
+        setVideos((current) => current.filter((video) => video.id !== videoId));
+      } else {
+        void loadVideos();
+      }
+    };
+    window.addEventListener('tube-visibility-change', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('tube-visibility-change', onVisibilityChange);
+    };
   }, []);
 
   // Derive real shorts from the videos library (tagged with 'Shorts' category)
@@ -547,16 +543,16 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    clearLocalAuthSession();
     setIsAuthenticated(false);
     setCurrentUser(null);
     setCurrentView(ViewState.HOME);
   };
 
-  // Derive phone for display from Supabase user metadata
+  // Derive phone for display from the current local session
   const userPhone = currentUser?.phone || null;
 
-  // Show a brief loading state while Supabase resolves the session
+  // Show a brief loading state while local auth hydrates
   if (isAuthLoading) {
     return (
       <div className="bg-zinc-950 h-screen w-full flex items-center justify-center">
@@ -699,6 +695,8 @@ const App: React.FC = () => {
                     key={hero.id}
                     src={hero.thumbnail}
                     alt={hero.title}
+                    fetchPriority="high"
+                    decoding="async"
                     className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-105 bg-zinc-800"
                     onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }}
                   />
@@ -992,6 +990,7 @@ const App: React.FC = () => {
         <Suspense fallback={<LoadingPanel label="Opening login..." />}>
           <AuthModal
             onSuccess={(user) => {
+              saveLocalAuthSession(user);
               setCurrentUser(user);
               setIsAuthenticated(true);
               setShowLogin(false);

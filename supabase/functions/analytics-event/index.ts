@@ -21,6 +21,7 @@ function allowedOrigin(req: Request) {
 function headers(origin: string) {
   return {
     ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
+    ...(origin ? { "Access-Control-Allow-Credentials": "true" } : {}),
     "Access-Control-Allow-Headers": "content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",

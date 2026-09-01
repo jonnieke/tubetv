@@ -1,4 +1,4 @@
-# Tube TV
+﻿# Tube TV
 
 Tube TV is a Kenyan-first streaming app for local video, shorts, live events, creator uploads, education, farming, faith, kids content, and diaspora programming.
 
@@ -29,3 +29,9 @@ The Bunny proxy expects these server-side secrets:
 - `BUNNY_ADMIN_PHONES`
 
 Only authenticated admins can create, update, or upload Bunny Stream content through the proxy.
+
+## Administrator access
+
+The Admin Panel now uses a local phone-and-PIN gate defined in `lib/localAuth.ts`.
+Update `LOCAL_ADMIN_PIN` there if you need to change the shared code, then reload
+Tube TV to pick up the saved local session.
