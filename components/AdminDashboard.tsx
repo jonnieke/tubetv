@@ -58,6 +58,7 @@ const EMPTY_FORM = {
 };
 
 type EditForm = typeof EMPTY_FORM;
+const EDIT_DRAFTS_STORAGE_KEY = 'tube_content_overrides';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -338,18 +339,21 @@ const EditModal = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-zinc-800 sticky bottom-0 bg-zinc-950">
-          <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors">
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-zinc-700 text-white text-sm font-bold flex items-center gap-2 transition-colors"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Save Changes
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 p-6 border-t border-zinc-800 sticky bottom-0 bg-zinc-950">
+          <p className="text-xs text-zinc-500">Draft saved automatically on this device</p>
+          <div className="flex items-center gap-3">
+            <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-zinc-700 text-white text-sm font-bold flex items-center gap-2 transition-colors"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Save Changes
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -381,8 +385,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Load overrides from localStorage
   const getOverrides = useCallback((): Record<string, Partial<EditForm>> => {
-    try { return JSON.parse(localStorage.getItem('tube_content_overrides') || '{}'); } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem(EDIT_DRAFTS_STORAGE_KEY) || '{}'); } catch { return {}; }
   }, []);
+
+  const persistEditDraft = useCallback((videoId: string, draft: EditForm) => {
+    const drafts = getOverrides();
+    drafts[videoId] = draft;
+    localStorage.setItem(EDIT_DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+  }, [getOverrides]);
+
+  const clearEditDraft = useCallback((videoId: string) => {
+    const drafts = getOverrides();
+    if (!drafts[videoId]) return;
+    delete drafts[videoId];
+    localStorage.setItem(EDIT_DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+  }, [getOverrides]);
 
   const load = async () => {
     setLoading(true);
@@ -392,6 +409,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!editingItem) return;
+    persistEditDraft(editingItem.guid, editForm);
+  }, [editForm, editingItem, persistEditDraft]);
 
   const startEdit = (item: BunnyVideoItem) => {
     const mapped = bunnyVideoToVideo(item);
@@ -419,6 +441,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const saveEdit = async () => {
     if (!editingItem) return;
+    persistEditDraft(editingItem.guid, editForm);
     setSaving(true);
     
     try {
@@ -447,23 +470,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const updatedItem = { ...editingItem, title: editForm.title, metaTags: newMetaTags };
         setItems(prev => prev.map(item => item.guid === editingItem.guid ? updatedItem : item));
         
-        // Remove from local overrides if it was there, since it's now permanently saved
-        const overrides = getOverrides();
-        if (overrides[editingItem.guid]) {
-          delete overrides[editingItem.guid];
-          localStorage.setItem('tube_content_overrides', JSON.stringify(overrides));
-        }
+        // The server now has the latest values, so this video's local draft is no longer needed.
+        clearEditDraft(editingItem.guid);
 
         setSavedIds(prev => new Set(prev).add(editingItem.guid));
+        setEditingItem(null);
       } else {
-        alert('Failed to save changes to the server. Please try again.');
+        alert('Failed to save changes to the server. Your draft is saved on this device so you can retry.');
       }
     } catch (error) {
       console.error(error);
-      alert('An error occurred while saving.');
+      alert('An error occurred while saving. Your draft is saved on this device so you can retry.');
     } finally {
       setSaving(false);
-      setEditingItem(null);
     }
   };
 

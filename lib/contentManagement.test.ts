@@ -36,6 +36,14 @@ describe('Bunny content classification', () => {
     expect(bunnySource).toContain('session?.access_token || ANON_KEY');
   });
 
+  it('remembers edit details locally until the server save succeeds', () => {
+    expect(adminSource).toContain("const EDIT_DRAFTS_STORAGE_KEY = 'tube_content_overrides'");
+    expect(adminSource).toContain('persistEditDraft(editingItem.guid, editForm)');
+    expect(adminSource).toContain('clearEditDraft(editingItem.guid)');
+    expect(adminSource).toContain('Draft saved automatically on this device');
+    expect(adminSource).toContain('Your draft is saved on this device so you can retry.');
+  });
+
   it('limits test-PIN Bunny access to metadata and thumbnail updates', () => {
     expect(bunnySource).toContain("headers: await getHeaders({ 'x-admin-pin': LOCAL_ADMIN_PIN })");
     expect(bunnySource).toContain("'x-admin-pin': LOCAL_ADMIN_PIN");
