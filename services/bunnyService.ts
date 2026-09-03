@@ -96,7 +96,7 @@ export const updateVideoMetadata = async (
   try {
     const response = await fetch(`${BASE_URL}/${videoId}`, {
       method: 'POST',
-      headers: await getHeaders(),
+      headers: await getHeaders({ 'x-admin-pin': LOCAL_ADMIN_PIN }),
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -197,7 +197,10 @@ export const uploadCustomThumbnail = async (videoId: string, file: File): Promis
 
     const response = await fetch(`${BASE_URL}/${videoId}/thumbnail`, {
       method: 'POST',
-      headers: await getHeaders({ 'Content-Type': file.type || 'image/jpeg' }),
+      headers: await getHeaders({
+        'Content-Type': file.type || 'image/jpeg',
+        'x-admin-pin': LOCAL_ADMIN_PIN,
+      }),
       body: arrayBuffer,
     });
 

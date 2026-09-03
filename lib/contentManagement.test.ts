@@ -21,6 +21,10 @@ const visibilityFunctionSource = readFileSync(
   new URL('../supabase/functions/content-visibility/index.ts', import.meta.url),
   'utf8',
 );
+const bunnyFunctionSource = readFileSync(
+  new URL('../supabase/functions/bunny-api/index.ts', import.meta.url),
+  'utf8',
+);
 
 describe('Bunny content classification', () => {
   it('allows an admin to classify existing videos', () => {
@@ -30,6 +34,13 @@ describe('Bunny content classification', () => {
 
   it('uses the signed-in session for Bunny mutations', () => {
     expect(bunnySource).toContain('session?.access_token || ANON_KEY');
+  });
+
+  it('limits test-PIN Bunny access to metadata and thumbnail updates', () => {
+    expect(bunnySource).toContain("headers: await getHeaders({ 'x-admin-pin': LOCAL_ADMIN_PIN })");
+    expect(bunnySource).toContain("'x-admin-pin': LOCAL_ADMIN_PIN");
+    expect(bunnyFunctionSource).toContain('req.method !== "POST"');
+    expect(bunnyFunctionSource).toContain('(?:\\/thumbnail)?');
   });
 
   it('lets admins hide titles from the public catalogue', () => {
