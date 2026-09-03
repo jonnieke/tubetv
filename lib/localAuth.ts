@@ -5,6 +5,10 @@ export const LOCAL_AUTH_SOURCE = 'local_pin';
 export const LOCAL_ADMIN_PIN = '2468';
 const LOCAL_AUTH_STORAGE_KEY = 'tube_local_auth_session_v1';
 
+export function isLocalAuthUserId(userId?: string | null): boolean {
+  return Boolean(userId?.startsWith('local-'));
+}
+
 type StoredLocalSession = {
   phone: string;
   displayName: string;

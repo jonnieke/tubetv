@@ -192,19 +192,23 @@ export const getThumbnailUrl = (videoId: string, filename?: string): string => {
  */
 export const uploadCustomThumbnail = async (videoId: string, file: File): Promise<string | null> => {
   try {
-    // Convert file to ArrayBuffer for raw binary upload
-    const arrayBuffer = await file.arrayBuffer();
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      response = await fetch(`${BASE_URL}/${videoId}/thumbnail`, {
+        method: 'POST',
+        headers: await getHeaders({
+          // Bunny's Set Thumbnail API requires the raw file with this media type.
+          'Content-Type': 'application/octet-stream',
+          'x-admin-pin': LOCAL_ADMIN_PIN,
+        }),
+        body: file,
+      });
 
-    const response = await fetch(`${BASE_URL}/${videoId}/thumbnail`, {
-      method: 'POST',
-      headers: await getHeaders({
-        'Content-Type': file.type || 'image/jpeg',
-        'x-admin-pin': LOCAL_ADMIN_PIN,
-      }),
-      body: arrayBuffer,
-    });
+      if (![500, 502, 503, 504].includes(response.status) || attempt === 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
 
-    if (!response.ok) {
+    if (!response?.ok) {
       const errText = await response.text();
       console.error('Thumbnail upload failed:', response.status, errText);
       return null;

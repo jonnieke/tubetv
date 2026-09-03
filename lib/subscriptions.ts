@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { isLocalAuthUserId } from './localAuth';
 
 export const SUBSCRIPTION_PLANS = {
   daily: { code: 'daily', label: 'Daily Pass', amountKes: 10, description: '24 hours of premium access' },
@@ -16,6 +17,10 @@ export interface ActiveSubscription {
 }
 
 export async function fetchActiveSubscription(userId: string): Promise<ActiveSubscription | null> {
+  // Test-phase PIN identities are browser-local, not rows in auth.users. Their
+  // non-UUID IDs must never be sent to UUID columns in PostgREST.
+  if (isLocalAuthUserId(userId)) return null;
+
   const { data, error } = await supabase
     .from('subscriptions')
     .select('id, tier, end_date, is_active')

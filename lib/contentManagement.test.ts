@@ -68,6 +68,14 @@ describe('Bunny content classification', () => {
     expect(bunnyFunctionSource).toContain('(?:\\/thumbnail)?');
   });
 
+  it('streams raw thumbnail files and retries transient gateway failures', () => {
+    expect(bunnySource).toContain("'Content-Type': 'application/octet-stream'");
+    expect(bunnySource).toContain('body: file');
+    expect(bunnySource).toContain('[500, 502, 503, 504]');
+    expect(bunnyFunctionSource).toContain(': req.body');
+    expect(bunnyFunctionSource).not.toContain('await req.arrayBuffer()');
+  });
+
   it('lets admins hide titles from the public catalogue', () => {
     expect(adminSource).toContain('setVideoMuted');
     expect(adminSource).toContain('Hide from customer site');

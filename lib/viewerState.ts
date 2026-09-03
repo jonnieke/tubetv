@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { isLocalAuthUserId } from './localAuth';
 
 export interface PlaybackPreferences {
   autoplay: boolean;
@@ -45,7 +46,7 @@ function writeLocal<T>(key: string, value: T) {
 
 export async function loadPreferences(userId?: string): Promise<PlaybackPreferences> {
   const local = readLocal(preferenceKey(userId), DEFAULT_PLAYBACK_PREFERENCES);
-  if (!userId) return local;
+  if (!userId || isLocalAuthUserId(userId)) return local;
   const { data } = await supabase.from('viewer_preferences').select('*').eq('user_id', userId).maybeSingle();
   if (!data) return local;
   const preferences: PlaybackPreferences = {
@@ -61,7 +62,7 @@ export async function loadPreferences(userId?: string): Promise<PlaybackPreferen
 
 export async function savePreferences(userId: string | undefined, preferences: PlaybackPreferences) {
   writeLocal(preferenceKey(userId), preferences);
-  if (!userId) return;
+  if (!userId || isLocalAuthUserId(userId)) return;
   const { error } = await supabase.from('viewer_preferences').upsert({
     maximum_rating: preferences.maximumRating,
     user_id: userId,
@@ -76,7 +77,7 @@ export async function savePreferences(userId: string | undefined, preferences: P
 export async function loadWatchList(userId?: string): Promise<string[]> {
   const legacy = readLocal<string[]>('tube_watch_later', []);
   const local = readLocal<string[]>(watchListKey(userId), legacy);
-  if (!userId) return local;
+  if (!userId || isLocalAuthUserId(userId)) return local;
   const { data, error } = await supabase.from('watch_later').select('video_id').eq('user_id', userId);
   if (error) return local;
   const remote = data.map((row) => row.video_id);
@@ -92,7 +93,7 @@ export async function setWatchLater(userId: string | undefined, videoId: string,
   const current = readLocal<string[]>(watchListKey(userId), []);
   const next = saved ? Array.from(new Set([...current, videoId])) : current.filter((id) => id !== videoId);
   writeLocal(watchListKey(userId), next);
-  if (!userId) return;
+  if (!userId || isLocalAuthUserId(userId)) return;
   const query = supabase.from('watch_later');
   const { error } = saved
     ? await query.upsert({ user_id: userId, video_id: videoId })
@@ -102,7 +103,7 @@ export async function setWatchLater(userId: string | undefined, videoId: string,
 
 export async function loadProgress(userId?: string): Promise<Record<string, WatchProgress>> {
   const local = readLocal<Record<string, WatchProgress>>(progressKey(userId), {});
-  if (!userId) return local;
+  if (!userId || isLocalAuthUserId(userId)) return local;
   const { data, error } = await supabase.from('watch_progress').select('video_id, position_seconds, duration_seconds, completed').eq('user_id', userId);
   if (error) return local;
   const remote = Object.fromEntries(data.map((row) => [row.video_id, {
@@ -122,7 +123,7 @@ export async function saveProgress(
 ) {
   const current = readLocal<Record<string, WatchProgress>>(progressKey(userId), {});
   writeLocal(progressKey(userId), { ...current, [videoId]: progress });
-  if (!userId) return;
+  if (!userId || isLocalAuthUserId(userId)) return;
   const { error } = await supabase.from('watch_progress').upsert({
     user_id: userId,
     video_id: videoId,

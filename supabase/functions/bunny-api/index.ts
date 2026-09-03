@@ -75,14 +75,19 @@ serve(async (req: Request) => {
     if (subPath) bunnyUrl += `/${subPath}`;
     if (url.search) bunnyUrl += url.search;
 
+    const isThumbnailUpload = req.method === "POST" && /\/thumbnail$/i.test(subPath);
     const bunnyResponse = await fetch(bunnyUrl, {
       method: req.method,
       headers: {
         AccessKey: BUNNY_ACCESS_KEY,
-        "Content-Type": req.headers.get("Content-Type") || "application/json",
+        "Content-Type": isThumbnailUpload
+          ? "application/octet-stream"
+          : req.headers.get("Content-Type") || "application/json",
         Accept: "application/json",
       },
-      body: req.method === "GET" || req.method === "HEAD" ? null : await req.arrayBuffer(),
+      // Pass the incoming stream through instead of holding a second full copy
+      // of uploaded media inside the memory-limited Edge Function worker.
+      body: req.method === "GET" || req.method === "HEAD" ? null : req.body,
     });
 
     return new Response(await bunnyResponse.text(), {
