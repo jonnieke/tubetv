@@ -22,9 +22,17 @@ root.render(
 );
 
 if ('serviceWorker' in navigator) {
+  let refreshingForServiceWorkerUpdate = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshingForServiceWorkerUpdate) return;
+    refreshingForServiceWorkerUpdate = true;
+    window.location.reload();
+  });
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((registration) => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((registration) => {
       console.log('SW registered: ', registration);
+      void registration.update();
     }).catch((registrationError) => {
       console.log('SW registration failed: ', registrationError);
     });

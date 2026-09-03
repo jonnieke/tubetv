@@ -17,6 +17,14 @@ const appSource = readFileSync(
   new URL('../App.tsx', import.meta.url),
   'utf8',
 );
+const entrySource = readFileSync(
+  new URL('../index.tsx', import.meta.url),
+  'utf8',
+);
+const serviceWorkerSource = readFileSync(
+  new URL('../public/sw.js', import.meta.url),
+  'utf8',
+);
 const visibilityFunctionSource = readFileSync(
   new URL('../supabase/functions/content-visibility/index.ts', import.meta.url),
   'utf8',
@@ -42,6 +50,15 @@ describe('Bunny content classification', () => {
     expect(adminSource).toContain('clearEditDraft(editingItem.guid)');
     expect(adminSource).toContain('Draft saved automatically on this device');
     expect(adminSource).toContain('Your draft is saved on this device so you can retry.');
+  });
+
+  it('replaces stale app-shell service workers after a deployment', () => {
+    expect(entrySource).toContain("updateViaCache: 'none'");
+    expect(entrySource).toContain("addEventListener('controllerchange'");
+    expect(entrySource).toContain('registration.update()');
+    expect(serviceWorkerSource).toContain('self.skipWaiting()');
+    expect(serviceWorkerSource).toContain("cacheName.startsWith('tube-tv-shell-')");
+    expect(serviceWorkerSource).toContain('client.navigate(client.url)');
   });
 
   it('limits test-PIN Bunny access to metadata and thumbnail updates', () => {
