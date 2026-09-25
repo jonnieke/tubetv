@@ -1,10 +1,10 @@
 # Go-to-market hardening status
 
-Local code prepared on 25 September 2026. **Partial production rollout:** the migration and `public-catalogue`, `admin-ai`, `analytics-summary`, and `analytics-event` Edge Functions are deployed; a Vercel preview is ready. The production frontend and secured `bunny-api`/`content-visibility` functions are not yet deployed. The local preview has no Supabase environment values, so it still shows labelled demo content.
+Local code prepared on 25 September 2026. **Production rollout in progress:** the migration, frontend, and `public-catalogue`, `admin-ai`, `analytics-summary`, `analytics-event`, `bunny-api`, and `content-visibility` Edge Functions are deployed. The local preview has no Supabase environment values, so it still shows labelled demo content. Newly invited admins must complete password setup and TOTP enrollment before a positive admin mutation can be verified.
 
 ## Implemented in this checkout
 
-- Removed the shared browser PIN. Admin sign-in uses Supabase email/password and TOTP. The browser and mutation functions require an `app_metadata.role = admin` identity with an `aal2` session.
+- Removed the shared browser PIN. Admin sign-in uses Supabase email/password and TOTP. The browser and mutation functions require an `app_metadata.role = admin` identity with an `aal2` session. Invited admins can set their own password at `/admin/setup` before enrolling TOTP.
 - Public catalogue has its own Edge Function. It omits unfinished, muted, draft, adult-rated and future-dated records and strips non-public metadata. Existing unrated records remain visible until `ENFORCE_CONTENT_RATINGS=true` is enabled after classification review.
 - Bunny list and mutation proxy now require verified admin access. Content and visibility mutations attempt an admin audit row and log failures; Bunny mutations and database audit writes are not atomic. Public catalogue failures show a retry state instead of silently presenting demo titles in production.
 - AI suggestions run through an admin-only Edge Function with the API key in server secrets and an atomic limit of 20 requests per admin per day. The browser no longer imports the AI SDK or exposes its key. Captions are not fabricated from a title.
@@ -15,7 +15,7 @@ Local code prepared on 25 September 2026. **Partial production rollout:** the mi
 
 ## Release sequence
 
-1. In Supabase, enable email/password sign-in and TOTP enrollment. Provision the exact owner account, assign `role: admin` in its **app metadata** using trusted admin controls, and verify email/password plus authenticator sign-in. Never put a service-role key in Vite variables or the browser.
+1. In Supabase, enable email/password sign-in and TOTP enrollment. Invite each owner to an inbox they control, with the invite redirect set to `/admin/setup` on an allowed website origin. Assign `role: admin` in each account's **app metadata** using trusted admin controls, then have each owner choose their own password and verify authenticator sign-in. Never put a service-role key in Vite variables or the browser.
 2. Apply `supabase/migrations/20260925145915_market_launch_events.sql`. Confirm the quota RPC is executable only by `service_role`; keep RLS enabled for the usage table.
 3. Configure Edge Function secrets: `BUNNY_ACCESS_KEY`, `BUNNY_LIBRARY_ID`, `ALLOWED_ORIGINS`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`; `GEMINI_API_KEY` is optional. Rotate any Gemini key previously shipped in a browser bundle.
 4. Deploy `public-catalogue`, `admin-ai`, and `analytics-summary` with the JWT settings in `supabase/config.toml`; then deploy the website with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_BUNNY_PULL_ZONE`, and `VITE_ANALYTICS_ENDPOINT` configured. Finally deploy the secured `bunny-api`, `content-visibility`, and `analytics-event` versions. Keep the gap between frontend and secured mutations short. Remove the unused `ADMIN_PIN` secret.
@@ -25,7 +25,7 @@ Local code prepared on 25 September 2026. **Partial production rollout:** the mi
 
 ## Still required before a public campaign
 
-- Production CLI access is restored. The existing admin has a confirmed email and password but no verified TOTP factor yet. Enroll and verify it using the new frontend preview before switching the production mutation endpoints to MFA-only access.
+- Production CLI access is restored. The requested `pkariuki@onfonmedia.com` and `gsemo@onfonmedia.com` users were invited on 25 September 2026 and assigned `app_metadata.role = admin`. Supabase Auth's Site URL is `https://www.tube.co.ke`, the exact `/admin/setup` redirect is allowed, and custom SMTP is enabled with Resend. The production frontend and MFA-protected mutation functions are live. Verify invite delivery, password setup, TOTP enrollment and a positive admin edit; these recipient-controlled steps remain pending. The existing legacy phone-style admin has no verified TOTP factor.
 - The production Vercel environment still contains retired browser variables `VITE_BUNNY_ACCESS_KEY` and `VITE_API_KEY`. Remove them after the new frontend is live, then rotate the underlying credentials that were previously shipped to browsers.
 - Bunny CDN playback URLs are currently public. Rights-restricted media needs Bunny token authentication enabled and server-issued playback links before claiming access control over the video itself. The new catalogue endpoint controls listing only.
 - Resumable uploads, encoding webhooks and reconciliation are still needed for reliable long-running creator uploads. The current queue uses browser polling and loses its visible progress if the tab closes; the Bunny record remains and can be checked in Admin.

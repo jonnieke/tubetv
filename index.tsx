@@ -4,6 +4,7 @@ import './index.css';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LanguageProvider } from './contexts/LanguageContext';
+import AdminInviteSetup from './components/AdminInviteSetup';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -15,7 +16,7 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <LanguageProvider>
-        <App />
+        {window.location.pathname === '/admin/setup' ? <AdminInviteSetup /> : <App />}
       </LanguageProvider>
     </ErrorBoundary>
   </React.StrictMode>
