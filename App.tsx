@@ -2,6 +2,7 @@
 import React, { Suspense, lazy, useState, useEffect, useMemo, useRef } from 'react';
 import CinemaNavigation from './components/CinemaNavigation';
 import CinematicHome from './components/CinematicHome';
+import CatalogueArtwork from './components/CatalogueArtwork';
 import ShortsShelf from './components/ShortsShelf';
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS } from './constants';
@@ -1069,7 +1070,19 @@ const App: React.FC = () => {
                 </details>
               )}
             </div>
-            {seriesKey(activeHeroVideo) && <details className="cinema-player-episodes"><summary>Episodes <span>See all</span></summary><p>{activeHeroVideo.seriesSynopsis}</p>{videos.filter(video => seriesKey(video) === seriesKey(activeHeroVideo)).sort(compareEpisodes).map(video => <button key={video.id} aria-current={video.id === activeHeroVideo.id ? 'true' : undefined} onClick={() => openVideo(video)}><span>S{video.season || 1} · E{video.episode || 1} — {video.title}</span><small>{video.episodeSynopsis || video.description}</small></button>)}</details>}
+            {seriesKey(activeHeroVideo) && <details className="cinema-player-episodes">
+              <summary>Episodes <span>See all</span></summary>
+              {activeHeroVideo.seriesSynopsis && <p>{activeHeroVideo.seriesSynopsis}</p>}
+              {videos.filter(video => seriesKey(video) === seriesKey(activeHeroVideo)).sort(compareEpisodes).map(video =>
+                <button key={video.id} aria-current={video.id === activeHeroVideo.id ? 'true' : undefined} onClick={() => openVideo(video)}>
+                  <CatalogueArtwork src={video.thumbnail} className={`cinema-player-episode-art ${isMicroDrama(video) ? 'cinema-player-episode-art-vertical' : ''}`} />
+                  <span className="cinema-player-episode-copy">
+                    <span>S{video.season || 1} · E{video.episode || 1} — {video.title}</span>
+                    <small>{video.episodeSynopsis || video.description}</small>
+                  </span>
+                </button>
+              )}
+            </details>}
             </Suspense>
       {/* Sidebar */}
           </div>

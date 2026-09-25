@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Play, Plus, Check } from 'lucide-react';
 import type { Video } from '../types';
 import { compareEpisodes, isMicroDrama, seriesKey } from '../lib/series';
+import CatalogueArtwork from './CatalogueArtwork';
 
 interface Props {
   title?: string;
@@ -39,12 +40,15 @@ const SeriesCard: React.FC<Omit<Props, 'videos'> & { episodes: Video[] }> = ({ e
         </label>
         <ol className="max-h-80 space-y-2 overflow-y-auto">
           {episodes.filter(episode => (episode.season || 1) === season).map(episode => <li key={episode.id} className="flex items-start gap-2 rounded-lg bg-zinc-950 p-3">
-            <button type="button" onClick={() => onPlay(episode)} className="min-w-0 flex-1 text-left">
-              <span className="text-[10px] uppercase tracking-wider text-red-400">Episode {episode.episode || 1} · {episode.duration}</span>
-              <span className="mt-1 block text-sm font-semibold">{episode.title}</span>
-              {(episode.episodeSynopsis || episode.description) && <span className="mt-1 block text-xs leading-5 text-zinc-400">{episode.episodeSynopsis || episode.description}</span>}
+            <button type="button" onClick={() => onPlay(episode)} className="flex min-w-0 flex-1 items-start gap-2 text-left">
+              <CatalogueArtwork src={episode.thumbnail} className={`shrink-0 rounded-md object-cover ${portrait ? 'h-20 w-12' : 'h-14 w-20'}`} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[10px] uppercase tracking-wider text-red-400">Episode {episode.episode || 1} · {episode.duration}</span>
+                <span className="mt-1 block text-sm font-semibold">{episode.title}</span>
+                {(episode.episodeSynopsis || episode.description) && <span className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-400">{episode.episodeSynopsis || episode.description}</span>}
+              </span>
             </button>
-            <button type="button" aria-label={`${watchLaterIds.includes(episode.id) ? 'Remove' : 'Save'} ${episode.title}`} onClick={() => onToggleWatchLater(episode.id)} className="rounded p-2 hover:bg-zinc-800">{watchLaterIds.includes(episode.id) ? <Check size={16} /> : <Plus size={16} />}</button>
+            <button type="button" aria-label={`${watchLaterIds.includes(episode.id) ? 'Remove' : 'Save'} ${episode.title}`} onClick={() => onToggleWatchLater(episode.id)} className="rounded p-1 hover:bg-zinc-800">{watchLaterIds.includes(episode.id) ? <Check size={16} /> : <Plus size={16} />}</button>
           </li>)}
         </ol>
       </div>}

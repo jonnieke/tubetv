@@ -70,8 +70,11 @@
 .cinema-player-episodes summary { cursor: pointer; list-style: none; }
 .cinema-player-episodes summary span { float: right; font-size: 12px; color: #ccc; }
 .cinema-player-episodes p { font-size: 13px; color: #bbb; margin: 14px 0; }
-.cinema-player-episodes button { display: block; width: 100%; padding: 14px 0; text-align: left; border-top: 1px solid #ffffff1a; font-size: 13px; }
+.cinema-player-episodes button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 0; text-align: left; border-top: 1px solid #ffffff1a; font-size: 13px; }
 .cinema-player-episodes button[aria-current=true] { color: #f66; }
+.cinema-player-episode-art { width: 96px; aspect-ratio: 16/9; flex: none; object-fit: cover; border-radius: 6px; }
+.cinema-player-episode-art-vertical { width: 54px; aspect-ratio: 9/16; }
+.cinema-player-episode-copy { min-width: 0; flex: 1; }
 .cinema-player-episodes small { display: block; color: #aaa; margin-top: 5px; }
 .cinema-details-backdrop { position: fixed; inset: 0; background: #000c; z-index: 90; display: flex; justify-content: center; align-items: center; padding: 20px; }
 .cinema-details { width: 650px; max-width: 100%; max-height: 85dvh; overflow-y: auto; padding: 30px; border: 1px solid #343a3b; border-radius: 16px; background: #101617; position: relative; }
