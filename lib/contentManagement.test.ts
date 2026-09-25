@@ -61,10 +61,10 @@ describe('Bunny content classification', () => {
     expect(serviceWorkerSource).toContain('client.navigate(client.url)');
   });
 
-  it('limits test-PIN Bunny access to metadata and thumbnail updates', () => {
-    expect(bunnySource).toContain("headers: await getHeaders({ 'x-admin-pin': LOCAL_ADMIN_PIN })");
-    expect(bunnySource).toContain("'x-admin-pin': LOCAL_ADMIN_PIN");
-    expect(bunnyFunctionSource).toContain('req.method !== "POST"');
+  it('requires a verified admin session for Bunny mutations', () => {
+    expect(bunnySource).not.toContain('x-admin-pin');
+    expect(bunnyFunctionSource).toContain('verifiedAdminId(req)');
+    expect(bunnyFunctionSource).not.toContain('ADMIN_PIN');
     expect(bunnyFunctionSource).toContain('(?:\\/thumbnail)?');
   });
 

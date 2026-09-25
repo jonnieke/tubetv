@@ -10,16 +10,6 @@ entrypoint = "./functions/send-push/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-push/*.html" ]
 
-[functions.mpesa-stk-push]
-enabled = true
-verify_jwt = true
-entrypoint = "./functions/mpesa-stk-push/index.ts"
-
-[functions.mpesa-callback]
-enabled = true
-verify_jwt = false
-entrypoint = "./functions/mpesa-callback/index.ts"
-
 [functions.account-data]
 enabled = true
 verify_jwt = true
@@ -34,3 +24,18 @@ entrypoint = "./functions/analytics-event/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/content-visibility/index.ts"
+
+[functions.public-catalogue]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/public-catalogue/index.ts"
+
+[functions.admin-ai]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/admin-ai/index.ts"
+
+[functions.analytics-summary]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/analytics-summary/index.ts"

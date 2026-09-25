@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Lock, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles } from 'lucide-react';
 import { Video } from '../types';
-import { CONTENT_RATING_ENFORCED, PAYWALL_ENABLED } from '../constants';
+import { CONTENT_RATING_ENFORCED } from '../constants';
 import type Hls from 'hls.js';
 import { loadHls } from '../lib/hlsLoader';
 import { usePlayback } from '../contexts/PlaybackContext';
@@ -14,20 +14,16 @@ interface VideoCardProps {
   video: Video;
   isWatchLater?: boolean;
   onToggleWatchLater?: (id: string) => void;
-  /** Whether the current user has an active premium subscription */
-  isSubscribed?: boolean;
-  /** Called when a locked video is clicked by a non-subscriber */
-  onSubscribeRequest?: () => void;
   autoPlay?: boolean;
+  playerOnly?: boolean;
 }
 
 const VideoCard: React.FC<VideoCardProps> = ({
   video,
   isWatchLater = false,
   onToggleWatchLater,
-  isSubscribed = false,
-  onSubscribeRequest,
   autoPlay = false,
+  playerOnly = false,
 }) => {
   const { preferences, getProgress, onProgress, onEnded } = usePlayback();
   const contentRating = normalizeContentRating(video.contentRating);
@@ -52,10 +48,25 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const hoverTimerRef = useRef<any>(null);
   const lastClickTimeRef = useRef<number>(0);
   const lastProgressSaveRef = useRef(0);
+  const startAtRef = useRef(performance.now());
+  const startedRef = useRef(false);
+  const firstFrameRef = useRef(false);
+  const bufferAtRef = useRef<number | null>(null);
+  const playerInstanceRef = useRef(crypto.randomUUID());
   const [showCaptions, setShowCaptions] = useState(preferences.captions);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const pauseOther = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === playerInstanceRef.current) return;
+      setIsPlaying(false);
+      setIsHoverPlay(false);
+      videoRef.current?.pause();
+    };
+    document.addEventListener('tubetv:player-start', pauseOther);
+    return () => document.removeEventListener('tubetv:player-start', pauseOther);
+  }, []);
   const hlsRef = useRef<Hls | null>(null);
   
   useEffect(() => {
@@ -202,18 +213,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (track) track.mode = newState ? 'showing' : 'hidden';
   };
 
-  // Whether this card is locked behind a premium gate
-  const isPremiumLocked = PAYWALL_ENABLED && video.isPremium && !isSubscribed;
-
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isPremiumLocked) {
-      trackEvent('paywall_view', { videoId: video.id, category: video.category, offer: 'daily_10' });
-      onSubscribeRequest?.();
-      return;
-    }
+
     if (!isPlaying) {
       setPlaybackError(false);
+      startAtRef.current = performance.now();
+      startedRef.current = true;
       trackEvent('playback_start', { videoId: video.id, category: video.category, dataSaver: effectiveDataSaver });
     }
     setIsPlaying(!isPlaying);
@@ -304,11 +310,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     } else {
       // Single click - toggle play
       lastClickTimeRef.current = now;
-      if (isPremiumLocked) {
-        onSubscribeRequest?.();
-      } else {
-        setIsPlaying(!isPlaying);
-      }
+      setIsPlaying(!isPlaying);
     }
   };
 
@@ -397,14 +399,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
   return (
     <div 
       ref={containerRef}
-      className="group relative bg-zinc-900 rounded-lg overflow-hidden transition-all duration-300 md:hover:scale-105 hover:z-50 shadow-lg hover:shadow-2xl ring-1 ring-white/5"
+      className={`group relative bg-zinc-900 overflow-hidden ${playerOnly ? '' : 'rounded-lg transition-all duration-300 md:hover:scale-105 hover:z-50 shadow-lg hover:shadow-2xl ring-1 ring-white/5'}`}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => {
         setIsHovering(false);
         setShowSettings(false);
       }}
     >
-      <div className="relative aspect-video bg-black overflow-hidden">
+      <div className={`relative ${video.seriesFormat === "micro-drama" || video.category === "Micro Dramas" ? "aspect-[9/16]" : "aspect-video"} bg-black overflow-hidden`}>
         {!isPlaying && !isHoverPlay && !isBuffering ? (
           <>
             <img 
@@ -421,23 +423,6 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 {video.duration}
             </div>
 
-            {/* Premium Badge */}
-            {video.isPremium && (
-              <div className="absolute top-2 left-2 pointer-events-none">
-                {PAYWALL_ENABLED ? (
-                  // Hard lock — paywall is active
-                  <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-xs font-bold px-2 py-1 rounded-md text-white shadow-lg flex items-center gap-1">
-                    <Lock size={12} /> PREMIUM
-                  </div>
-                ) : (
-                  // Soft badge — free access phase
-                  <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-xs font-bold px-2 py-1 rounded-md text-white shadow-lg flex items-center gap-1 opacity-90">
-                    <Sparkles size={11} /> PREMIUM
-                  </div>
-                )}
-              </div>
-            )}
-
             <div className="absolute top-2 right-2 rounded bg-black/85 px-2 py-1 text-xs font-bold text-white">
               {contentRating}
             </div>
@@ -450,28 +435,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
               </div>
             )}
 
-            {/* Premium Lock Overlay — only shown when paywall is ACTIVE */}
-            {PAYWALL_ENABLED && isPremiumLocked && (
-              <div
-                className="absolute inset-0 z-10 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3 cursor-pointer"
-                onClick={(e) => { e.stopPropagation(); onSubscribeRequest?.(); }}
-              >
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-2xl">
-                  <Lock className="w-7 h-7 text-white" />
-                </div>
-                <div className="text-center px-4">
-                  <p className="text-white font-bold text-sm">TubeTV Premium</p>
-                  <p className="text-zinc-300 text-xs mt-0.5">Watch for KSh 10 for 24 hours</p>
-                </div>
-                <button className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors">
-                  Lipa na M-Pesa
-                </button>
-              </div>
-            )}
-
             {/* Hover Actions (Initial Play) */}
             <div className={`absolute inset-0 flex items-center justify-center gap-4 transition-all duration-300 bg-black/40 backdrop-blur-[2px] ${
-              !isPremiumLocked && !isRatingLocked ? `opacity-100 ${isHovering ? 'md:opacity-100' : 'md:opacity-0'}` : 'opacity-0'
+              !isRatingLocked ? `opacity-100 ${isHovering ? 'md:opacity-100' : 'md:opacity-0'}` : 'opacity-0'
             }`}>
                <button 
                  onClick={togglePlay}
@@ -513,9 +479,27 @@ const VideoCard: React.FC<VideoCardProps> = ({
           <div className="relative w-full h-full">
             <video
               ref={videoRef}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
+              onWaiting={() => { if (firstFrameRef.current && bufferAtRef.current === null) bufferAtRef.current = performance.now(); setIsBuffering(true); }}
+              onPlaying={() => {
+                document.dispatchEvent(new CustomEvent('tubetv:player-start', {detail:playerInstanceRef.current}));
+                setIsBuffering(false);
+                if (bufferAtRef.current !== null) {
+                  trackEvent('playback_buffer', { videoId: video.id, seconds: Math.round((performance.now() - bufferAtRef.current) / 1000) });
+                  bufferAtRef.current = null;
+                }
+                if (isHoverPlay && !isPlaying) return;
+                if (!startedRef.current) {
+                  startedRef.current = true;
+                  trackEvent('playback_start', { videoId: video.id, category: video.category, dataSaver: effectiveDataSaver });
+                }
+                if (!firstFrameRef.current) {
+                  firstFrameRef.current = true;
+                  trackEvent('playback_first_frame', { videoId: video.id, startupMs: Math.round(performance.now() - startAtRef.current), category: video.category });
+                }
+              }}
               onEnded={() => {
                 setIsPlaying(false);
                 setIsHoverPlay(false);
@@ -525,6 +509,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                   durationSeconds: total,
                   completed: true,
                 });
+                if (!isHoverPlay) trackEvent('playback_complete', { videoId: video.id, watchSeconds: Math.round(total), category: video.category, seriesId: video.seriesId || '' });
                 onEnded(video.id);
               }}
               onClick={handleVideoClick}
@@ -696,7 +681,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
         )}
       </div>
 
-      <div className="p-4">
+      {!playerOnly && <div className="p-4">
         <div className="flex justify-between items-start">
             <div>
                 <h3 className="text-white font-semibold truncate pr-2 group-hover:text-red-500 transition-colors">{video.title}</h3>
@@ -714,7 +699,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
              <span>{(video.views / 1000).toFixed(1)}K views</span>
              {quality !== 'Auto' && <span className="bg-red-900/30 text-red-400 px-1 rounded">{quality}</span>}
         </div>
-      </div>
+      </div>}
     </div>
   );
 };

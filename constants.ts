@@ -2,12 +2,6 @@
 import { Video, ShortVideo, DailyStat } from './types';
 
 // ─── Feature Flags ────────────────────────────────────────────────────────────
-/**
- * Set to true to re-enable the premium paywall.
- * Phase 1 (Month 1): false — all content is FREE to build community.
- * Phase 2: true  — M-Pesa subscription required for locked content.
- */
-export const PAYWALL_ENABLED = import.meta.env.VITE_PAYWALL_ENABLED === 'true';
 
 // Test phase: unrated titles remain visible until TubeTV completes KFCB onboarding.
 // Set to true before public market launch to hide UNRATED content.
@@ -32,7 +26,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=2',
     views: 890000,
     duration: '45m',
-    isPremium: true,
+    isPremium: false,
     author: 'Urban Pulse',
     category: 'Originals',
     tags: ['Documentary', 'Culture']
@@ -45,7 +39,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=3',
     views: 3400000,
     duration: '22m',
-    isPremium: true,
+    isPremium: false,
     author: 'Laugh Industry',
     category: 'Originals',
     tags: ['Comedy', 'Series']
@@ -91,7 +85,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=7',
     views: 5000,
     duration: '10m',
-    isPremium: true,
+    isPremium: false,
     author: 'Soma AI',
     category: 'Education',
     tags: ['Tech', 'Kids']
@@ -163,7 +157,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=13',
     views: 120000,
     duration: '10m',
-    isPremium: true,
+    isPremium: false,
     author: 'African Tales',
     category: 'Kids',
     tags: ['Folktales']
@@ -187,7 +181,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=15',
     views: 210000,
     duration: '2h',
-    isPremium: true,
+    isPremium: false,
     author: 'Events 254',
     category: 'Diaspora',
     tags: ['Music', 'Events']

@@ -1,10 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { verifiedAdminId } from '../_shared/admin.ts';
+import { recordAdminMutation } from '../_shared/audit.ts';
 
 const BUNNY_ACCESS_KEY = Deno.env.get("BUNNY_ACCESS_KEY");
 const LIBRARY_ID = Deno.env.get("BUNNY_LIBRARY_ID");
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
-const ADMIN_PIN = Deno.env.get("ADMIN_PIN");
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "")
   .split(",").map((origin) => origin.trim()).filter(Boolean);
 
@@ -13,7 +12,7 @@ function corsHeaders(req: Request) {
   const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0] || "";
   return {
     ...(allowedOrigin ? { "Access-Control-Allow-Origin": allowedOrigin } : {}),
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-pin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Vary": "Origin",
   };
@@ -24,29 +23,6 @@ function jsonResponse(req: Request, body: Record<string, unknown>, status: numbe
     status,
     headers: { ...corsHeaders(req), "Content-Type": "application/json" },
   });
-}
-
-async function isAdminRequest(req: Request) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
-  const authHeader = req.headers.get("Authorization") || "";
-  if (!authHeader.startsWith("Bearer ")) return false;
-
-  const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { Authorization: authHeader, apikey: SUPABASE_ANON_KEY },
-  });
-  if (!userResponse.ok) return false;
-
-  const user = await userResponse.json();
-  return user.app_metadata?.role === "admin";
-}
-
-function isPinAuthorizedUpdate(req: Request, subPath: string) {
-  if (!ADMIN_PIN || req.headers.get("x-admin-pin") !== ADMIN_PIN) return false;
-  if (req.method !== "POST") return false;
-
-  // During the test phase, the shared PIN is deliberately limited to updating
-  // metadata on an existing video or replacing that video's thumbnail.
-  return /^[0-9a-f-]{36}(?:\/thumbnail)?$/i.test(subPath);
 }
 
 serve(async (req: Request) => {
@@ -63,13 +39,12 @@ serve(async (req: Request) => {
     const bunnyApiIndex = pathParts.findIndex((part) => part === "bunny-api");
     const subPath = bunnyApiIndex >= 0 ? pathParts.slice(bunnyApiIndex + 1).join("/") : "";
 
-    if (
-      req.method !== "GET" &&
-      !isPinAuthorizedUpdate(req, subPath) &&
-      !(await isAdminRequest(req))
-    ) {
-      return jsonResponse(req, { error: "Admin access is required to modify content." }, 403);
+    const adminId = await verifiedAdminId(req);
+    if (!adminId) return jsonResponse(req, { error: "Verified admin access is required." }, 403);
+    if (subPath && !/^[0-9a-f-]{36}(?:\/thumbnail)?$/i.test(subPath)) {
+      return jsonResponse(req, { error: "Invalid content path." }, 400);
     }
+    if (!["GET", "POST", "PUT"].includes(req.method)) return jsonResponse(req, { error: "Method not allowed." }, 405);
 
     let bunnyUrl = `https://video.bunnycdn.com/library/${LIBRARY_ID}/videos`;
     if (subPath) bunnyUrl += `/${subPath}`;
@@ -89,6 +64,8 @@ serve(async (req: Request) => {
       // of uploaded media inside the memory-limited Edge Function worker.
       body: req.method === "GET" || req.method === "HEAD" ? null : req.body,
     });
+
+    if (req.method !== 'GET') await recordAdminMutation(adminId, `bunny_${req.method.toLowerCase()}`, subPath || null, bunnyResponse.ok);
 
     return new Response(await bunnyResponse.text(), {
       status: bunnyResponse.status,

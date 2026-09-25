@@ -10,7 +10,6 @@ Tube TV is a Kenyan-first streaming app for local video, shorts, live events, cr
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `VITE_BUNNY_PULL_ZONE`
-   - `VITE_API_KEY` for optional Gemini features
    - `VITE_VAPID_PUBLIC_KEY` for optional push notifications
 3. Start the app:
    `npm run dev`
@@ -25,13 +24,14 @@ The Bunny proxy expects these server-side secrets:
 - `BUNNY_LIBRARY_ID`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
-- `BUNNY_ADMIN_EMAILS`
-- `BUNNY_ADMIN_PHONES`
+- `SUPABASE_SERVICE_ROLE_KEY` (Edge Functions only)
+- `GEMINI_API_KEY` for optional server-side admin artwork and metadata suggestions
+- `ALLOWED_ORIGINS` with the exact website origins
 
 Only authenticated admins can create, update, or upload Bunny Stream content through the proxy.
 
 ## Administrator access
 
-The Admin Panel now uses a local phone-and-PIN gate defined in `lib/localAuth.ts`.
-Update `LOCAL_ADMIN_PIN` there if you need to change the shared code, then reload
-Tube TV to pick up the saved local session.
+Admin access requires a Supabase Auth user whose `app_metadata.role` is `admin`,
+plus an enrolled authenticator-app factor. The shared browser PIN has been retired.
+See [go-to-market hardening](docs/go-to-market-hardening.md) before deployment.

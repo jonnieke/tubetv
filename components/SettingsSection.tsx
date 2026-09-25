@@ -1,23 +1,17 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { Check, CreditCard, Download, Globe, Loader2, LogOut, Monitor, Shield, Smartphone, Trash2, User } from 'lucide-react';
+import { Check, Download, Globe, Loader2, LogOut, Monitor, Shield, Smartphone, Trash2, User } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { LOCAL_AUTH_SOURCE } from '../lib/localAuth';
-import type { ActiveSubscription, SubscriptionPlanCode } from '../lib/subscriptions';
-import { fetchPaymentStatus, startMpesaPayment, SUBSCRIPTION_PLANS } from '../lib/subscriptions';
 import type { PlaybackPreferences } from '../lib/viewerState';
 import { useLanguage } from '../contexts/LanguageContext';
 import { deleteAccount, exportAccountData } from '../lib/privacy';
-import { trackEvent } from '../lib/analytics';
 
 interface SettingsSectionProps {
   currentUser?: SupabaseUser | null;
-  initialTab?: 'general' | 'billing';
+  initialTab?: 'general' | 'account' | 'privacy';
   userPhone?: string | null;
   onLogout?: () => void;
   preferences: PlaybackPreferences;
   onPreferencesChange: (preferences: PlaybackPreferences) => void;
-  activeSubscription: ActiveSubscription | null;
-  onSubscriptionRefresh: () => Promise<void>;
 }
 
 const SettingsSection: React.FC<SettingsSectionProps> = ({
@@ -27,13 +21,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   preferences,
   initialTab = 'general',
   onPreferencesChange,
-  activeSubscription,
-  onSubscriptionRefresh,
 }) => {
   const { language, setLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [paymentState, setPaymentState] = useState<'idle' | 'requesting' | 'waiting' | 'succeeded' | 'failed'>('idle');
-  const [paymentMessage, setPaymentMessage] = useState('');
   const [privacyBusy, setPrivacyBusy] = useState(false);
   const [privacyMessage, setPrivacyMessage] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -46,60 +36,12 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
     onPreferencesChange({ ...preferences, [key]: value });
   };
 
-  const handlePurchase = async (planCode: SubscriptionPlanCode) => {
-    if (!currentUser || currentUser.user_metadata?.auth_source === LOCAL_AUTH_SOURCE) {
-      setPaymentState('failed');
-      setPaymentMessage('M-Pesa payments require a verified Supabase phone account.');
-      return;
-    }
-
-    const amountKes = SUBSCRIPTION_PLANS[planCode].amountKes;
-    trackEvent('checkout_start', { plan: planCode, amountKes });
-    try {
-      setPaymentState('requesting');
-      setPaymentMessage('');
-      const transaction = await startMpesaPayment(planCode);
-      setPaymentState('waiting');
-      setPaymentMessage(transaction.message || 'Check your phone and enter your M-Pesa PIN.');
-      trackEvent('checkout_submitted', { plan: planCode, amountKes });
-
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 3000));
-        const status = await fetchPaymentStatus(transaction.id);
-        if (status.status === 'succeeded') {
-          setPaymentState('succeeded');
-          setPaymentMessage('Payment received. Premium access is active.');
-          trackEvent('subscription_activated', { plan: planCode, amountKes });
-          await onSubscriptionRefresh();
-          return;
-        }
-        if (status.status === 'failed' || status.status === 'cancelled') {
-          setPaymentState('failed');
-          setPaymentMessage(status.result_description || 'Payment was not completed.');
-          trackEvent('checkout_failed', { plan: planCode, reason: status.status });
-          return;
-        }
-      }
-
-      setPaymentState('waiting');
-      setPaymentMessage('Payment is still processing. Your access will activate automatically when M-Pesa confirms it.');
-    } catch (error) {
-      setPaymentState('failed');
-      setPaymentMessage(error instanceof Error ? error.message : 'Unable to start the M-Pesa request.');
-      trackEvent('checkout_failed', { plan: planCode, reason: 'request_error' });
-    }
-  };
-
   const handleSignOut = async () => {
     onLogout?.();
   };
 
   const handleExport = async () => {
     if (!currentUser) return setPrivacyMessage('Sign in to export your account data.');
-    if (currentUser.user_metadata?.auth_source === LOCAL_AUTH_SOURCE) {
-      setPrivacyMessage('Local PIN access does not support cloud export.');
-      return;
-    }
     try {
       setPrivacyBusy(true);
       setPrivacyMessage('');
@@ -119,10 +61,6 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   };
 
   const handleDeleteAccount = async () => {
-    if (currentUser?.user_metadata?.auth_source === LOCAL_AUTH_SOURCE) {
-      setPrivacyMessage('Local PIN access does not support cloud account deletion.');
-      return;
-    }
     if (deleteConfirmation !== 'DELETE') return;
     try {
       setPrivacyBusy(true);
@@ -137,13 +75,8 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   const tabs = [
     { id: 'general', label: 'Playback', icon: Monitor },
     { id: 'account', label: 'Account', icon: User },
-    { id: 'billing', label: 'Billing', icon: CreditCard },
     { id: 'privacy', label: 'Privacy', icon: Shield },
   ];
-
-  const subscriptionEnd = activeSubscription?.end_date
-    ? new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(activeSubscription.end_date))
-    : null;
 
   return (
     <div className="h-screen overflow-y-auto bg-zinc-950 p-4 pb-24 text-white md:p-8">
@@ -215,38 +148,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                   <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/15 text-green-400"><Smartphone size={22} /></div>
                     <div><p className="font-medium">{currentUser?.user_metadata?.display_name || 'TubeTV admin'}</p><p className="text-sm text-zinc-400">{userPhone || 'Not signed in'}</p></div>
-                    {currentUser?.user_metadata?.auth_source === LOCAL_AUTH_SOURCE && <span className="ml-auto flex items-center gap-1 text-xs font-bold text-green-400"><Check size={14} /> PIN</span>}
                   </div>
                 </div>
                 <button onClick={handleSignOut} className="mt-6 flex items-center gap-2 text-sm font-medium text-red-400 hover:text-red-300"><LogOut size={17} /> Sign out</button>
-              </section>
-            )}
-
-            {activeTab === 'billing' && (
-              <section aria-labelledby="billing-heading">
-                <h2 id="billing-heading" className="text-xl font-bold">Premium access</h2>
-                {activeSubscription ? (
-                  <div className="mt-5 border-l-2 border-green-500 pl-4">
-                    <p className="font-bold text-green-400">Premium is active</p>
-                    <p className="mt-1 text-sm text-zinc-400">{activeSubscription.tier} pass, valid until {subscriptionEnd}.</p>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-zinc-400">Choose a pass. Payment is confirmed securely through M-Pesa.</p>
-                )}
-                <div className="mt-7 grid gap-4 md:grid-cols-3">
-                  {Object.values(SUBSCRIPTION_PLANS).map((plan) => (
-                    <div key={plan.code} className={`rounded-lg border bg-zinc-900 p-5 ${plan.code === 'daily' ? 'border-green-500' : 'border-zinc-800'}`}>
-                      {plan.code === 'daily' && <p className="mb-3 text-xs font-bold uppercase text-green-400">Start here</p>}
-                      <p className="font-bold">{plan.label}</p>
-                      <p className="mt-2 text-2xl font-black">KSh {plan.amountKes}</p>
-                      <p className="mt-2 min-h-10 text-sm text-zinc-400">{plan.description}</p>
-                      <button disabled={paymentState === 'requesting' || paymentState === 'waiting'} onClick={() => handlePurchase(plan.code)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2.5 text-sm font-bold hover:bg-green-500 disabled:opacity-50">
-                        {paymentState === 'requesting' ? <Loader2 className="animate-spin" size={16} /> : <Smartphone size={16} />} Pay with M-Pesa
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                {paymentMessage && <p role="status" className={`mt-5 text-sm ${paymentState === 'failed' ? 'text-red-400' : paymentState === 'succeeded' ? 'text-green-400' : 'text-zinc-300'}`}>{paymentMessage}</p>}
               </section>
             )}
 
@@ -256,7 +160,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                 <p className="mt-2 text-sm text-zinc-400">Access a portable copy of your account or permanently erase it.</p>
                 <div className="mt-6 border-y border-zinc-800 py-5">
                   <h3 className="font-medium">Download my data</h3>
-                  <p className="mt-1 text-sm text-zinc-400">Includes profile, billing records, watch list, progress and preferences.</p>
+                  <p className="mt-1 text-sm text-zinc-400">Includes profile, watch list, progress and preferences.</p>
                   <button disabled={privacyBusy || !currentUser} onClick={handleExport} className="mt-4 flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-bold hover:bg-zinc-700 disabled:opacity-50">
                     {privacyBusy ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />} Download JSON
                   </button>

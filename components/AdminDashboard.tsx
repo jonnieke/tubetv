@@ -23,6 +23,7 @@ interface AdminDashboardProps {
 const CATEGORIES = [
   'Movies',
   'Series',
+  'Micro Dramas',
   'Shorts',
   'Farmers',
   'Education',
@@ -42,6 +43,10 @@ const GENRES = [
 const EMPTY_FORM = {
   title: '',
   seriesTitle: '',
+  seriesId: '',
+  seriesSynopsis: '',
+  episodeSynopsis: '',
+  seriesFormat: 'standard',
   season: '',
   episode: '',
   category: '',
@@ -53,7 +58,6 @@ const EMPTY_FORM = {
   productionYear: '',
   contentRating: 'UNRATED' as ContentRating,
   classificationNumber: '',
-  isPremium: false,
   tags: '',
 };
 
@@ -85,6 +89,7 @@ const EditModal = ({
   setForm,
   saving,
   existingSeries,
+  seriesDetails,
   existingAuthors,
   onSave,
   onClose,
@@ -94,6 +99,7 @@ const EditModal = ({
   setForm: React.Dispatch<React.SetStateAction<EditForm>>;
   saving: boolean;
   existingSeries: string[];
+  seriesDetails: Record<string, { seriesId: string; seriesSynopsis: string }>;
   existingAuthors: string[];
   onSave: () => void;
   onClose: () => void;
@@ -133,8 +139,11 @@ const EditModal = ({
   ) => {
     const { type = 'text', placeholder = '', as = 'input', options = [], list } = opts || {};
     const value = form[key] as string;
-    const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-      setForm(f => ({ ...f, [key]: e.target.value }));
+    const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      const value = e.target.value;
+      const existing = key === 'seriesTitle' ? seriesDetails[value.trim().toLowerCase()] : undefined;
+      setForm(f => ({ ...f, ...(existing || {}), [key]: value }));
+    };
     const cls = 'w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-red-500 transition-colors';
 
     return (
@@ -241,10 +250,15 @@ const EditModal = ({
           </div>
 
           {/* Series Info */}
-          {form.category?.includes('Series') && (
+          {(form.category === 'Series' || form.category === 'Micro Dramas') && (
             <div className="grid grid-cols-3 gap-4 p-4 bg-red-900/10 border border-red-500/20 rounded-xl">
               <div className="col-span-3 pb-1 border-b border-red-500/10">
                 <p className="text-xs font-bold text-red-400 uppercase tracking-wider">Series Organization</p>
+              </div>
+              <div className="col-span-3">
+                {field('Main series synopsis', 'seriesSynopsis', { as: 'textarea', placeholder: 'The overall story premise, characters and stakes. Avoid episode spoilers.' })}
+                {field('Episode synopsis', 'episodeSynopsis', { as: 'textarea', placeholder: 'What happens in this episode? Keep the cliffhanger a surprise.' })}
+                <p className="mt-2 text-xs text-zinc-400">Micro Dramas use portrait playback. Use the same series name for all episodes; episode numbers must be unique within a season.</p>
               </div>
               <div className="col-span-3 md:col-span-1">
                 {field('Series Name', 'seriesTitle', { placeholder: 'e.g. Nairobi Noir', list: 'existing-series-names' })}
@@ -323,19 +337,6 @@ const EditModal = ({
           {/* Tags */}
           {field('Tags', 'tags', { placeholder: 'farming, maize, kenya (comma-separated)' })}
 
-          {/* Premium Toggle */}
-          <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
-            <div>
-              <p className="text-sm font-medium text-white">Premium Content</p>
-              <p className="text-xs text-zinc-500">Restrict to Ndovu subscribers</p>
-            </div>
-            <button
-              onClick={() => setForm(f => ({ ...f, isPremium: !f.isPremium }))}
-              className={`w-12 h-6 rounded-full transition-colors relative ${form.isPremium ? 'bg-red-600' : 'bg-zinc-700'}`}
-            >
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.isPremium ? 'translate-x-6' : 'translate-x-0.5'}`} />
-            </button>
-          </div>
         </div>
 
         {/* Footer Actions */}
@@ -372,6 +373,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics'>('content');
   const [items, setItems] = useState<BunnyVideoItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('All');
   const [sortBy, setSortBy] = useState<'date' | 'views' | 'title'>('date');
@@ -403,9 +405,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const load = async () => {
     setLoading(true);
-    const data = await fetchBunnyVideos();
-    setItems(data);
-    setLoading(false);
+    setLoadError('');
+    try { setItems(await fetchBunnyVideos(true)); }
+    catch { setLoadError('Unable to load the admin library. Check your sign-in and try again.'); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
@@ -422,6 +425,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditForm({
       title: saved.title ?? item.title,
       seriesTitle: saved.seriesTitle ?? getMeta(item.metaTags, 'seriesTitle'),
+      seriesId: saved.seriesId ?? mapped.seriesId ?? '',
+      seriesSynopsis: saved.seriesSynopsis ?? mapped.seriesSynopsis ?? '',
+      episodeSynopsis: saved.episodeSynopsis ?? mapped.episodeSynopsis ?? mapped.description ?? '',
+      seriesFormat: saved.seriesFormat ?? mapped.seriesFormat ?? 'standard',
       season: saved.season ?? getMeta(item.metaTags, 'season'),
       episode: saved.episode ?? getMeta(item.metaTags, 'episode'),
       category: saved.category ?? mapped.category,
@@ -431,7 +438,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       thumbnailUrl: saved.thumbnailUrl ?? getMeta(item.metaTags, 'thumbnailUrl'),
       trailerUrl: saved.trailerUrl ?? getMeta(item.metaTags, 'trailerUrl'),
       productionYear: saved.productionYear ?? getMeta(item.metaTags, 'productionYear'),
-      isPremium: saved.isPremium ?? getMeta(item.metaTags, 'isPremium') === 'true',
       contentRating: normalizeContentRating(saved.contentRating ?? mapped.contentRating),
       classificationNumber: saved.classificationNumber ?? getMeta(item.metaTags, 'classificationNumber'),
       tags: saved.tags ?? getMeta(item.metaTags, 'tags'),
@@ -441,20 +447,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const saveEdit = async () => {
     if (!editingItem) return;
-    persistEditDraft(editingItem.guid, editForm);
+    const episodic = ['Series', 'Micro Dramas'].includes(editForm.category);
+    if (episodic && (!editForm.seriesTitle.trim() || ![editForm.season, editForm.episode].every(value => /^[1-9]\d*$/.test(value)))) {
+      alert('Enter a series name and positive whole numbers for season and episode.');
+      return;
+    }
+    const nameKey = editForm.seriesTitle.trim().toLowerCase();
+    const siblings = episodic ? items.filter(item => item.guid !== editingItem.guid && (
+      (editForm.seriesId && getMeta(item.metaTags, 'seriesId') === editForm.seriesId) ||
+      (!getMeta(item.metaTags, 'seriesId') || !editForm.seriesId) && getMeta(item.metaTags, 'seriesTitle').trim().toLowerCase() === nameKey
+    )) : [];
+    if (siblings.some(item => Number(getMeta(item.metaTags, 'season') || 1) === Number(editForm.season) && Number(getMeta(item.metaTags, 'episode')) === Number(editForm.episode))) {
+      alert('That season already has this episode number. Choose a unique episode number.');
+      return;
+    }
+    const seriesId = episodic ? editForm.seriesId || siblings.map(item => getMeta(item.metaTags, 'seriesId')).find(Boolean) || crypto.randomUUID() : '';
+    const normalizedForm = {
+      ...editForm, seriesId,
+      seriesTitle: episodic ? editForm.seriesTitle.trim() : '',
+      seriesSynopsis: episodic ? editForm.seriesSynopsis : '',
+      episodeSynopsis: episodic ? editForm.episodeSynopsis : '',
+      season: episodic ? editForm.season : '', episode: episodic ? editForm.episode : '',
+      seriesFormat: editForm.category === 'Micro Dramas' ? 'micro-drama' : 'standard',
+    };
+    setEditForm(normalizedForm);
+    persistEditDraft(editingItem.guid, normalizedForm);
     setSaving(true);
     
     try {
       // 1. Prepare the updated metadata
       // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle'];
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'episodesynopsis', 'seriesformat'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
       
       const newMetaTags = [
         ...filteredMetaTags,
-        ...Object.entries(editForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) }))
+        ...Object.entries(normalizedForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) }))
       ];
 
       // 2. Save to Bunny CDN via Supabase Proxy
@@ -466,6 +496,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const result = await updateVideoMetadata(editingItem.guid, updatePayload);
       
       if (result) {
+        // Bunny metadata has no multi-video transaction. Keep the draft until
+        // every shared-series update succeeds, so a partial save can be retried.
+        const shared = { seriesId, seriesTitle: normalizedForm.seriesTitle, seriesSynopsis: normalizedForm.seriesSynopsis, seriesFormat: normalizedForm.seriesFormat, category: normalizedForm.category };
+        for (const sibling of siblings) {
+          const metaTags = [
+            ...(sibling.metaTags || []).filter(tag => !Object.keys(shared).some(key => key.toLowerCase() === tag.property.toLowerCase())),
+            ...Object.entries(shared).map(([property, value]) => ({ property, value })),
+          ];
+          if (!(await updateVideoMetadata(sibling.guid, { metaTags }))) {
+            throw new Error('The episode saved, but some series details did not. Your draft is retained; retry Save Changes to finish.');
+          }
+          setItems(previous => previous.map(item => item.guid === sibling.guid ? { ...item, metaTags } : item));
+        }
         // 3. Update the item in our local state to reflect the change immediately
         const updatedItem = { ...editingItem, title: editForm.title, metaTags: newMetaTags };
         setItems(prev => prev.map(item => item.guid === editingItem.guid ? updatedItem : item));
@@ -475,12 +518,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         setSavedIds(prev => new Set(prev).add(editingItem.guid));
         setEditingItem(null);
+        window.dispatchEvent(new Event('tube-catalogue-change'));
       } else {
         alert('Failed to save changes to the server. Your draft is saved on this device so you can retry.');
       }
     } catch (error) {
       console.error(error);
-      alert('An error occurred while saving. Your draft is saved on this device so you can retry.');
+      alert(error instanceof Error ? error.message + ' Your draft is saved on this device so you can retry.' : 'An error occurred while saving. Your draft is saved on this device so you can retry.');
     } finally {
       setSaving(false);
     }
@@ -625,6 +669,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {activeTab === 'content' && (
         <div className="animate-in fade-in duration-500">
+          {loadError && <div role="alert" className="mb-5 rounded-lg border border-red-700 bg-red-950 p-4 text-sm text-red-200">{loadError} <button onClick={() => void load()} className="ml-3 underline">Retry</button></div>}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
             <div>
               <h2 className="text-xl font-bold text-white">Content Library</h2>
@@ -778,7 +823,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <span className={`text-[9px] px-1.5 py-0.5 rounded border ${mapped.contentRating === 'UNRATED' ? 'bg-amber-600/20 text-amber-400 border-amber-600/30' : 'bg-zinc-800 text-zinc-300 border-zinc-700'}`}>
                               {mapped.contentRating}
                             </span>
-                            {mapped.isPremium && <span className="text-[9px] bg-purple-600/30 text-purple-300 px-1.5 py-0.5 rounded border border-purple-600/30">PREMIUM</span>}
                             {isHidden && <span className="text-[9px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded border border-zinc-600">HIDDEN</span>}
                             {isSaved && <span className="text-[9px] bg-green-600/20 text-green-400 px-1.5 py-0.5 rounded border border-green-600/30">EDITED</span>}
                           </div>
@@ -850,6 +894,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setForm={setEditForm}
           saving={saving}
           existingSeries={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'seriesTitle')).filter(Boolean))) as string[]).sort()}
+          seriesDetails={Object.fromEntries(items.filter(item => getMeta(item.metaTags, 'seriesTitle')).map(item => [getMeta(item.metaTags, 'seriesTitle').trim().toLowerCase(), { seriesId: getMeta(item.metaTags, 'seriesId'), seriesSynopsis: getMeta(item.metaTags, 'seriesSynopsis') }]))}
           existingAuthors={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'author') || getMeta(v.metaTags, 'creator') || 'Tube Creator').filter(Boolean))) as string[]).sort()}
           onSave={saveEdit}
           onClose={() => setEditingItem(null)}

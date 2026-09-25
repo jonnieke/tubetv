@@ -1,8 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { verifiedAdminId } from '../_shared/admin.ts';
+import { recordAdminMutation } from '../_shared/audit.ts';
 
 const BUNNY_ACCESS_KEY = Deno.env.get("BUNNY_ACCESS_KEY");
 const LIBRARY_ID = Deno.env.get("BUNNY_LIBRARY_ID");
-const ADMIN_PIN = Deno.env.get("ADMIN_PIN");
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "")
   .split(",")
   .map((origin) => origin.trim())
@@ -13,7 +14,7 @@ function corsHeaders(req: Request) {
   const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0] || "";
   return {
     ...(allowedOrigin ? { "Access-Control-Allow-Origin": allowedOrigin } : {}),
-    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-admin-pin",
+    "Access-Control-Allow-Headers": "authorization, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",
   };
@@ -41,9 +42,8 @@ serve(async (req: Request) => {
   if (!isAllowedBrowserOrigin(req)) {
     return jsonResponse(req, { error: "Origin not allowed." }, 403);
   }
-  if (!ADMIN_PIN || req.headers.get("x-admin-pin") !== ADMIN_PIN) {
-    return jsonResponse(req, { error: "Invalid admin PIN." }, 403);
-  }
+  const adminId = await verifiedAdminId(req);
+  if (!adminId) return jsonResponse(req, { error: "Verified admin access is required." }, 403);
   if (!BUNNY_ACCESS_KEY || !LIBRARY_ID) {
     return jsonResponse(req, { error: "Bunny.net configuration is missing." }, 503);
   }
@@ -83,6 +83,7 @@ serve(async (req: Request) => {
     if (!updateResponse.ok) {
       return jsonResponse(req, { error: "Unable to update video visibility." }, updateResponse.status);
     }
+    await recordAdminMutation(adminId, hidden ? 'hide_video' : 'show_video', videoId, true);
 
     return jsonResponse(req, { videoId, hidden }, 200);
   } catch (error: unknown) {

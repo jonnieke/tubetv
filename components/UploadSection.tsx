@@ -2,8 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UploadCloud, FileVideo, CheckCircle2, Wand2, Loader2, ImageIcon, ImagePlus, Scissors, Play, Pause, RefreshCw, Repeat, Film, AlertTriangle, X, ListVideo, Trash2, ChevronRight, Clock, AlertCircle, Timer, Tag, Mic, Radio } from 'lucide-react';
 import { generateVideoMetadata, generateThumbnail } from '../services/geminiService';
-import { createVideoEntry, uploadVideoFile, getStreamUrl, getThumbnailUrl } from '../services/bunnyService';
-import { supabase } from '../lib/supabase';
+import { createVideoEntry, uploadVideoFile, getStreamUrl, getThumbnailUrl, updateVideoMetadata, getVideoStatus, uploadCustomThumbnail } from '../services/bunnyService';
 import { Video } from '../types';
 import type { ContentRating } from '../lib/contentRating';
 
@@ -14,8 +13,9 @@ interface UploadItem {
   previewUrl: string;
   metadata: { title: string; description: string; category: string; contentRating: ContentRating };
   thumbnail: string | null;
+  thumbnailFile?: File;
   thumbnailPrompt: string;
-  status: 'idle' | 'pending' | 'uploading' | 'completed' | 'error';
+  status: 'idle' | 'pending' | 'uploading' | 'encoding' | 'completed' | 'error';
   progress: number;
   stageInfo?: string;
   timeRemaining?: number; // Estimated seconds remaining
@@ -259,7 +259,8 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
     setIsGeneratingThumbnail(true);
     const result = await generateThumbnail(activeItem.thumbnailPrompt);
     if (result) {
-        updateQueueItem(activeItem.id, { thumbnail: result });
+        const blob = await (await fetch(result)).blob();
+        updateQueueItem(activeItem.id, { thumbnail: result, thumbnailFile: new File([blob], 'generated-thumbnail.png', {type: blob.type || 'image/png'}) });
     }
     setIsGeneratingThumbnail(false);
   };
@@ -268,7 +269,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
       if (e.target.files && e.target.files[0] && activeItem) {
           const file = e.target.files[0];
           const url = URL.createObjectURL(file);
-          updateQueueItem(activeItem.id, { thumbnail: url });
+          updateQueueItem(activeItem.id, { thumbnail: url, thumbnailFile: file });
       }
   };
 
@@ -320,6 +321,21 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
         const videoId = videoEntry.guid;
         updateQueueItem(item.id, { videoId, stageInfo: 'Uploading File...' });
 
+        // Store publication metadata before transfer. The public endpoint only
+        // returns finished encodes, so a partially uploaded title stays hidden.
+        const metaTags = [
+          { property: 'description', value: item.metadata.description.trim() },
+          { property: 'category', value: item.metadata.category || 'New Releases' },
+          { property: 'contentRating', value: item.metadata.contentRating },
+          { property: 'author', value: creatorName },
+          { property: 'published', value: 'processing' },
+        ];
+        const saved = await updateVideoMetadata(videoId, {
+          title: item.metadata.title || item.file.name,
+          metaTags,
+        });
+        if (!saved) throw new Error('Could not save publication metadata. Review the draft in Admin.');
+
         // 2. Upload File (Bunny.net)
         const startTime = Date.now();
         await uploadVideoFile(item.file, videoId, (progress) => {
@@ -332,63 +348,42 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
             updateQueueItem(item.id, { progress, timeRemaining });
         });
 
-        // 3. Success (Encoding happens on server side)
-        const streamUrl = getStreamUrl(videoId);
-        const thumbnailUrl = item.thumbnail || getThumbnailUrl(videoId);
+        if (item.thumbnailFile) {
+          const imageName = await uploadCustomThumbnail(videoId, item.thumbnailFile);
+          if (!imageName) console.warn('Custom thumbnail upload failed; Bunny will use its generated thumbnail.');
+        }
 
-        updateQueueItem(item.id, { 
-            status: 'completed', 
-            progress: 100, 
-            stageInfo: 'Published! Encoding in background.', 
-            timeRemaining: 0,
-            thumbnail: thumbnailUrl // Update to CDN thumb if not AI generated
+        updateQueueItem(item.id, {
+          status: 'encoding', progress: 100, timeRemaining: 0,
+          stageInfo: 'Encoding on Bunny. It will appear when ready.',
+          thumbnail: getThumbnailUrl(videoId),
         });
-
-        // Notify parent to add to main feed
-        if (onUploadComplete) {
-            const newVideo: Video = {
-                id: videoId,
-                title: item.metadata.title || item.file.name,
-                description: item.metadata.description,
-                thumbnail: thumbnailUrl,
-                url: streamUrl,
-                duration: formatTime(item.duration),
-                views: 0,
-                isPremium: false,
-                author: creatorName,
+        void (async () => {
+          for (let attempt = 0; attempt < 180; attempt += 1) {
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            const encoding = await getVideoStatus(videoId);
+            if (encoding.status === 3) {
+              updateQueueItem(item.id, { status: 'error', stageInfo: 'Bunny encoding failed. Review the video in Admin.' });
+              return;
+            }
+            if (encoding.status !== 4) continue;
+            updateQueueItem(item.id, { status: 'completed', stageInfo: 'Ready in the catalogue.' });
+            window.dispatchEvent(new Event('tube-catalogue-change'));
+            if (onUploadComplete) {
+              onUploadComplete({
+                id: videoId, title: item.metadata.title || item.file.name,
+                description: item.metadata.description, thumbnail: getThumbnailUrl(videoId),
+                url: getStreamUrl(videoId), duration: formatTime(item.duration), views: 0,
+                isPremium: false, author: creatorName,
                 category: item.metadata.category || 'New Releases',
                 tags: [item.metadata.category || 'New'],
-                contentRating: item.metadata.contentRating
-            };
-
-            // Persist to Supabase so it survives page refreshes
-            const { error: dbError } = await supabase.from('videos').insert({
-                id: videoId,
-                bunny_guid: videoId,
-                title: newVideo.title,
-                description: newVideo.description,
-                thumbnail_url: thumbnailUrl,
-                stream_url: streamUrl,
-                duration: newVideo.duration,
-                category: newVideo.category,
-                creator_phone: creatorName,
-                is_premium: false,
-                views: 0,
-                content_rating: item.metadata.contentRating,
-                created_at: new Date().toISOString(),
-            });
-
-            if (dbError) {
-                // Non-fatal: video still works in session, but won't persist
-                console.warn(
-                    'Supabase insert skipped (table may not exist yet). ' +
-                    'Run the SQL migration in supabase/migrations/001_create_videos.sql to enable persistence.\n',
-                    dbError.message
-                );
+                contentRating: item.metadata.contentRating,
+              });
             }
-
-            onUploadComplete(newVideo);
-        }
+            return;
+          }
+          updateQueueItem(item.id, { stageInfo: 'Still encoding. Check this title in Admin later.' });
+        })();
 
       } catch (error) {
         console.error("Upload Failed", error);
@@ -800,7 +795,8 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                                       <div className="flex items-center justify-between">
                                           <span className="flex items-center gap-1">
                                             {isUploading ? item.stageInfo : 
-                                             isDone ? 'Completed' : 
+                                             item.status === 'encoding' ? item.stageInfo :
+                                             isDone ? 'Ready' :
                                              isError ? 'Failed' : 
                                              item.status === 'pending' ? 'Waiting...' : 
                                              item.metadata.category}

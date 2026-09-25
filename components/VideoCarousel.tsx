@@ -57,7 +57,7 @@ const VideoCarousel: React.FC<VideoCarouselProps> = ({
                 video={video}
                 isWatchLater={watchLaterIds.includes(video.id)}
                 onToggleWatchLater={onToggleWatchLater}
-                isSubscribed={isAuthenticated}
+
               />
             </div>
           ))}

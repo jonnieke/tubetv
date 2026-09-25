@@ -3,9 +3,9 @@ import React, { useEffect } from 'react';
 const content = {
   privacy: {
     title: 'Privacy notice',
-    intro: 'TubeTV uses account and viewing data to provide playback, saved lists, payments and support.',
+    intro: 'TubeTV uses account and viewing data to provide playback, saved lists and support.',
     sections: [
-      ['What we collect', 'Your verified phone number, account profile, subscription and payment status, watch list, playback progress, and preferences. M-Pesa PINs are never collected by TubeTV.'],
+      ['What we collect', 'Your account profile, watch list, playback progress, and preferences. Local viewing preferences are stored on this device.'],
       ['Why we use it', 'To authenticate you, deliver purchased access, remember viewing choices, prevent abuse and improve service reliability.'],
       ['Your choices', 'You can download your account data or permanently delete your account from Settings. You may also ask us to correct inaccurate information or object to processing.'],
       ['Children', 'Profiles default to PG. Unrated and 18-rated content is blocked. A parent or guardian should manage accounts used by children.'],
@@ -16,9 +16,9 @@ const content = {
     title: 'Terms of use',
     intro: 'These terms govern access to TubeTV content and paid passes.',
     sections: [
-      ['Access', 'You must use accurate account information and keep access codes private. A paid pass begins only after M-Pesa confirms payment.'],
+      ['Access', 'You must use accurate account information and keep access codes private.'],
       ['Content', 'Content ratings and descriptions are guidance. Do not copy, rebroadcast or commercially exploit programmes without permission.'],
-      ['Availability', 'Streams may be interrupted by connectivity, maintenance or third-party delivery services. We will not mark a failed payment as successful.'],
+      ['Availability', 'Streams may be interrupted by connectivity, maintenance or third-party delivery services.'],
       ['Conduct', 'Do not upload unlawful content, evade access controls, attack the service or misuse another person?s account.'],
       ['Changes', 'Material changes will be reflected on this page with an updated effective date before they apply.'],
     ],

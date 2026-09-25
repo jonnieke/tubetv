@@ -5,6 +5,7 @@ import type { ContentRating } from './lib/contentRating';
 export enum ViewState {
   HOME = 'HOME',
   ORIGINALS = 'ORIGINALS',
+  MICRO_DRAMAS = 'MICRO_DRAMAS',
   SHORTS = 'SHORTS',
   EDUCATION = 'EDUCATION',
   FARMERS = 'FARMERS',
@@ -53,6 +54,10 @@ export interface Video {
   uploadDate?: string;
   // Series metadata
   seriesTitle?: string;   // Parent series name, e.g. "Nairobi Noir"
+  seriesId?: string;
+  seriesSynopsis?: string;
+  episodeSynopsis?: string;
+  seriesFormat?: 'standard' | 'micro-drama';
   season?: number;        // Season number
   episode?: number;       // Episode number within season
   genre?: string;         // e.g. "Drama"

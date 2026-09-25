@@ -9,7 +9,6 @@ export const translations = {
     'nav.music': 'Music',
     'nav.gaming': 'Gaming',
     'nav.news': 'News',
-    'nav.premium': 'Premium',
     'nav.studio': 'Creator Studio',
     'nav.settings': 'Settings',
     'nav.logout': 'Logout',
@@ -31,12 +30,6 @@ export const translations = {
     'live.chat': 'Live Chat',
     'live.viewers': 'viewers',
 
-    // Premium / Pricing
-    'premium.title': 'Support Your Favorite Creators',
-    'premium.subtitle': 'Get exclusive content, zero ads, and support Kenyan talent.',
-    'premium.msingi': 'Msingi (Basic)',
-    'premium.ndovu': 'Ndovu (Unlimited)',
-    'premium.subscribe': 'Subscribe via M-Pesa',
 
     // Creator Studio
     'studio.welcome': 'Creator Studio',
@@ -44,7 +37,6 @@ export const translations = {
     'studio.overview': 'Overview',
     'studio.menu': 'Menu Manager',
     'studio.views': 'Total Views',
-    'studio.revenue': 'Revenue',
     'studio.content': 'Your Content',
     'studio.analytics': 'Analytics',
 
@@ -63,7 +55,6 @@ export const translations = {
     'nav.music': 'Muziki',
     'nav.gaming': 'Michezo',
     'nav.news': 'Habari',
-    'nav.premium': 'Premium',
     'nav.studio': 'Studio ya Muundaji',
     'nav.settings': 'Mipangilio',
     'nav.logout': 'Ondoka',
@@ -85,12 +76,6 @@ export const translations = {
     'live.chat': 'Mazungumzo ya Moja kwa Moja',
     'live.viewers': 'watazamaji',
 
-    // Premium / Pricing
-    'premium.title': 'Saidia Waandishi Unaowapenda',
-    'premium.subtitle': 'Pata maudhui ya kipekee, bila matangazo, na saidia vipaji vya Kenya.',
-    'premium.msingi': 'Msingi',
-    'premium.ndovu': 'Ndovu (Bila Kikomo)',
-    'premium.subscribe': 'Jiunge kupitia M-Pesa',
 
     // Creator Studio
     'studio.welcome': 'Studio ya Muundaji',
@@ -98,7 +83,6 @@ export const translations = {
     'studio.overview': 'Muhtasari',
     'studio.menu': 'Meneja wa Menyu',
     'studio.views': 'Jumla ya Watazamaji',
-    'studio.revenue': 'Mapato',
     'studio.content': 'Maudhui Yako',
     'studio.analytics': 'Uchambuzi',
 

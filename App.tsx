@@ -1,21 +1,24 @@
 ﻿
-import React, { Suspense, lazy, useState, useEffect, useMemo } from 'react';
-import Sidebar from './components/Sidebar';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useRef } from 'react';
+import CinemaNavigation from './components/CinemaNavigation';
+import CinematicHome from './components/CinematicHome';
 import ShortsShelf from './components/ShortsShelf';
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
-import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS, PAYWALL_ENABLED } from './constants';
+import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS } from './constants';
 import { Menu, Search, Bell, X, LogIn, Sparkles, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo } from './services/bunnyService';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useLanguage } from './contexts/LanguageContext';
 import { isAdminUser } from './lib/authorization';
-import { clearLocalAuthSession, loadLocalAuthSession, saveLocalAuthSession } from './lib/localAuth';
+import { clearLocalAuthSession } from './lib/localAuth';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { verifiedActiveAdminUser } from './lib/adminSession';
 import { PlaybackProvider } from './contexts/PlaybackContext';
-import { fetchActiveSubscription, type ActiveSubscription } from './lib/subscriptions';
 import { DEFAULT_PLAYBACK_PREFERENCES, loadPreferences, loadProgress, loadWatchList, savePreferences, saveProgress, setWatchLater as persistWatchLater, type PlaybackPreferences, type WatchProgress } from './lib/viewerState';
 import { setVideoMetadata, videoPath } from './lib/seo';
 import LegalPage from './components/LegalPage';
 import { trackEvent } from './lib/analytics';
+import { compareEpisodes, isMicroDrama, nextEpisode, seriesKey } from './lib/series';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
 
 import { TranslationKey } from './translations';
@@ -49,6 +52,7 @@ const ICON_MAP: Record<string, any> = {
 
 const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.HOME, label: 'Home', labelKey: 'nav.home', iconName: 'Home', icon: Home },
+  { id: ViewState.MICRO_DRAMAS, label: 'Micro Dramas', iconName: 'Smartphone', icon: Smartphone },
   { id: ViewState.ORIGINALS, label: 'Originals', labelKey: 'nav.originals', iconName: 'Clapperboard', icon: Clapperboard },
   { id: ViewState.SHORTS, label: 'Shorts', labelKey: 'nav.shorts', iconName: 'Smartphone', icon: Smartphone },
   { id: ViewState.EDUCATION, label: 'Education', labelKey: 'nav.education', iconName: 'GraduationCap', icon: GraduationCap },
@@ -70,8 +74,7 @@ const LoadingPanel = ({ label = 'Loading...' }: { label?: string }) => (
 const App: React.FC = () => {
   const { t } = useLanguage();
   const [currentView, setCurrentView] = useState<ViewStateOrString>(ViewState.HOME);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'billing'>('general');
-  const [pendingSubscription, setPendingSubscription] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'account' | 'privacy'>('general');
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
@@ -85,35 +88,39 @@ const App: React.FC = () => {
   });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // --- LOCAL AUTH: phone + PIN session ---
+  // Admin identity comes from Supabase Auth; retired local PIN sessions are cleared.
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const playerDialogRef = useRef<HTMLDivElement>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-
-  // Bootstrap local auth session on mount
+  // Restore a server-verifiable user and refresh it on auth changes.
   useEffect(() => {
-    const session = loadLocalAuthSession();
-    setCurrentUser(session);
-    setIsAuthenticated(Boolean(session));
-    setIsAuthLoading(false);
+    clearLocalAuthSession();
+    if (!isSupabaseConfigured) { setIsAuthLoading(false); return; }
+    let active = true;
+    void verifiedActiveAdminUser().then((user) => {
+      if (!active) return;
+      setCurrentUser(user);
+      setIsAuthenticated(Boolean(user));
+      setIsAuthLoading(false);
+    }).catch(() => { if (active) setIsAuthLoading(false); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      if (!session) { setCurrentUser(null); setIsAuthenticated(false); return; }
+      setTimeout(() => {
+        if (!active) return;
+        void verifiedActiveAdminUser().then((user) => {
+          if (!active) return;
+          setCurrentUser(user);
+          setIsAuthenticated(Boolean(user));
+        });
+      }, 0);
+    });
+    return () => { active = false; subscription.unsubscribe(); };
   }, []);
   const [preferences, setPreferences] = useState<PlaybackPreferences>(DEFAULT_PLAYBACK_PREFERENCES);
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
-  const [activeSubscription, setActiveSubscription] = useState<ActiveSubscription | null>(null);
-
-  const refreshSubscription = async () => {
-    if (!currentUser) {
-      setActiveSubscription(null);
-      return;
-    }
-    try {
-      setActiveSubscription(await fetchActiveSubscription(currentUser.id));
-    } catch {
-      setActiveSubscription(null);
-    }
-  };
-
   useEffect(() => {
     let cancelled = false;
     const userId = currentUser?.id;
@@ -121,13 +128,11 @@ const App: React.FC = () => {
       loadPreferences(userId),
       loadWatchList(userId),
       loadProgress(userId),
-      userId ? fetchActiveSubscription(userId).catch(() => null) : Promise.resolve(null),
-    ]).then(([nextPreferences, nextWatchLater, nextProgress, subscription]) => {
+    ]).then(([nextPreferences, nextWatchLater, nextProgress]) => {
       if (cancelled) return;
       setPreferences(nextPreferences);
       setWatchLater(nextWatchLater);
       setWatchProgress(nextProgress);
-      setActiveSubscription(subscription);
     });
     return () => { cancelled = true; };
   }, [currentUser?.id]);
@@ -142,16 +147,10 @@ const App: React.FC = () => {
     void saveProgress(currentUser?.id, videoId, progress);
   };
 
-  const isSubscribed = !PAYWALL_ENABLED || Boolean(activeSubscription);
   const handleVideoEnded = (videoId: string) => {
-    if (!preferences.autoplay || videos.length < 2) return;
-    const currentIndex = videos.findIndex((video) => video.id === videoId);
-    if (currentIndex < 0) return;
-    const nextVideo = videos[(currentIndex + 1) % videos.length];
-    if (nextVideo.id !== videoId) {
-      window.history.pushState({}, '', videoPath(nextVideo.id));
-      setActiveHeroVideo(nextVideo);
-    }
+    if (!preferences.autoplay) return;
+    const nextVideo = nextEpisode(videos, videoId);
+    if (nextVideo) { trackEvent('episode_next', { fromVideoId: videoId, toVideoId: nextVideo.id, automatic: true }); openVideo(nextVideo); }
   };
 
   // ─── Detect admin ───────────────────────────────────────────────────────────
@@ -161,10 +160,19 @@ const App: React.FC = () => {
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(true);
   const [isRealContent, setIsRealContent] = useState(false);
+  const [catalogueError, setCatalogueError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
     const loadVideos = async () => {
+      if (!isSupabaseConfigured && import.meta.env.DEV) {
+        setVideos(DEMO_VIDEOS);
+        setIsRealContent(false);
+        setIsLoadingVideos(false);
+        return;
+      }
+      setIsLoadingVideos(true);
+      setCatalogueError('');
       try {
         const bunnyItems = await fetchBunnyVideos();
         console.log('Bunny Items Fetched:', bunnyItems.length);
@@ -180,17 +188,20 @@ const App: React.FC = () => {
             setVideos(visible);
             setIsRealContent(true);
           } else {
-            console.warn('No Bunny titles are available under the current rating policy; showing labelled demo content.');
-            setVideos(DEMO_VIDEOS);
-            setIsRealContent(false);
+            setVideos([]);
+            setIsRealContent(true);
           }
         } else {
-          console.log('No Bunny items found, showing curated demo content.');
-          setVideos(DEMO_VIDEOS);
+          setVideos([]);
+          setIsRealContent(true);
         }
       } catch (err) {
-        console.warn('Bunny load failed, showing demo content:', err);
-        if (!cancelled) setVideos(DEMO_VIDEOS);
+        console.error('Catalogue load failed:', err);
+        if (!cancelled) {
+          setVideos([]);
+          setIsRealContent(false);
+          setCatalogueError('The catalogue could not be loaded. Please try again.');
+        }
       } finally {
         if (!cancelled) setIsLoadingVideos(false);
       }
@@ -205,9 +216,11 @@ const App: React.FC = () => {
       }
     };
     window.addEventListener('tube-visibility-change', onVisibilityChange);
+    window.addEventListener('tube-catalogue-change', loadVideos);
     return () => {
       cancelled = true;
       window.removeEventListener('tube-visibility-change', onVisibilityChange);
+      window.removeEventListener('tube-catalogue-change', loadVideos);
     };
   }, []);
 
@@ -252,6 +265,7 @@ const App: React.FC = () => {
         }
 
         // Re-attach icon components based on iconName string
+        if (!parsed.some((item: NavItem) => item.id === ViewState.MICRO_DRAMAS)) parsed.splice(1, 0, INITIAL_NAV_ITEMS[1]);
         return parsed.map((item: NavItem) => ({
           ...item,
           icon: ICON_MAP[item.iconName || 'PlayCircle'] || PlayCircle
@@ -275,6 +289,24 @@ const App: React.FC = () => {
   // Hero spotlight: cycles through top 5 videos
   const [heroIndex, setHeroIndex] = useState(0);
   const [activeHeroVideo, setActiveHeroVideo] = useState<Video | null>(null);
++  useEffect(() => {
+    if (!activeHeroVideo) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const close = playerDialogRef.current?.querySelector<HTMLButtonElement>('[aria-label="Close player"]');
+    close?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const controls = playerDialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), [tabindex="0"]');
+      if (!controls?.length) return;
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', trap);
+    return () => { document.removeEventListener('keydown', trap); previous?.focus(); };
+  }, [activeHeroVideo?.id]);
+
+
   const openVideo = (video: Video) => {
     window.history.pushState({}, '', videoPath(video.id));
     setActiveHeroVideo(video);
@@ -346,11 +378,13 @@ const App: React.FC = () => {
       case ViewState.KIDS:
         return ['Cartoons', 'Learning', 'Songs', 'Stories'];
       case ViewState.ORIGINALS:
-        return ['Movies', 'Series'];
+        return ['Micro Dramas', 'Series', 'Movies'];
       case ViewState.LIVE:
         return ['Sports', 'News', 'Events'];
       case ViewState.HOME:
         return ['Trending', 'New Releases', 'Most Watched'];
+      case ViewState.MICRO_DRAMAS:
+        return ['All'];
       default:
         // For custom categories, we can return generic filters
         return ['Trending', 'New', 'Top Rated'];
@@ -360,13 +394,11 @@ const App: React.FC = () => {
   const currentSubCategories = getSubCategories(currentView);
 
   // Reset sub-category when view changes
-  useEffect(() => {
-    setActiveSubCategory(getSubCategories(currentView)[0]);
-  }, [currentView]);
+  // Navigation sets the category atomically, so Series/Movies links keep their selection.
 
   // Handle new uploads from the UploadSection
   const handleUploadComplete = (newVideo: Video) => {
-    setVideos(prev => [newVideo, ...prev]);
+    setVideos(prev => [newVideo, ...prev.filter(video => video.id !== newVideo.id)]);
   };
 
   // Admin: Add Category Logic
@@ -407,6 +439,7 @@ const App: React.FC = () => {
     // Filter by Main View Category
     if (currentView !== ViewState.HOME) {
       const viewCategoryMap: Record<string, string> = {
+        [ViewState.MICRO_DRAMAS]: 'Micro Dramas',
         [ViewState.EDUCATION]: 'Education',
         [ViewState.FARMERS]: 'Farmers',
         [ViewState.FAITH]: 'Faith',
@@ -418,7 +451,7 @@ const App: React.FC = () => {
       const targetCategory = viewCategoryMap[currentView as string];
 
       if (currentView === ViewState.ORIGINALS) {
-        filtered = filtered.filter(v => v.category === 'Movies' || v.category === 'Series' || v.category === 'Originals');
+        filtered = filtered.filter(v => v.category === 'Movies' || v.category === 'Series' || v.category === 'Originals' || isMicroDrama(v));
       } else if (targetCategory) {
         filtered = filtered.filter(v => v.category === targetCategory);
       } else {
@@ -508,20 +541,9 @@ const App: React.FC = () => {
   const clearSearch = () => {
     setSearchQuery('');
   };
-  const handleSubscribeRequest = () => {
-    trackEvent('paywall_view', { source: 'subscription_request', offer: 'daily_10' });
-    setSettingsInitialTab('billing');
-    if (!isAuthenticated) {
-      setPendingSubscription(true);
-      setShowLogin(true);
-      return;
-    }
-    setCurrentView(ViewState.SETTINGS);
-    setIsMobileMenuOpen(false);
-  };
 
 
-  const handleNavigate = (view: ViewStateOrString) => {
+  const handleNavigate = (view: ViewStateOrString, category?: string) => {
     // Guard: Settings and Admin require authentication
     if (view === ViewState.SETTINGS && !isAuthenticated) {
       setShowLogin(true);
@@ -537,6 +559,8 @@ const App: React.FC = () => {
     if (item?.restricted && !isAuthenticated) {
       setShowLogin(true);
     } else {
+      setActiveSubCategory(category || getSubCategories(view)[0]);
+      setSearchQuery('');
       setCurrentView(view);
       setIsMobileMenuOpen(false);
     }
@@ -544,6 +568,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     clearLocalAuthSession();
+    if (isSupabaseConfigured) await supabase.auth.signOut();
     setIsAuthenticated(false);
     setCurrentUser(null);
     setCurrentView(ViewState.HOME);
@@ -571,6 +596,11 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    if (catalogueError) return <div role="alert" className="mx-auto max-w-lg p-12 text-center"><h1 className="font-serif text-3xl">Catalogue unavailable</h1><p className="mt-4 text-zinc-400">{catalogueError}</p><button className="cinema-primary mt-6" onClick={() => window.dispatchEvent(new Event('tube-catalogue-change'))}>Try again</button></div>;
+    if (currentView === ViewState.HOME && !searchQuery) {
+      if (isLoadingVideos) return <LoadingPanel label="Finding your next story..." />;
+      return <CinematicHome videos={videos} demo={!isRealContent} onPlay={openVideo} onBrowse={() => handleNavigate(ViewState.MICRO_DRAMAS)} />;
+    }
     switch (currentView) {
       case ViewState.SHORTS:
         if (isLoadingVideos) {
@@ -583,7 +613,7 @@ const App: React.FC = () => {
         }
         return <ShortsPlayer shorts={realShorts} onLoginRequest={() => setShowLogin(true)} />;
       case ViewState.LIVE:
-        return <LiveSection isAuthenticated={isAuthenticated} />;
+        return <LiveSection videos={isRealContent ? videos : []} />;
       case ViewState.SETTINGS:
         return (
           <SettingsSection
@@ -593,8 +623,8 @@ const App: React.FC = () => {
             onLogout={handleLogout}
             preferences={preferences}
             onPreferencesChange={handlePreferencesChange}
-            activeSubscription={activeSubscription}
-            onSubscriptionRefresh={refreshSubscription}
+
+
           />
         );
       case ViewState.UPLOAD:
@@ -618,7 +648,7 @@ const App: React.FC = () => {
               <UploadCloud className="w-12 h-12 text-zinc-600 mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Creator uploads are invite-only</h2>
               <p className="text-zinc-400 max-w-md">
-                Tube TV is approving creators before opening uploads. This keeps the library trusted while payments and creator tools are finalized.
+                TubeTV is approving creators before opening uploads. This keeps the library trusted while creator tools are finalized.
               </p>
             </div>
           );
@@ -645,7 +675,7 @@ const App: React.FC = () => {
               <BarChart2 className="w-12 h-12 text-zinc-600 mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Studio analytics are coming soon</h2>
               <p className="text-zinc-400 max-w-md">
-                Creator dashboards will open after verified uploads, payouts, and real engagement tracking are connected.
+                Creator dashboards will open after verified uploads and real engagement tracking are connected.
               </p>
             </div>
           );
@@ -685,7 +715,8 @@ const App: React.FC = () => {
           <div className="p-4 md:p-8 pb-24">
             {/* Hero Section - Only on HOME and not searching */}
             {currentView === ViewState.HOME && !searchQuery && (() => {
-              const featuredVideos = [...videos].sort((a, b) => b.views - a.views).slice(0, 5);
+              const dramaOpeners = videos.filter(video => isMicroDrama(video) && (video.episode || 1) === 1);
+              const featuredVideos = [...(dramaOpeners.length ? dramaOpeners : videos)].sort((a, b) => b.views - a.views).slice(0, 5);
               const hero = featuredVideos[heroIndex % featuredVideos.length];
               if (!hero) return null;
               return (
@@ -710,9 +741,7 @@ const App: React.FC = () => {
                     {/* Badges row */}
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">{isRealContent ? 'Featured' : 'Demo content'}</span>
-                      {hero.isPremium && !PAYWALL_ENABLED && (
-                        <span className="bg-purple-600/80 text-white text-[10px] font-bold px-2 py-0.5 rounded">✨ Premium</span>
-                      )}
+
                       <span className="text-zinc-400 text-[10px] uppercase tracking-wide">{hero.category}</span>
                     </div>
 
@@ -823,6 +852,7 @@ const App: React.FC = () => {
             ) : currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Trending' ? (
               // Netflix-style category carousels
               <div className="space-y-2 animate-in fade-in duration-500">
+                {videos.some(isMicroDrama) && <SeriesCarousel title="Micro Dramas · Small episodes. Big stories." videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} onPlay={openVideo} />}
                 {/* 🔥 Trending — sorted by real view count */}
                 <VideoCarousel
                   key="Trending"
@@ -830,16 +860,17 @@ const App: React.FC = () => {
                   videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 20)}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={isSubscribed}
+                  isAuthenticated={isAuthenticated}
                 />
 
                 {/* 📺 Series Carousel — groups episodes by seriesTitle/season */}
                 <SeriesCarousel
+                  onPlay={openVideo}
                   videos={videos.filter(v => v.category === 'Series' || v.category === 'Originals')}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={isSubscribed}
-                  onSubscribeRequest={handleSubscribeRequest}
+                  isAuthenticated={isAuthenticated}
+
                 />
 
                 {/* Standard category carousels */}
@@ -854,32 +885,25 @@ const App: React.FC = () => {
                       videos={catVideos}
                       watchLaterIds={watchLater}
                       onToggleWatchLater={toggleWatchLater}
-                      isAuthenticated={isSubscribed}
+                      isAuthenticated={isAuthenticated}
                     />
                   );
                 })}
               </div>
+            ) : currentView === ViewState.MICRO_DRAMAS && !searchQuery ? (
+              <SeriesCarousel title="Micro Dramas" videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} onPlay={openVideo} />
             ) : currentView === ViewState.ORIGINALS && !searchQuery ? (
               // Nested Originals View
               <div className="space-y-2 animate-in fade-in duration-500">
-                {activeSubCategory === 'Series' ? (
+                {activeSubCategory === 'Micro Dramas' ? (<SeriesCarousel title="Micro Dramas" videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} onPlay={openVideo} />) : activeSubCategory === 'Series' ? (
                   <>
-                    {/* Series Carousels */}
-                    {['Swahili', 'Drama', 'Comedy', 'Thriller'].map(genre => {
-                      const genreVideos = filteredVideos.filter(v => v.genre?.includes(genre) || v.tags?.includes(genre));
-                      if (genreVideos.length === 0) return null;
-                      return (
-                        <SeriesCarousel
-                          key={genre}
-                          title={`📺 ${genre} Series`}
-                          videos={genreVideos}
-                          watchLaterIds={watchLater}
-                          onToggleWatchLater={toggleWatchLater}
-                          isAuthenticated={isSubscribed}
-                          onSubscribeRequest={handleSubscribeRequest}
-                        />
-                      );
-                    })}
+                    <SeriesCarousel
+                      title="All Series"
+                      videos={filteredVideos}
+                      watchLaterIds={watchLater}
+                      onToggleWatchLater={toggleWatchLater}
+                      onPlay={openVideo}
+                    />
                   </>
                 ) : (
                   <>
@@ -894,7 +918,7 @@ const App: React.FC = () => {
                           videos={genreVideos}
                           watchLaterIds={watchLater}
                           onToggleWatchLater={toggleWatchLater}
-                          isAuthenticated={isSubscribed}
+                          isAuthenticated={isAuthenticated}
                         />
                       );
                     })}
@@ -910,8 +934,8 @@ const App: React.FC = () => {
                         video={video}
                         isWatchLater={watchLater.includes(video.id)}
                         onToggleWatchLater={toggleWatchLater}
-                        isSubscribed={isSubscribed}
-                        onSubscribeRequest={handleSubscribeRequest}
+
+
                       />
                     </div>
                   ))}
@@ -943,8 +967,8 @@ const App: React.FC = () => {
                             video={video}
                             isWatchLater={watchLater.includes(video.id)}
                             onToggleWatchLater={toggleWatchLater}
-                            isSubscribed={isSubscribed}
-                            onSubscribeRequest={handleSubscribeRequest}
+
+
                           />
                         ))}
                       </div>
@@ -990,12 +1014,10 @@ const App: React.FC = () => {
         <Suspense fallback={<LoadingPanel label="Opening login..." />}>
           <AuthModal
             onSuccess={(user) => {
-              saveLocalAuthSession(user);
               setCurrentUser(user);
               setIsAuthenticated(true);
               setShowLogin(false);
-              setCurrentView(pendingSubscription ? ViewState.SETTINGS : ViewState.HOME);
-              setPendingSubscription(false);
+              setCurrentView(ViewState.HOME);
             }}
             onCancel={() => setShowLogin(false)}
           />
@@ -1004,36 +1026,42 @@ const App: React.FC = () => {
 
       {activeHeroVideo && (
         <div
+          ref={playerDialogRef}
           role="dialog"
           aria-modal="true"
           aria-label={`Playing ${activeHeroVideo.title}`}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-3 md:p-8"
           onClick={closeVideo}
         >
-          <div className="relative w-full max-w-5xl" onClick={(event) => event.stopPropagation()}>
+          <div className={`cinema-player relative w-full max-h-[90vh] overflow-y-auto ${isMicroDrama(activeHeroVideo) ? "cinema-player-vertical max-w-sm" : "max-w-5xl"}`} onClick={(event) => event.stopPropagation()}>
+            <div className="cinema-player-header"><button aria-label="Back to browsing" onClick={closeVideo}>←</button><span className="cinema-logo">Tube<span>TV</span></span><span /></div>
             <button
               type="button"
               aria-label="Close player"
               onClick={closeVideo}
-              className="absolute -top-12 right-0 z-10 rounded-full bg-zinc-800 p-2 text-white hover:bg-zinc-700"
+              className="absolute top-3 right-3 z-50 rounded-full p-2 text-white hover:bg-zinc-700"
             >
               <X className="h-5 w-5" />
             </button>
             <Suspense fallback={<LoadingPanel label="Opening player..." />}>
               <VideoCard
+                key={activeHeroVideo.id}
                 video={activeHeroVideo}
                 autoPlay
-                isSubscribed={isSubscribed}
-                onSubscribeRequest={handleSubscribeRequest}
+                playerOnly
+
+
               />
-            <div className="max-h-64 overflow-y-auto bg-zinc-950 p-5">
+            <div className="cinema-player-info bg-zinc-950 p-5">
               <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                 <span className="rounded border border-zinc-700 px-2 py-1">{activeHeroVideo.contentRating || 'UNRATED'}</span>
                 <span>{activeHeroVideo.category}</span>
                 <span>{activeHeroVideo.author}</span>
               </div>
-              <h1 className="mt-3 text-xl font-bold">{activeHeroVideo.title}</h1>
-              {activeHeroVideo.description && <p className="mt-2 text-sm leading-6 text-zinc-300">{activeHeroVideo.description}</p>}
+              <h1 className="mt-3 text-xl font-bold">{activeHeroVideo.seriesTitle || activeHeroVideo.title}</h1>
+              {seriesKey(activeHeroVideo) && <p className="mt-1 text-sm text-zinc-300">Season {activeHeroVideo.season || 1} · Episode {activeHeroVideo.episode || 1}</p>}
+              {(activeHeroVideo.episodeSynopsis || activeHeroVideo.description) && <p className="mt-2 text-sm leading-6 text-zinc-300">{activeHeroVideo.episodeSynopsis || activeHeroVideo.description}</p>}
+              {nextEpisode(videos, activeHeroVideo.id) && <button className="cinema-primary mt-4 w-full" onClick={() => { const next = nextEpisode(videos, activeHeroVideo.id); if (next) { trackEvent('episode_next', { fromVideoId: activeHeroVideo.id, toVideoId: next.id, automatic: false }); openVideo(next); } }}>▶ Next episode</button>}
               {activeHeroVideo.transcript && (
                 <details className="mt-4 border-t border-zinc-800 pt-4">
                   <summary className="cursor-pointer font-medium">Transcript</summary>
@@ -1041,118 +1069,20 @@ const App: React.FC = () => {
                 </details>
               )}
             </div>
+            {seriesKey(activeHeroVideo) && <details className="cinema-player-episodes"><summary>Episodes <span>See all</span></summary><p>{activeHeroVideo.seriesSynopsis}</p>{videos.filter(video => seriesKey(video) === seriesKey(activeHeroVideo)).sort(compareEpisodes).map(video => <button key={video.id} aria-current={video.id === activeHeroVideo.id ? 'true' : undefined} onClick={() => openVideo(video)}><span>S{video.season || 1} · E{video.episode || 1} — {video.title}</span><small>{video.episodeSynopsis || video.description}</small></button>)}</details>}
             </Suspense>
       {/* Sidebar */}
           </div>
         </div>
       )}
-      <Sidebar
-        currentView={currentView}
-        navItems={translatedNavItems}
-        onNavigate={handleNavigate}
-        isAuthenticated={isAuthenticated}
-        isAdmin={isAdmin}
-        onLogout={handleLogout}
-        onLoginRequest={() => setShowLogin(true)}
-      />
-
       {/* Main Content Area */}
-      <div className="flex-1 lg:ml-64 flex flex-col h-screen overflow-hidden relative">
-
-        {/* Top Navbar */}
-        <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-40">
-          <div className="h-16 flex items-center justify-between px-4 md:px-8">
-            <div className="flex items-center gap-4 lg:hidden">
-              <button aria-label="Open navigation menu" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-                <Menu className="text-zinc-300" />
-              </button>
-              <span className="font-bold text-xl tracking-tighter">Tube</span>
-            </div>
-
-            {/* Desktop Search Bar */}
-            <div className="hidden md:flex flex-1 max-w-xl mx-8 relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={handleSearch}
-                placeholder={t('common.search')}
-                aria-label="Search videos"
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-full py-2 pl-10 pr-10 text-zinc-300 focus:outline-none focus:border-zinc-600 focus:bg-black transition-all"
-              />
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
-              {searchQuery && (
-                <button
-                  onClick={clearSearch}
-                  aria-label="Clear search"
-                  className="absolute right-3 top-2.5 text-zinc-500 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3 md:gap-6">
-              {/* Mobile Search Toggle */}
-              <button
-                aria-label={isMobileSearchOpen ? 'Close search' : 'Open search'}
-                className="md:hidden text-zinc-400 hover:text-white transition-colors"
-                onClick={() => {
-                  setIsMobileSearchOpen(!isMobileSearchOpen);
-                  if (!isMobileSearchOpen) setTimeout(() => document.getElementById('mobile-search-input')?.focus(), 100);
-                }}
-              >
-                {isMobileSearchOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
-              </button>
-
-              <button aria-label="Notifications" className="relative">
-                <Bell className="w-6 h-6 text-zinc-400 hover:text-white transition-colors" />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-600 rounded-full"></span>
-              </button>
-              {isAuthenticated && currentUser ? (
-                <div
-                  className="w-8 h-8 rounded-full bg-gradient-to-tr from-red-600 to-orange-500 flex items-center justify-center cursor-pointer shadow-lg"
-                  title={userPhone || 'My Account'}
-                >
-                  <span className="text-white text-xs font-bold">
-                    {userPhone ? userPhone.slice(-2) : 'ME'}
-                  </span>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowLogin(true)}
-                  className="flex items-center gap-2 text-sm font-bold bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-full transition-colors"
-                >
-                  <LogIn size={16} />
-                  Login
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Mobile Search Bar — slides in below header */}
-          <div className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out ${isMobileSearchOpen ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0'
-            }`}>
-            <div className="px-4 pb-3 relative">
-              <input
-                id="mobile-search-input"
-                type="text"
-                value={searchQuery}
-                onChange={handleSearch}
-                placeholder="Search Tube..."
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-full py-2.5 pl-10 pr-10 text-zinc-300 focus:outline-none focus:border-red-500 transition-colors"
-              />
-              <Search className="absolute left-7 top-3 w-4 h-4 text-zinc-500" />
-              {searchQuery && (
-                <button onClick={clearSearch} className="absolute right-7 top-3 text-zinc-500 hover:text-white">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        </header>
+      <div className="cinema-shell flex-1 flex flex-col h-screen overflow-hidden relative">
+        <CinemaNavigation view={currentView} subcategory={activeSubCategory} items={translatedNavItems}
+          authenticated={isAuthenticated} admin={isAdmin} search={searchQuery} onSearch={handleSearch}
+          navigate={handleNavigate} login={() => setShowLogin(true)} logout={handleLogout} />
 
         {/* Scrollable View Content */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar">
+        <main className={`flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar ${currentView === ViewState.HOME && !searchQuery ? 'cinema-main-home' : ''}`}>
           <Suspense fallback={<LoadingPanel label="Loading Tube TV..." />}>
             {renderContent()}
           </Suspense>
@@ -1168,11 +1098,11 @@ const App: React.FC = () => {
             <span className="text-[10px]">Home</span>
           </button>
           <button
-            onClick={() => handleNavigate(ViewState.SHORTS)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.SHORTS ? 'text-white' : 'text-zinc-500'}`}
+            onClick={() => handleNavigate(ViewState.MICRO_DRAMAS)}
+            className={`flex flex-col items-center gap-1 ${currentView === ViewState.MICRO_DRAMAS ? 'text-red-500' : 'text-zinc-500'}`}
           >
             <div className="w-5 h-5 border-2 border-current rounded-sm"></div>
-            <span className="text-[10px]">Shorts</span>
+            <span className="text-[10px]">Micro Dramas</span>
           </button>
           <button
             onClick={() => handleNavigate(ViewState.EDUCATION)}

@@ -2,11 +2,10 @@ export type AnalyticsEventName =
   | 'catalogue_view'
   | 'playback_start'
   | 'playback_error'
-  | 'paywall_view'
-  | 'checkout_start'
-  | 'checkout_submitted'
-  | 'subscription_activated'
-  | 'checkout_failed';
+  | 'playback_first_frame'
+  | 'playback_complete'
+  | 'playback_buffer'
+  | 'episode_next';
 
 type EventProperties = Record<string, string | number | boolean | undefined>;
 

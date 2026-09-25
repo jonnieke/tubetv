@@ -5,11 +5,10 @@ const EVENTS = new Set([
   "catalogue_view",
   "playback_start",
   "playback_error",
-  "paywall_view",
-  "checkout_start",
-  "checkout_submitted",
-  "subscription_activated",
-  "checkout_failed",
+  "playback_first_frame",
+  "playback_complete",
+  "playback_buffer",
+  "episode_next",
 ]);
 
 function allowedOrigin(req: Request) {
@@ -33,8 +32,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: origin ? 204 : 403, headers: headers(origin) });
   if (req.method !== "POST" || !origin) return new Response(null, { status: 403 });
   if (Number(req.headers.get("Content-Length") || 0) > 4096) return new Response(null, { status: 413 });
-
-  const body = await req.json().catch(() => null);
+  const raw = await req.text();
+  if (raw.length > 4096) return new Response(null, { status: 413, headers: headers(origin) });
+  const body = (() => { try { return JSON.parse(raw); } catch { return null; } })();
   if (!body || !EVENTS.has(body.name) || typeof body.path !== "string" || body.path.length > 200) {
     return new Response(null, { status: 400, headers: headers(origin) });
   }
