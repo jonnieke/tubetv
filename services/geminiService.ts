@@ -28,12 +28,3 @@ export async function generateThumbnail(prompt: string): Promise<string | null> 
 export async function generateAnalyticsInsights(_data: DailyStat[]) { return 'Measured viewing trends are not available yet.'; }
 export async function generateVideoSpecificInsights(_title: string, _metrics: { views: number; retention: number; ctr: number }) { return 'Measured retention and click-through data are not available yet.'; }
 export async function generateCaptions(_title: string, _category: string): Promise<Caption[]> { return []; }
-
-export async function getVideoRecommendations(
-  userHistory: { title: string; category: string }[],
-  availableVideos: { id: string; title: string; category: string }[],
-): Promise<string[]> {
-  const watched = new Set(userHistory.map(item => item.title));
-  const favoured = new Set(userHistory.map(item => item.category));
-  return availableVideos.filter(video => !watched.has(video.title)).sort((a, b) => Number(favoured.has(b.category)) - Number(favoured.has(a.category))).slice(0, 3).map(video => video.id);
-}

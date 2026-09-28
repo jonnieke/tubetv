@@ -13,6 +13,8 @@ import CatalogueArtwork from './CatalogueArtwork';
 
 interface VideoCardProps {
   video: Video;
+  nextEpisode?: Video;
+  onNextEpisode?: () => void;
   isWatchLater?: boolean;
   onToggleWatchLater?: (id: string) => void;
   autoPlay?: boolean;
@@ -21,6 +23,8 @@ interface VideoCardProps {
 
 const VideoCard: React.FC<VideoCardProps> = ({
   video,
+  nextEpisode,
+  onNextEpisode,
   isWatchLater = false,
   onToggleWatchLater,
   autoPlay = false,
@@ -55,6 +59,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const bufferAtRef = useRef<number | null>(null);
   const playerInstanceRef = useRef(crypto.randomUUID());
   const [showCaptions, setShowCaptions] = useState(preferences.captions);
+  const introEnd = video.introEndSeconds;
+  const outroStart = video.outroStartSeconds;
+  const canSkipIntro = isPlaying && !isHoverPlay && Number.isFinite(introEnd) && Number(introEnd) > 0 && (duration <= 0 || Number(introEnd) < duration) && currentTime < Number(introEnd) - 1;
+  const canSkipOutro = isPlaying && !isHoverPlay && Number.isFinite(outroStart) && Number(outroStart) > 0 && duration > Number(outroStart) + 1 && currentTime >= Number(outroStart) && currentTime < duration - 1;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -468,6 +476,17 @@ const VideoCard: React.FC<VideoCardProps> = ({
           </>
         ) : (
           <div className="relative w-full h-full">
+            {(canSkipIntro || canSkipOutro) && <div className="absolute left-3 top-3 z-40 flex gap-2">
+              {canSkipIntro && <button type="button" className="rounded-md border border-white/50 bg-black/80 px-3 py-2 text-xs font-semibold text-white hover:bg-black focus-visible:outline-2 focus-visible:outline-red-500" onClick={event => { event.stopPropagation(); if (videoRef.current) videoRef.current.currentTime = Number(introEnd); }}>Skip intro</button>}
+              {canSkipOutro && <button type="button" className="rounded-md border border-white/50 bg-black/80 px-3 py-2 text-xs font-semibold text-white hover:bg-black focus-visible:outline-2 focus-visible:outline-red-500" onClick={event => {
+                event.stopPropagation();
+                if (nextEpisode && onNextEpisode) {
+                  onProgress(video.id, { positionSeconds: duration, durationSeconds: duration, completed: true });
+                  trackEvent('playback_complete', { videoId: video.id, watchSeconds: Math.round(currentTime), category: video.category, skippedOutro: true });
+                  onNextEpisode();
+                } else if (videoRef.current) videoRef.current.currentTime = Math.max(0, duration - 0.2);
+              }}>{nextEpisode && onNextEpisode ? 'Play next episode' : 'Skip outro'}</button>}
+            </div>}
             <video
               ref={videoRef}
               className="w-full h-full object-contain"

@@ -11,11 +11,13 @@ describe('published series metadata', () => {
         { property: 'seriesId', value: 'series-1' },
         { property: 'seriesTitle', value: 'Published series' },
         { property: 'seriesSynopsis', value: 'Shared story premise' },
+        { property: 'seasonSynopsis', value: 'Season one story' },
         { property: 'episodeSynopsis', value: 'This episode only' },
         { property: 'season', value: '1' }, { property: 'episode', value: '2' },
+        { property: 'introEndSeconds', value: '15' }, { property: 'outroStartSeconds', value: '100' },
       ],
     } as BunnyVideoItem;
-    expect(bunnyVideoToVideo(item)).toMatchObject({ title: 'Published title', seriesId: 'series-1', seriesFormat: 'micro-drama', seriesSynopsis: 'Shared story premise', episodeSynopsis: 'This episode only', season: 1, episode: 2 });
+    expect(bunnyVideoToVideo(item)).toMatchObject({ title: 'Published title', seriesId: 'series-1', seriesFormat: 'micro-drama', seriesSynopsis: 'Shared story premise', seasonSynopsis: 'Season one story', episodeSynopsis: 'This episode only', season: 1, episode: 2, introEndSeconds: 15, outroStartSeconds: 100 });
   });
   it('keeps old descriptions as episode summaries for existing series', () => {
     expect(bunnyVideoToVideo({ guid: 'old', title: 'Legacy', metaTags: [{ property: 'description', value: 'Legacy description' }] } as BunnyVideoItem).episodeSynopsis).toBe('Legacy description');

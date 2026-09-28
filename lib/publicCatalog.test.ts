@@ -26,4 +26,15 @@ describe('public catalogue projection', () => {
     expect(projected?.metaTags).toEqual([{property:'category',value:'Micro Dramas'},{property:'contentRating',value:'PG'}]);
     expect(publicItem(item({metaTags:[]}), true)).toBeNull();
   });
+  it('exposes authored season and skip-cue metadata to viewers', () => {
+    const projected = publicItem(item({metaTags:[
+      {property:'category',value:'Series'}, {property:'contentRating',value:'PG'},
+      {property:'seasonSynopsis',value:'A new beginning.'},
+      {property:'introEndSeconds',value:'45'}, {property:'outroStartSeconds',value:'700'},
+    ]}));
+    expect(projected?.metaTags).toEqual(expect.arrayContaining([
+      {property:'seasonSynopsis',value:'A new beginning.'},
+      {property:'introEndSeconds',value:'45'}, {property:'outroStartSeconds',value:'700'},
+    ]));
+  });
 });

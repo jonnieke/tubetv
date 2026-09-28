@@ -7,6 +7,7 @@ import SeriesDetails from './SeriesDetails';
 const episode = (number: number, season = 1): Video => ({
   id: `episode-${season}-${number}`, title: `Episode ${number}: A different chapter`,
   seriesTitle: 'A real Kenyan series', seriesId: 'series-1', seriesSynopsis: 'The main story has its own synopsis.',
+  seasonSynopsis: `Season ${season} has its own story.`,
   episodeSynopsis: `Episode ${number} has its own synopsis.`, category: 'Series', thumbnail: '/real-episode.jpg',
   author: 'A real creator', duration: '12:30', views: 0, isPremium: false, episode: number, season,
 });
@@ -18,9 +19,11 @@ describe('Series details sheet', () => {
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
     expect(html).toContain('The main story has its own synopsis.');
+    expect(html).toContain('Season 1 has its own story.');
     expect(html).toContain('Episode 1 has its own synopsis.');
     expect(html).toContain('Episode 2 has its own synopsis.');
     expect(html).toContain('series-details-episode-art');
+    expect(html).toContain('series-details-episodes-horizontal');
     expect(html).toContain('Watch episode 2: Episode 2: A different chapter');
     expect(html).toContain('Remove Episode 2: A different chapter');
     expect(html).toContain('Close series details');

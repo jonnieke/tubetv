@@ -45,10 +45,13 @@ const EMPTY_FORM = {
   seriesTitle: '',
   seriesId: '',
   seriesSynopsis: '',
+  seasonSynopsis: '',
   episodeSynopsis: '',
   seriesFormat: 'standard',
   season: '',
   episode: '',
+  introEndSeconds: '',
+  outroStartSeconds: '',
   category: '',
   genre: '',
   author: '',
@@ -141,7 +144,7 @@ const EditModal = ({
     const value = form[key] as string;
     const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       const value = e.target.value;
-      const existing = key === 'seriesTitle' ? seriesDetails[value.trim().toLowerCase()] : undefined;
+      const existing = key === 'seriesTitle' ? seriesDetails[`${form.category}:${value.trim().toLowerCase()}`] : undefined;
       setForm(f => ({ ...f, ...(existing || {}), [key]: value }));
     };
     const cls = 'w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-red-500 transition-colors';
@@ -257,8 +260,9 @@ const EditModal = ({
               </div>
               <div className="col-span-3">
                 {field('Main series synopsis', 'seriesSynopsis', { as: 'textarea', placeholder: 'The overall story premise, characters and stakes. Avoid episode spoilers.' })}
+                {field('Season summary', 'seasonSynopsis', { as: 'textarea', placeholder: 'What is this season about? Keep later-season twists out.' })}
                 {field('Episode synopsis', 'episodeSynopsis', { as: 'textarea', placeholder: 'What happens in this episode? Keep the cliffhanger a surprise.' })}
-                <p className="mt-2 text-xs text-zinc-400">Micro Dramas use portrait playback. Use the same series name for all episodes; episode numbers must be unique within a season.</p>
+                <p className="mt-2 text-xs text-zinc-400">{form.category === 'Micro Dramas' ? 'Micro Dramas use portrait playback and their own catalogue shelf.' : 'Series use landscape artwork and a season-first episode page.'} Episode numbers must be unique within a season.</p>
               </div>
               <div className="col-span-3 md:col-span-1">
                 {field('Series Name', 'seriesTitle', { placeholder: 'e.g. Nairobi Noir', list: 'existing-series-names' })}
@@ -271,6 +275,11 @@ const EditModal = ({
               </div>
               <div className="col-span-1 md:col-span-1">
                 {field('Episode', 'episode', { type: 'number', placeholder: '1' })}
+              </div>
+              <div className="col-span-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                {field('Intro ends at (seconds)', 'introEndSeconds', { type: 'number', placeholder: 'Optional, e.g. 45' })}
+                {field('Outro starts at (seconds)', 'outroStartSeconds', { type: 'number', placeholder: 'Optional, e.g. 1260' })}
+                <p className="text-xs text-zinc-400 md:col-span-2">Set exact cue points for this episode. Skip buttons appear only when these times are saved.</p>
               </div>
             </div>
           )}
@@ -427,10 +436,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       seriesTitle: saved.seriesTitle ?? getMeta(item.metaTags, 'seriesTitle'),
       seriesId: saved.seriesId ?? mapped.seriesId ?? '',
       seriesSynopsis: saved.seriesSynopsis ?? mapped.seriesSynopsis ?? '',
+      seasonSynopsis: saved.seasonSynopsis ?? mapped.seasonSynopsis ?? '',
       episodeSynopsis: saved.episodeSynopsis ?? mapped.episodeSynopsis ?? mapped.description ?? '',
       seriesFormat: saved.seriesFormat ?? mapped.seriesFormat ?? 'standard',
       season: saved.season ?? getMeta(item.metaTags, 'season'),
       episode: saved.episode ?? getMeta(item.metaTags, 'episode'),
+      introEndSeconds: saved.introEndSeconds ?? getMeta(item.metaTags, 'introEndSeconds'),
+      outroStartSeconds: saved.outroStartSeconds ?? getMeta(item.metaTags, 'outroStartSeconds'),
       category: saved.category ?? mapped.category,
       genre: saved.genre ?? getMeta(item.metaTags, 'genre'),
       author: saved.author ?? mapped.author,
@@ -452,8 +464,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       alert('Enter a series name and positive whole numbers for season and episode.');
       return;
     }
+    const intro = editForm.introEndSeconds.trim();
+    const outro = editForm.outroStartSeconds.trim();
+    if (episodic && ([intro, outro].some(value => value && !/^[1-9]\d*$/.test(value)) || (intro && outro && Number(intro) >= Number(outro)) || [intro, outro].some(value => value && editingItem.length > 0 && Number(value) >= editingItem.length))) {
+      alert('Use positive whole-second cue points within the video. The intro must end before the outro starts.');
+      return;
+    }
     const nameKey = editForm.seriesTitle.trim().toLowerCase();
-    const siblings = episodic ? items.filter(item => item.guid !== editingItem.guid && (
+    const siblings = episodic ? items.filter(item => item.guid !== editingItem.guid && bunnyVideoToVideo(item).category === editForm.category && (
       (editForm.seriesId && getMeta(item.metaTags, 'seriesId') === editForm.seriesId) ||
       (!getMeta(item.metaTags, 'seriesId') || !editForm.seriesId) && getMeta(item.metaTags, 'seriesTitle').trim().toLowerCase() === nameKey
     )) : [];
@@ -466,8 +484,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ...editForm, seriesId,
       seriesTitle: episodic ? editForm.seriesTitle.trim() : '',
       seriesSynopsis: episodic ? editForm.seriesSynopsis : '',
+      seasonSynopsis: episodic ? editForm.seasonSynopsis : '',
       episodeSynopsis: episodic ? editForm.episodeSynopsis : '',
       season: episodic ? editForm.season : '', episode: episodic ? editForm.episode : '',
+      introEndSeconds: episodic ? intro : '', outroStartSeconds: episodic ? outro : '',
       seriesFormat: editForm.category === 'Micro Dramas' ? 'micro-drama' : 'standard',
     };
     setEditForm(normalizedForm);
@@ -477,7 +497,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       // 1. Prepare the updated metadata
       // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'episodesynopsis', 'seriesformat'];
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
@@ -500,9 +520,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         // every shared-series update succeeds, so a partial save can be retried.
         const shared = { seriesId, seriesTitle: normalizedForm.seriesTitle, seriesSynopsis: normalizedForm.seriesSynopsis, seriesFormat: normalizedForm.seriesFormat, category: normalizedForm.category };
         for (const sibling of siblings) {
+          const sameSeason = Number(getMeta(sibling.metaTags, 'season') || 1) === Number(normalizedForm.season);
+          const siblingShared = sameSeason && normalizedForm.seasonSynopsis.trim() ? { ...shared, seasonSynopsis: normalizedForm.seasonSynopsis } : shared;
           const metaTags = [
-            ...(sibling.metaTags || []).filter(tag => !Object.keys(shared).some(key => key.toLowerCase() === tag.property.toLowerCase())),
-            ...Object.entries(shared).map(([property, value]) => ({ property, value })),
+            ...(sibling.metaTags || []).filter(tag => !Object.keys(siblingShared).some(key => key.toLowerCase() === tag.property.toLowerCase())),
+            ...Object.entries(siblingShared).map(([property, value]) => ({ property, value })),
           ];
           if (!(await updateVideoMetadata(sibling.guid, { metaTags }))) {
             throw new Error('The episode saved, but some series details did not. Your draft is retained; retry Save Changes to finish.');
@@ -894,7 +916,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setForm={setEditForm}
           saving={saving}
           existingSeries={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'seriesTitle')).filter(Boolean))) as string[]).sort()}
-          seriesDetails={Object.fromEntries(items.filter(item => getMeta(item.metaTags, 'seriesTitle')).map(item => [getMeta(item.metaTags, 'seriesTitle').trim().toLowerCase(), { seriesId: getMeta(item.metaTags, 'seriesId'), seriesSynopsis: getMeta(item.metaTags, 'seriesSynopsis') }]))}
+          seriesDetails={Object.fromEntries(items.filter(item => getMeta(item.metaTags, 'seriesTitle')).map(item => [`${bunnyVideoToVideo(item).category}:${getMeta(item.metaTags, 'seriesTitle').trim().toLowerCase()}`, { seriesId: getMeta(item.metaTags, 'seriesId'), seriesSynopsis: getMeta(item.metaTags, 'seriesSynopsis') }]))}
           existingAuthors={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'author') || getMeta(v.metaTags, 'creator') || 'Tube Creator').filter(Boolean))) as string[]).sort()}
           onSave={saveEdit}
           onClose={() => setEditingItem(null)}

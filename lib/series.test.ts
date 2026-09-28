@@ -19,7 +19,8 @@ describe('serialized drama playback', () => {
     expect(seriesKey(episode('a', 1, 1, { seriesId: 'show-a' }))).not.toBe(seriesKey(episode('b', 1, 2, { seriesId: 'show-b' })));
   });
   it('supports legacy title grouping and explicit micro-drama classification', () => {
-    expect(seriesKey(episode('a', 1, 1, { seriesTitle: '  A Nairobi Secret ' }))).toBe('a nairobi secret');
+    expect(seriesKey(episode('a', 1, 1, { seriesTitle: '  A Nairobi Secret ' }))).toBe('micro:a nairobi secret');
+    expect(seriesKey(episode('a', 1, 1))).not.toBe(seriesKey(episode('b', 1, 1, { category: 'Series' })));
     expect(isMicroDrama(episode('a', 1, 1))).toBe(true);
     expect(isMicroDrama(episode('b', 1, 1, { category: 'Series' }))).toBe(false);
   });

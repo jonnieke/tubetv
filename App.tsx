@@ -11,7 +11,7 @@ import CatalogueEmptyState from './components/CatalogueEmptyState';
 import ShortsShelf from './components/ShortsShelf';
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS } from './constants';
-import { Menu, Search, Bell, X, LogIn, Sparkles, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
+import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo } from './services/bunnyService';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useLanguage } from './contexts/LanguageContext';
@@ -26,7 +26,9 @@ import LegalPage from './components/LegalPage';
 import { trackEvent } from './lib/analytics';
 import { compareEpisodes, isMicroDrama, nextEpisode, seriesKey } from './lib/series';
 import { filterDiscoveryVideos } from './lib/discovery';
+import { recommendVideos } from './lib/recommendations';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
+import { shouldSaveData } from './lib/network';
 
 import { TranslationKey } from './translations';
 
@@ -156,7 +158,7 @@ const App: React.FC = () => {
   };
 
   const handleVideoEnded = (videoId: string) => {
-    if (!preferences.autoplay) return;
+    if (!preferences.autoplay || shouldSaveData(preferences.dataSaver)) return;
     const nextVideo = nextEpisode(videos, videoId);
     if (nextVideo) { trackEvent('episode_next', { fromVideoId: videoId, toVideoId: nextVideo.id, automatic: true }); openVideo(nextVideo); }
   };
@@ -353,8 +355,7 @@ const App: React.FC = () => {
   }, [activeHeroVideo]);
 
 
-  const [recommendedVideos, setRecommendedVideos] = useState<Video[]>([]);
-  const [isRecLoading, setIsRecLoading] = useState(false);
+  const recommendations = useMemo(() => recommendVideos(videos, watchProgress, watchLater), [videos, watchProgress, watchLater]);
 
   // Translate Nav Items
   const translatedNavItems = navItems.map(item => ({
@@ -443,33 +444,6 @@ const App: React.FC = () => {
     setWatchLater((current) => shouldSave ? [...current, id] : current.filter((videoId) => videoId !== id));
     void persistWatchLater(currentUser?.id, id, shouldSave);
   };
-
-  // Generate Recommendations when Watch Later changes
-  useEffect(() => {
-    const fetchRecommendations = async () => {
-      if (watchLater.length === 0) {
-        setRecommendedVideos([]);
-        return;
-      }
-      setIsRecLoading(true);
-      const historyData = videos
-        .filter(v => watchLater.includes(v.id))
-        .map(v => ({ title: v.title, category: v.category }));
-
-      const availableData = videos.map(v => ({ id: v.id, title: v.title, category: v.category }));
-      const { getVideoRecommendations } = await import('./services/geminiService');
-      const recommendedIds = await getVideoRecommendations(historyData, availableData);
-      const recs = videos.filter(v => recommendedIds.includes(v.id) && !watchLater.includes(v.id));
-      setRecommendedVideos(recs);
-      setIsRecLoading(false);
-    };
-
-    const timer = setTimeout(() => {
-      if (watchLater.length > 0) fetchRecommendations();
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [watchLater, videos]);
-
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -673,6 +647,13 @@ const App: React.FC = () => {
               <SeriesCarousel title="Micro Dramas · Small episodes. Big stories." videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} onPlay={openVideo} />
             )}
 
+            {currentView === ViewState.HOME && !searchQuery && recommendations.continueWatching.length > 0 && (
+              <VideoCarousel title="Continue watching" videos={recommendations.continueWatching} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} />
+            )}
+            {currentView === ViewState.HOME && !searchQuery && recommendations.forYou.length > 0 && (
+              <VideoCarousel title="Picked for you" videos={recommendations.forYou} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} />
+            )}
+
             {/* Shorts Shelf (Vertical Video Carousel) - Only on Home */}
             {currentView === ViewState.HOME && !searchQuery && realShorts.length > 0 && (
               <ShortsShelf
@@ -716,9 +697,9 @@ const App: React.FC = () => {
                 />
 
                 {/* 📺 Series Carousel — groups episodes by seriesTitle/season */}
-                {videos.some(v => v.category === 'Series' || v.category === 'Originals') && <SeriesCarousel
+                {videos.some(v => (v.category === 'Series' || (v.category === 'Originals' && Boolean(seriesKey(v)))) && !isMicroDrama(v)) && <SeriesCarousel
                   onPlay={openVideo}
-                  videos={videos.filter(v => v.category === 'Series' || v.category === 'Originals')}
+                  videos={videos.filter(v => (v.category === 'Series' || (v.category === 'Originals' && Boolean(seriesKey(v)))) && !isMicroDrama(v))}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
                   isAuthenticated={isAuthenticated}
@@ -797,40 +778,6 @@ const App: React.FC = () => {
                   ))}
                 </div>
 
-                {/* AI Recommendations Section (Only on Home) */}
-                {currentView === ViewState.HOME && !searchQuery && watchLater.length > 0 && (
-                  <div className="mt-16 animate-in fade-in duration-700">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 bg-purple-500/20 rounded-full">
-                        <Sparkles className="w-5 h-5 text-purple-400" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-bold text-white">Recommended For You</h2>
-                        <p className="text-xs text-zinc-400">Based on your Watch List</p>
-                      </div>
-                    </div>
-
-                    {isRecLoading ? (
-                      <div className="flex items-center justify-center py-12 bg-zinc-900/30 rounded-xl border border-dashed border-zinc-800">
-                        <Loader2 className="w-8 h-8 text-purple-500 animate-spin mb-2" />
-                        <span className="ml-3 text-zinc-500 text-sm">AI is curating your feed...</span>
-                      </div>
-                    ) : recommendedVideos.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {recommendedVideos.map((video) => (
-                          <VideoCard
-                            key={`rec-${video.id}`}
-                            video={video}
-                            isWatchLater={watchLater.includes(video.id)}
-                            onToggleWatchLater={toggleWatchLater}
-
-
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
               </>
             )}
 
@@ -901,6 +848,8 @@ const App: React.FC = () => {
                 video={activeHeroVideo}
                 autoPlay
                 playerOnly
+                nextEpisode={nextEpisode(videos, activeHeroVideo.id)}
+                onNextEpisode={() => { const next = nextEpisode(videos, activeHeroVideo.id); if (next) { trackEvent('episode_next', { fromVideoId: activeHeroVideo.id, toVideoId: next.id, automatic: false }); openVideo(next); } }}
 
 
               />

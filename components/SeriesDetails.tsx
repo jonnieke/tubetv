@@ -17,8 +17,10 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
   const first = episodes[0];
   const portrait = isMicroDrama(first);
   const synopsis = episodes.find(episode => episode.seriesSynopsis)?.seriesSynopsis;
-  const seasons = [...new Set(episodes.map(episode => episode.season || 1))];
+  const seasons = [...new Set(episodes.map(episode => episode.season || 1))].sort((a, b) => a - b);
   const [season, setSeason] = useState(first.season || 1);
+  const seasonEpisodes = episodes.filter(episode => (episode.season || 1) === season);
+  const seasonSynopsis = seasonEpisodes.find(episode => episode.seasonSynopsis)?.seasonSynopsis;
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,15 +55,19 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
             <h2 id="series-details-title">{first.seriesTitle || first.title}</h2>
             <p className="series-details-meta">{first.author}{first.genre ? ` · ${first.genre}` : ''}{portrait ? ' · Vertical episodes' : ''}</p>
             {synopsis && <><p className="series-details-label">The story</p><p className="series-details-synopsis">{synopsis}</p></>}
-            <button type="button" className="cinema-primary" onClick={() => onPlay(first)}><Play size={15} fill="currentColor" /> Watch episode {first.episode || 1}</button>
+            <button type="button" className="cinema-primary" onClick={() => onPlay(seasonEpisodes[0])}><Play size={15} fill="currentColor" /> Start season {season}</button>
           </div>
         </div>
         <div className="series-details-episode-heading">
-          <div><p className="series-details-label">WATCH THE STORY</p><h3>Episodes</h3></div>
+          <div><p className="series-details-label">CHOOSE A SEASON</p><h3>Season {season}</h3></div>
           {seasons.length > 1 ? <label>Season <select value={season} onChange={event => setSeason(Number(event.target.value))}>{seasons.map(value => <option key={value} value={value}>{value}</option>)}</select></label> : <span>Season {season}</span>}
         </div>
-        <ol className="series-details-episodes">
-          {episodes.filter(episode => (episode.season || 1) === season).map(episode => <li key={episode.id}>
+        <div className="series-details-season-intro">
+          <p className="series-details-label">THIS SEASON · {seasonEpisodes.length} {seasonEpisodes.length === 1 ? 'EPISODE' : 'EPISODES'}</p>
+          <p>{seasonSynopsis || (portrait ? 'Choose an episode to start this micro drama.' : 'Choose an episode to start this season.')}</p>
+        </div>
+        <ol className={`series-details-episodes ${portrait ? '' : 'series-details-episodes-horizontal'}`}>
+          {seasonEpisodes.map(episode => <li key={episode.id}>
             <button type="button" onClick={() => onPlay(episode)} className="series-details-episode-play" aria-label={`Watch episode ${episode.episode || 1}: ${episode.title}`}>
               <CatalogueArtwork src={episode.thumbnail} className={`series-details-episode-art ${portrait ? 'series-details-episode-art-portrait' : ''}`} />
               <span className="series-details-episode-copy">

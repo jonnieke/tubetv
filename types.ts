@@ -56,10 +56,13 @@ export interface Video {
   seriesTitle?: string;   // Parent series name, e.g. "Nairobi Noir"
   seriesId?: string;
   seriesSynopsis?: string;
+  seasonSynopsis?: string;
   episodeSynopsis?: string;
   seriesFormat?: 'standard' | 'micro-drama';
   season?: number;        // Season number
   episode?: number;       // Episode number within season
+  introEndSeconds?: number;
+  outroStartSeconds?: number;
   genre?: string;         // e.g. "Drama"
   productionYear?: number;
   trailerUrl?: string;

@@ -13,6 +13,7 @@ describe('catalogue artwork presentation', () => {
   it('keeps standard series landscape and renders the title below the artwork once', () => {
     const html = renderSeries(episode('standard'));
     expect(html).toContain('aspect-video');
+    expect(html).toContain('Explore A real series seasons and episodes');
     expect(html).not.toContain('cinema-series-vertical');
     expect(html).toContain('<h3');
     expect(html).not.toContain('cinema-poster-title');
@@ -21,6 +22,7 @@ describe('catalogue artwork presentation', () => {
     const html = renderSeries(episode('micro-drama'));
     expect(html).toContain('cinema-series-vertical');
     expect(html).toContain('aspect-[9/16]');
+    expect(html).toContain('Watch A real series from episode 1');
   });
   it('uses a stable branded fallback when no thumbnail exists', () => {
     const html = renderToStaticMarkup(<CatalogueArtwork src="" className="h-full w-full" />);

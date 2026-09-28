@@ -19,7 +19,7 @@ const SeriesCard: React.FC<{ episodes: Video[]; onPlay: (video: Video) => void; 
   const synopsis = episodes.find(episode => episode.seriesSynopsis)?.seriesSynopsis;
   const portrait = isMicroDrama(first);
   return <article className={`cinema-series-card shrink-0 overflow-hidden ${portrait ? 'cinema-series-vertical w-[200px] md:w-[240px]' : 'w-[300px] md:w-[340px]'}`}>
-    <button type="button" onClick={() => onPlay(first)} aria-label={`Watch ${first.seriesTitle || first.title} from episode ${first.episode || 1}`} className={`cinema-series-art relative block w-full overflow-hidden text-left group ${portrait ? 'aspect-[9/16]' : 'aspect-video'}`}>
+    <button type="button" onClick={portrait ? () => onPlay(first) : onDetails} aria-label={portrait ? `Watch ${first.seriesTitle || first.title} from episode ${first.episode || 1}` : `Explore ${first.seriesTitle || first.title} seasons and episodes`} className={`cinema-series-art relative block w-full overflow-hidden text-left group ${portrait ? 'aspect-[9/16]' : 'aspect-video'}`}>
       <CatalogueArtwork src={first.thumbnail} className="h-full w-full object-cover" />
       <span className="cinema-series-play" aria-hidden="true"><Play size={16} fill="currentColor" /></span>
     </button>
@@ -28,7 +28,7 @@ const SeriesCard: React.FC<{ episodes: Video[]; onPlay: (video: Video) => void; 
       <h3 className="text-lg font-bold text-white">{first.seriesTitle || first.title}</h3>
       <p className="mt-1 text-xs text-zinc-400">{episodes.length} {episodes.length === 1 ? 'episode' : 'episodes'}{first.genre ? ` · ${first.genre}` : ''}{portrait ? ' · Vertical' : ''}</p>
       {synopsis && <p className="mt-3 line-clamp-3 text-sm leading-6 text-zinc-300">{synopsis}</p>}
-      <button type="button" onClick={onDetails} className="series-details-trigger mt-4 w-full rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold hover:bg-zinc-800" aria-label={`Synopsis and episodes for ${first.seriesTitle || first.title}`}>Synopsis & episodes</button>
+      <button type="button" onClick={onDetails} className="series-details-trigger mt-4 w-full rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold hover:bg-zinc-800" aria-label={`Synopsis and episodes for ${first.seriesTitle || first.title}`}>{portrait ? 'Synopsis & episodes' : 'Explore seasons & episodes'}</button>
     </div>
   </article>;
 };

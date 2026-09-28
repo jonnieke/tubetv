@@ -6,12 +6,27 @@ import { createVideoEntry, uploadVideoFile, getStreamUrl, getThumbnailUrl, updat
 import { Video } from '../types';
 import type { ContentRating } from '../lib/contentRating';
 
+interface UploadMetadata {
+  title: string;
+  description: string;
+  category: string;
+  contentRating: ContentRating;
+  seriesTitle: string;
+  seriesSynopsis: string;
+  seasonSynopsis: string;
+  episodeSynopsis: string;
+  season: string;
+  episode: string;
+  introEndSeconds: string;
+  outroStartSeconds: string;
+}
+
 interface UploadItem {
   id: string; // Internal queue ID
   videoId?: string; // Bunny.net Video ID
   file: File;
   previewUrl: string;
-  metadata: { title: string; description: string; category: string; contentRating: ContentRating };
+  metadata: UploadMetadata;
   thumbnail: string | null;
   thumbnailFile?: File;
   thumbnailPrompt: string;
@@ -29,7 +44,10 @@ interface UploadSectionProps {
 }
 
 const CATEGORIES = [
-    'Originals', 
+    'Originals',
+    'Movies',
+    'Series',
+    'Micro Dramas',
     'Shorts', 
     'Education', 
     'Farmers', 
@@ -47,6 +65,7 @@ const CATEGORIES = [
 ];
 
 const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creatorName = 'Creator' }) => {
+  const [uploadKind, setUploadKind] = useState('Originals');
   // Queue State
   const [queue, setQueue] = useState<UploadItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -142,7 +161,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
           id: Math.random().toString(36).substring(7),
           file,
           previewUrl: URL.createObjectURL(file),
-          metadata: { title: file.name.split('.')[0], description: '', category: 'Originals', contentRating: 'UNRATED' },
+          metadata: { title: file.name.split('.')[0], description: '', category: uploadKind, contentRating: 'UNRATED', seriesTitle: '', seriesSynopsis: '', seasonSynopsis: '', episodeSynopsis: '', season: '1', episode: '', introEndSeconds: '', outroStartSeconds: '' },
           thumbnail: null,
           thumbnailPrompt: file.name.split('.')[0],
           status: 'idle',
@@ -191,7 +210,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
           updateQueueItem(activeItem.id, { 
               duration: vidDuration,
               trim: { start: 0, end: vidDuration },
-              metadata: { ...activeItem.metadata, category: isShort ? 'Shorts' : activeItem.metadata.category }
+              metadata: { ...activeItem.metadata, category: isShort && activeItem.metadata.category === 'Originals' ? 'Shorts' : activeItem.metadata.category }
           });
       }
   };
@@ -307,6 +326,18 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
           updateQueueItem(item.id, { status: 'error', stageInfo: 'Choose a KFCB content rating before publishing.' });
           return;
       }
+      const metadata = item.metadata;
+      const episodic = metadata.category === 'Series' || metadata.category === 'Micro Dramas';
+      if (episodic && (!metadata.seriesTitle.trim() || !metadata.seriesSynopsis.trim() || !metadata.seasonSynopsis.trim() || !metadata.episodeSynopsis.trim() || !/^[1-9]\d*$/.test(metadata.season) || !/^[1-9]\d*$/.test(metadata.episode))) {
+          updateQueueItem(item.id, { status: 'error', stageInfo: 'Add series, season and episode synopses plus positive season/episode numbers.' });
+          return;
+      }
+      const intro = metadata.introEndSeconds.trim();
+      const outro = metadata.outroStartSeconds.trim();
+      if (episodic && ([intro, outro].some(value => value && !/^[1-9]\d*$/.test(value)) || (intro && outro && Number(intro) >= Number(outro)) || [intro, outro].some(value => value && item.duration > 0 && Number(value) >= item.duration))) {
+          updateQueueItem(item.id, { status: 'error', stageInfo: 'Intro/outro cue points must be positive seconds inside the episode.' });
+          return;
+      }
       updateQueueItem(item.id, { status: 'uploading', progress: 0, stageInfo: 'Initializing...' });
 
       try {
@@ -329,6 +360,17 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
           { property: 'contentRating', value: item.metadata.contentRating },
           { property: 'author', value: creatorName },
           { property: 'published', value: 'processing' },
+          ...(episodic ? [
+            { property: 'seriesTitle', value: metadata.seriesTitle.trim() },
+            { property: 'seriesSynopsis', value: metadata.seriesSynopsis.trim() },
+            { property: 'seasonSynopsis', value: metadata.seasonSynopsis.trim() },
+            { property: 'episodeSynopsis', value: metadata.episodeSynopsis.trim() },
+            { property: 'season', value: metadata.season },
+            { property: 'episode', value: metadata.episode },
+            { property: 'seriesFormat', value: metadata.category === 'Micro Dramas' ? 'micro-drama' : 'standard' },
+            ...(intro ? [{ property: 'introEndSeconds', value: intro }] : []),
+            ...(outro ? [{ property: 'outroStartSeconds', value: outro }] : []),
+          ] : []),
         ];
         const saved = await updateVideoMetadata(videoId, {
           title: item.metadata.title || item.file.name,
@@ -376,6 +418,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                 url: getStreamUrl(videoId), duration: formatTime(item.duration), views: 0,
                 isPremium: false, author: creatorName,
                 category: item.metadata.category || 'New Releases',
+                ...(episodic ? { seriesTitle: metadata.seriesTitle.trim(), seriesSynopsis: metadata.seriesSynopsis.trim(), seasonSynopsis: metadata.seasonSynopsis.trim(), episodeSynopsis: metadata.episodeSynopsis.trim(), season: Number(metadata.season), episode: Number(metadata.episode), seriesFormat: metadata.category === 'Micro Dramas' ? 'micro-drama' as const : 'standard' as const, introEndSeconds: intro ? Number(intro) : undefined, outroStartSeconds: outro ? Number(outro) : undefined } : {}),
                 tags: [item.metadata.category || 'New'],
                 contentRating: item.metadata.contentRating,
               });
@@ -413,6 +456,13 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
       {/* LEFT COLUMN: EDITOR / DROP ZONE */}
       <div className="flex-1 overflow-y-auto p-6 lg:p-12 relative">
         <h1 className="text-3xl font-bold text-white mb-8">Upload Content</h1>
+        <fieldset className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+          <legend className="px-2 text-sm font-semibold text-zinc-200">Choose an ingest path</legend>
+          <div className="flex flex-wrap gap-2">
+            {[['Originals', 'Film & other'], ['Series', 'Series · landscape'], ['Micro Dramas', 'Micro Dramas · portrait']].map(([value, label]) => <button key={value} type="button" aria-pressed={uploadKind === value} onClick={() => setUploadKind(value)} className={`rounded-full border px-4 py-2 text-sm ${uploadKind === value ? 'border-red-500 bg-red-950/40 text-white' : 'border-zinc-700 text-zinc-300 hover:border-zinc-500'}`}>{label}</button>)}
+          </div>
+          <p className="mt-3 text-xs text-zinc-400">New files use this path. Each queued episode keeps its own metadata so you can upload several at once.</p>
+        </fieldset>
 
         {queue.length === 0 ? (
              <div 
@@ -607,7 +657,8 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                             />
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {activeItem.metadata.category === 'Micro Dramas' && <aside className="md:col-span-2 rounded-lg border border-red-900/60 bg-red-950/20 p-4 text-sm text-zinc-300"><strong className="block text-white">Create a Micro Drama</strong><p className="mt-2">Use portrait (9:16) video and episode-specific artwork. After upload, open the title in Admin to set its series, main synopsis, episode synopsis, season and episode number. Check captions, rights and rating before publishing.</p></aside>}
+                                {activeItem.metadata.category === 'Micro Dramas' && <aside className="md:col-span-2 rounded-lg border border-red-900/60 bg-red-950/20 p-4 text-sm text-zinc-300"><strong className="block text-white">Micro Drama ingest</strong><p className="mt-2">Use portrait (9:16) video and episode-specific artwork. Complete the story and episode fields below before uploading.</p></aside>}
+                                {activeItem.metadata.category === 'Series' && <aside className="md:col-span-2 rounded-lg border border-zinc-700 bg-zinc-800/40 p-4 text-sm text-zinc-300"><strong className="block text-white">Series ingest</strong><p className="mt-2">Use landscape (16:9) video and artwork. Give every episode a unique number within its season and the same series title.</p></aside>}
                                 <div>
                                     <label className="block text-xs text-zinc-400 mb-1 ml-1">Category</label>
                                     <div className="relative">
@@ -643,6 +694,32 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                                     </select>
                                 </div>
                             </div>
+
+                            {(activeItem.metadata.category === 'Series' || activeItem.metadata.category === 'Micro Dramas') && (
+                              <fieldset className="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900/60 p-4">
+                                <legend className="px-2 text-sm font-semibold text-white">{activeItem.metadata.category === 'Series' ? 'Series episode details' : 'Micro Drama episode details'}</legend>
+                                <div className="grid gap-4 md:grid-cols-3">
+                                  <label className="md:col-span-3 text-xs text-zinc-300">Series title
+                                    <input required value={activeItem.metadata.seriesTitle} onChange={e => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, seriesTitle: e.target.value } })} disabled={activeItem.status === 'completed'} placeholder="The name shared by every episode" className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white" />
+                                  </label>
+                                  <label className="text-xs text-zinc-300">Season
+                                    <input required type="number" min="1" step="1" value={activeItem.metadata.season} onChange={e => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, season: e.target.value } })} disabled={activeItem.status === 'completed'} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white" />
+                                  </label>
+                                  <label className="text-xs text-zinc-300">Episode
+                                    <input required type="number" min="1" step="1" value={activeItem.metadata.episode} onChange={e => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, episode: e.target.value } })} disabled={activeItem.status === 'completed'} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white" />
+                                  </label>
+                                </div>
+                                {([['seriesSynopsis', 'Series synopsis', 'The overall premise, without later-season spoilers'], ['seasonSynopsis', 'Season summary', 'What this season is about'], ['episodeSynopsis', 'Episode synopsis', 'A brief, spoiler-conscious episode description']] as const).map(([key, label, placeholder]) => <label key={key} className="block text-xs text-zinc-300">{label}
+                                  <textarea required rows={2} value={activeItem.metadata[key]} onChange={e => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, [key]: e.target.value } })} disabled={activeItem.status === 'completed'} placeholder={placeholder} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white" />
+                                </label>)}
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  {([['introEndSeconds', 'Intro ends at · seconds'], ['outroStartSeconds', 'Outro starts at · seconds']] as const).map(([key, label]) => <label key={key} className="text-xs text-zinc-300">{label}
+                                    <input type="number" min="1" step="1" value={activeItem.metadata[key]} onChange={e => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, [key]: e.target.value } })} disabled={activeItem.status === 'completed'} placeholder="Optional" className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white" />
+                                  </label>)}
+                                </div>
+                                <p className="text-xs text-zinc-400">Cue points are optional. Verify them against the final encoded episode before publishing.</p>
+                              </fieldset>
+                            )}
 
                             <textarea 
                                 rows={3}
@@ -810,6 +887,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                                               <span>{item.timeRemaining}s remaining</span>
                                           </div>
                                       )}
+                                      {isError && <button type="button" onClick={event => { event.stopPropagation(); updateQueueItem(item.id, { status: 'idle', stageInfo: undefined }); }} className="mt-2 rounded border border-red-700 px-2 py-1 text-red-300 hover:bg-red-950">Retry after editing details</button>}
                                   </div>
                               </div>
 
