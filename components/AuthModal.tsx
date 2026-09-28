@@ -13,6 +13,8 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
   const [loading, setLoading] = useState(false);
   const [factorId, setFactorId] = useState('');
   const [qr, setQr] = useState('');
+  const [setupKey, setSetupKey] = useState('');
+  const [showSetupKey, setShowSetupKey] = useState(false);
   const [code, setCode] = useState('');
   const [pendingUser, setPendingUser] = useState<User | null>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -43,6 +45,7 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
         if (enrollError || !factor?.totp) { setError(enrollError?.message || 'Unable to set up an authenticator.'); return; }
         setFactorId(factor.id);
         setQr(factor.totp.qr_code);
+        setSetupKey(factor.totp.secret);
       }
     } catch { setError('Unable to connect to the sign-in service.'); }
     finally { setLoading(false); }
@@ -65,9 +68,18 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
       <form onSubmit={event => { event.preventDefault(); void (pendingUser ? verifyFactor() : signIn()); }}>
         <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-red-600/15 text-red-500"><ShieldCheck size={24} /></div>
         <h2 id="auth-title" className="text-2xl font-bold">Admin access</h2>
-        <p className="mt-2 text-sm text-zinc-400">{pendingUser ? (qr ? 'Scan this QR code with an authenticator app, then enter its code.' : 'Enter the code from your authenticator app.') : 'Sign in with your TubeTV administrator account.'}</p>
+        <p className="mt-2 text-sm text-zinc-400">{pendingUser ? (qr ? 'Add TubeTV to your authenticator app by scanning the QR code or entering the setup key manually, then enter its code.' : 'Enter the code from your authenticator app.') : 'Sign in with your TubeTV administrator account.'}</p>
         {pendingUser ? <>
           {qr && <img alt="Authenticator setup QR code" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr)}`} className="mx-auto mt-5 h-40 w-40 bg-white p-2" />}
+          {setupKey && <div className="mt-5 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+            <p className="text-sm font-medium">Can’t scan the QR code?</p>
+            <p className="mt-1 text-xs text-zinc-400">Choose “Enter a setup key” in your authenticator app. Use TubeTV as the account name and a time-based code.</p>
+            <div className="mt-3 flex items-center gap-2">
+              <input aria-label="Authenticator setup key" readOnly type={showSetupKey ? 'text' : 'password'} value={setupKey} autoComplete="off" className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs tracking-wider" />
+              <button type="button" onClick={() => setShowSetupKey(value => !value)} className="rounded border border-zinc-700 px-3 py-2 text-xs hover:border-zinc-500">{showSetupKey ? 'Hide key' : 'Show key'}</button>
+            </div>
+            <p className="mt-2 text-xs text-amber-300">Keep this key private. It is shown only during setup.</p>
+          </div>}
           <label className="mt-5 block text-sm">Authenticator code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={event => setCode(event.target.value.replace(/\D/g,'').slice(0,6))} className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 tracking-[.3em] focus:border-red-500 focus:outline-none" /></label>
         </> : <>
           <label className="mt-6 block text-sm">Email<input ref={emailRef} type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 focus:border-red-500 focus:outline-none" /></label>

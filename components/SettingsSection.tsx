@@ -83,12 +83,12 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
       <div className="mx-auto max-w-5xl">
         <header className="mb-8">
           <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="mt-2 text-sm text-zinc-400">Manage playback, your local admin access and TubeTV preferences.</p>
+          <p className="mt-2 text-sm text-zinc-400">Choose how TubeTV looks and plays on this device.</p>
         </header>
 
         <div className="flex flex-col gap-8 lg:flex-row">
           <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto lg:w-52 lg:flex-col">
-            {tabs.map((tab) => (
+            {tabs.filter(tab => currentUser || tab.id === 'general').map((tab) => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex shrink-0 items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? 'bg-white text-black' : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'}`}>
                 <tab.icon size={18} /> {tab.label}
               </button>
@@ -100,7 +100,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
               <section aria-labelledby="playback-heading" className="space-y-6">
                 <div>
                   <h2 id="playback-heading" className="text-xl font-bold">Playback and data</h2>
-                  <p className="mt-1 text-sm text-zinc-400">Changes are saved to this account and applied to the player.</p>
+                  <p className="mt-1 text-sm text-zinc-400">Changes are saved for this device and applied to the player.</p>
                 </div>
                 <div className="divide-y divide-zinc-800 border-y border-zinc-800">
                   <SettingToggle label="Autoplay next video" description="Continue with the next programme when one finishes." checked={preferences.autoplay} onChange={(value) => updatePreference('autoplay', value)} />

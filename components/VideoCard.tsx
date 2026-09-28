@@ -9,6 +9,7 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { canWatchContent, normalizeContentRating, ratingDescription } from '../lib/contentRating';
 import { trackEvent } from '../lib/analytics';
 import { shouldSaveData } from '../lib/network';
+import CatalogueArtwork from './CatalogueArtwork';
 
 interface VideoCardProps {
   video: Video;
@@ -399,7 +400,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   return (
     <div 
       ref={containerRef}
-      className={`group relative bg-zinc-900 overflow-hidden ${playerOnly ? '' : 'rounded-lg transition-all duration-300 md:hover:scale-105 hover:z-50 shadow-lg hover:shadow-2xl ring-1 ring-white/5'}`}
+      className={`group relative overflow-hidden ${playerOnly ? '' : 'catalogue-video-card'}`}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => {
         setIsHovering(false);
@@ -409,13 +410,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       <div className={`relative ${video.seriesFormat === "micro-drama" || video.category === "Micro Dramas" ? "aspect-[9/16]" : "aspect-video"} bg-black overflow-hidden`}>
         {!isPlaying && !isHoverPlay && !isBuffering ? (
           <>
-            <img 
-              src={video.thumbnail} 
-              alt={video.title} 
-              loading="lazy"
-              decoding="async"
-              className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-700 group-hover:scale-110" 
-            />
+            <CatalogueArtwork src={video.thumbnail} className="catalogue-video-art w-full h-full object-cover" />
             
             {/* Duration Badge */}
             <div className="absolute bottom-2 right-2 bg-black/80 text-xs px-1.5 py-0.5 rounded text-white font-medium flex items-center gap-1 pointer-events-none">
@@ -436,16 +431,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
             )}
 
             {/* Hover Actions (Initial Play) */}
-            <div className={`absolute inset-0 flex items-center justify-center gap-4 transition-all duration-300 bg-black/40 backdrop-blur-[2px] ${
-              !isRatingLocked ? `opacity-100 ${isHovering ? 'md:opacity-100' : 'md:opacity-0'}` : 'opacity-0'
-            }`}>
+            <div className={`catalogue-video-actions ${isRatingLocked ? 'catalogue-video-actions-locked' : ''}`}>
                <button 
                  onClick={togglePlay}
                  disabled={!videoSrc}
                  aria-label={videoSrc ? `Play ${video.title}` : `${video.title} is unavailable`}
-                 className="bg-white text-black rounded-full p-3 hover:scale-110 transition-transform shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+                 className="catalogue-action-play disabled:cursor-not-allowed disabled:opacity-50"
                >
-                   <Play fill="black" className="w-6 h-6 ml-1" />
+                   <Play fill="currentColor" className="w-5 h-5 ml-0.5" />
                </button>
                
                {onToggleWatchLater && (
@@ -455,13 +448,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
                       onToggleWatchLater(video.id);
                     }}
                     title={isWatchLater ? "Remove from Watch Later" : "Add to Watch Later"}
-                    className={`rounded-full p-3 border-2 transition-all hover:scale-110 shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}
-                      ${isWatchLater 
-                        ? 'bg-black/50 border-green-500 text-green-500 hover:bg-green-500 hover:text-white' 
-                        : 'bg-black/50 border-white text-white hover:bg-white hover:text-black'
-                      }`}
+                    aria-label={isWatchLater ? `Remove ${video.title} from Watch Later` : `Add ${video.title} to Watch Later`}
+                    className={`catalogue-action-secondary ${isWatchLater ? 'catalogue-action-saved' : ''}`}
                  >
-                    {isWatchLater ? <Check className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+                    {isWatchLater ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                  </button>
                )}
 
@@ -469,9 +459,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
                <button
                  onClick={handleWhatsAppShare}
                  title="Share on WhatsApp"
-                 className={`rounded-full p-3 border-2 border-green-500 bg-black/50 text-green-500 hover:bg-green-500 hover:text-white transition-all hover:scale-110 shadow-xl ${isHovering ? 'scale-100' : 'scale-50'}`}
+                 aria-label={`Share ${video.title} on WhatsApp`}
+                 className="catalogue-action-secondary"
                >
-                 <Share2 className="w-5 h-5" />
+                 <Share2 className="w-4 h-4" />
                </button>
             </div>
           </>
@@ -681,24 +672,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
         )}
       </div>
 
-      {!playerOnly && <div className="p-4">
-        <div className="flex justify-between items-start">
-            <div>
-                <h3 className="text-white font-semibold truncate pr-2 group-hover:text-red-500 transition-colors">{video.title}</h3>
-                <p className="text-zinc-400 text-sm mt-1">{video.author}</p>
-            </div>
-            <button className="text-zinc-500 hover:text-white flex-shrink-0" title="More options">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-                </svg>
-            </button>
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500">
-             <span className="bg-zinc-800 px-2 py-1 rounded text-zinc-300 border border-zinc-700">{video.category}</span>
-             <span>•</span>
-             <span>{(video.views / 1000).toFixed(1)}K views</span>
-             {quality !== 'Auto' && <span className="bg-red-900/30 text-red-400 px-1 rounded">{quality}</span>}
-        </div>
+      {!playerOnly && <div className="catalogue-video-info">
+        <p className="cinema-card-kicker">{video.category}{video.episode ? ` · Episode ${video.episode}` : ''}</p>
+        <h3>{video.title}</h3>
+        <p className="catalogue-video-creator">{video.author}</p>
       </div>}
     </div>
   );

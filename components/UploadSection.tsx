@@ -607,6 +607,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                             />
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {activeItem.metadata.category === 'Micro Dramas' && <aside className="md:col-span-2 rounded-lg border border-red-900/60 bg-red-950/20 p-4 text-sm text-zinc-300"><strong className="block text-white">Create a Micro Drama</strong><p className="mt-2">Use portrait (9:16) video and episode-specific artwork. After upload, open the title in Admin to set its series, main synopsis, episode synopsis, season and episode number. Check captions, rights and rating before publishing.</p></aside>}
                                 <div>
                                     <label className="block text-xs text-zinc-400 mb-1 ml-1">Category</label>
                                     <div className="relative">

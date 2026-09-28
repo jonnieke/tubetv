@@ -1,19 +1,18 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Music2, ExternalLink, Volume2, VolumeX, Play } from 'lucide-react';
+import { ArrowLeft, Share2, Music2, Volume2, VolumeX, Play } from 'lucide-react';
 import { ShortVideo } from '../types';
 import { MOCK_SHORTS } from '../constants';
 import type Hls from 'hls.js';
 import { loadHls } from '../lib/hlsLoader';
-import ShortsComments from './ShortsComments';
 
 interface ShortsPlayerProps {
   shorts?: ShortVideo[];
-  onLoginRequest?: () => void;
+  onExit: () => void;
 }
 
 const ShortsPlayer: React.FC<ShortsPlayerProps> = ({ 
   shorts = MOCK_SHORTS,
-  onLoginRequest 
+  onExit
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,18 +47,22 @@ const ShortsPlayer: React.FC<ShortsPlayerProps> = ({
   }, [activeId, shorts]);
 
   return (
-    <div className="h-[calc(100vh-64px)] md:h-screen w-full flex justify-center bg-black overflow-hidden relative">
+    <div className="shorts-stage w-full flex justify-center bg-black overflow-hidden relative">
+      <div className="shorts-stage-heading">
+        <button type="button" onClick={onExit} aria-label="Back to Discover"><ArrowLeft size={21} /></button>
+        <span>Shorts <i>by TubeTV</i></span>
+      </div>
       <div 
         ref={containerRef}
-        className="h-full w-full md:w-[450px] overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
+        className="shorts-feed h-full w-full md:w-[450px] overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
       >
+        {shorts.length === 0 && <div className="shorts-empty"><p className="cinema-card-kicker">SHORTS</p><h1>More moments are on the way.</h1><p>Explore the rest of TubeTV while this collection grows.</p><button className="cinema-secondary" onClick={onExit}>Back to Discover</button></div>}
         {shorts.map((short) => (
             <ShortItem 
               key={short.id} 
               short={short} 
               isActive={activeId === short.id}
               videoSrc={short.videoUrl}
-              onLoginRequest={onLoginRequest}
             />
         ))}
       </div>
@@ -71,14 +74,11 @@ interface ShortItemProps {
     short: ShortVideo;
     isActive: boolean;
     videoSrc: string;
-    onLoginRequest?: () => void;
 }
 
-const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLoginRequest }) => {
-    const [liked, setLiked] = useState(false);
+const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc }) => {
     const [isMuted, setIsMuted] = useState(true); // Default to muted for better autoplay support
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isCommentsOpen, setIsCommentsOpen] = useState(false);
     const [hasPlaybackError, setHasPlaybackError] = useState(false);
     const videoRef = useRef<HTMLVideoElement>(null);
     const hlsRef = useRef<Hls | null>(null);
@@ -171,11 +171,6 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
         }
     };
 
-    const handleComment = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setIsCommentsOpen(true);
-    };
-
     return (
         <div 
             className="short-item-wrapper snap-start h-full w-full relative bg-zinc-900 border-b border-zinc-800 flex items-center justify-center overflow-hidden"
@@ -183,6 +178,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
             onClick={togglePlay}
         >
             {/* Video Player */}
+            {short.thumbnail && <img src={short.thumbnail} alt="" aria-hidden="true" className="shorts-art-backdrop" />}
             <video
                 ref={videoRef}
                 className="absolute inset-0 w-full h-full object-contain"
@@ -211,15 +207,16 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
             
             {/* Ad Overlay */}
             {short.isAd && (
-                <div className="absolute top-4 right-4 bg-yellow-500/90 text-black font-bold px-2 py-1 text-xs rounded uppercase tracking-wider z-20">
+                <div className="shorts-sponsored absolute bg-yellow-500/90 text-black font-bold px-2 py-1 text-xs rounded uppercase tracking-wider z-20">
                     Sponsored
                 </div>
             )}
 
             {/* Mute Button */}
-            <div className="absolute top-4 left-4 z-20">
+            <div className="shorts-mute absolute z-20">
                  <button 
                     onClick={toggleMute}
+                    aria-label={isMuted ? 'Unmute short' : 'Mute short'}
                     className="p-2 bg-black/40 rounded-full text-white hover:bg-black/60 transition-colors backdrop-blur-sm"
                  >
                      {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
@@ -227,62 +224,27 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
             </div>
 
             {/* Content Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/90 flex flex-col justify-end p-6 z-10 pointer-events-none">
+            <div className="shorts-content absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/90 flex flex-col justify-end z-10 pointer-events-none">
                 
                 {/* Right Side Actions (Pointer events enabled for buttons) */}
-                <div className="absolute right-4 bottom-24 flex flex-col items-center gap-6 pointer-events-auto">
-                    <div className="flex flex-col items-center gap-1">
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); setLiked(!liked); }}
-                            className={`p-3 rounded-full bg-zinc-800/50 backdrop-blur-md transition-all active:scale-90 ${liked ? 'text-red-500' : 'text-white'}`}
-                        >
-                            <Heart className={`w-8 h-8 ${liked ? 'fill-current' : ''}`} />
-                        </button>
-                        <span className="text-xs font-medium">{liked ? short.likes + 1 : short.likes}</span>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-1">
-                        <button onClick={handleComment} className="p-3 rounded-full bg-zinc-800/50 backdrop-blur-md text-white hover:bg-zinc-700/50 transition-colors pointer-events-auto">
-                            <MessageCircle className="w-8 h-8" />
-                        </button>
-                        <span className="text-xs font-medium">{short.comments}</span>
-                    </div>
-
-                    <button onClick={handleShare} className="p-3 rounded-full bg-zinc-800/50 backdrop-blur-md text-white hover:bg-zinc-700/50 transition-colors pointer-events-auto">
+                <div className="shorts-actions absolute flex flex-col items-center pointer-events-auto">
+                    <button onClick={handleShare} aria-label="Share short" className="p-3 rounded-full bg-zinc-800/50 backdrop-blur-md text-white hover:bg-zinc-700/50 transition-colors pointer-events-auto">
                         <Share2 className="w-8 h-8" />
-                    </button>
-
-                     <button onClick={(e) => e.stopPropagation()} className="p-3 rounded-full bg-zinc-800/50 backdrop-blur-md text-white hover:bg-zinc-700/50 transition-colors">
-                        <MoreHorizontal className="w-8 h-8" />
                     </button>
                 </div>
 
                 {/* Bottom Info */}
-                <div className="max-w-[80%] space-y-3 pb-4 pointer-events-auto">
+                <div className="shorts-caption space-y-3 pointer-events-auto">
                     <div className="flex items-center gap-2">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center font-bold text-sm">
-                            {short.author[1].toUpperCase()}
+                            {short.author.replace(/^@/, '').charAt(0).toUpperCase() || 'T'}
                         </div>
-                        <h3 className="font-bold text-lg hover:underline cursor-pointer">{short.author}</h3>
-                        {!short.isAd && (
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); onLoginRequest?.(); }}
-                                className="text-xs bg-white text-black px-3 py-1 rounded-full font-bold ml-2 pointer-events-auto"
-                            >
-                                Subscribe
-                            </button>
-                        )}
+                        <h3 className="font-bold text-lg">{short.author}</h3>
                     </div>
                     
                     <p className="text-sm md:text-base text-zinc-100 line-clamp-2">
                         {short.description}
                     </p>
-
-                    {short.isAd && (
-                         <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
-                            Shop Now <ExternalLink size={16} />
-                         </button>
-                    )}
 
                     {!short.isAd && (
                         <div className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-800/40 w-fit px-3 py-1 rounded-full backdrop-blur-sm">
@@ -293,13 +255,6 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, videoSrc, onLogi
                 </div>
             </div>
 
-            {/* Comments Overlay */}
-            <ShortsComments 
-                isOpen={isCommentsOpen} 
-                onClose={() => setIsCommentsOpen(false)} 
-                shortId={short.id}
-                commentCount={short.comments}
-            />
         </div>
     );
 };

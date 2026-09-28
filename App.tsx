@@ -1,8 +1,13 @@
 ﻿
 import React, { Suspense, lazy, useState, useEffect, useMemo, useRef } from 'react';
 import CinemaNavigation from './components/CinemaNavigation';
-import CinematicHome from './components/CinematicHome';
+import LandingHero from './components/LandingHero';
+import LandingFooter from './components/LandingFooter';
+import MicroDramaComingSoon from './components/MicroDramaComingSoon';
+import ViewerWelcome from './components/ViewerWelcome';
 import CatalogueArtwork from './components/CatalogueArtwork';
+import BrowseIntro from './components/BrowseIntro';
+import CatalogueEmptyState from './components/CatalogueEmptyState';
 import ShortsShelf from './components/ShortsShelf';
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS } from './constants';
@@ -20,6 +25,7 @@ import { setVideoMetadata, videoPath } from './lib/seo';
 import LegalPage from './components/LegalPage';
 import { trackEvent } from './lib/analytics';
 import { compareEpisodes, isMicroDrama, nextEpisode, seriesKey } from './lib/series';
+import { filterDiscoveryVideos } from './lib/discovery';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
 
 import { TranslationKey } from './translations';
@@ -94,6 +100,7 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const playerDialogRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   // Restore a server-verifiable user and refresh it on auth changes.
   useEffect(() => {
@@ -234,8 +241,8 @@ const App: React.FC = () => {
         thumbnail: v.thumbnail,
         author: v.author,
         description: v.description || v.title,
-        likes: Math.floor(v.views / 10) + 12,
-        comments: Math.floor(v.views / 100) + 2,
+        likes: 0,
+        comments: 0,
         videoUrl: v.url || ''
       }));
     
@@ -287,10 +294,10 @@ const App: React.FC = () => {
     } catch { }
   }, [navItems]);
 
-  // Hero spotlight: cycles through top 5 videos
+  // Hero spotlight: viewers select featured titles explicitly.
   const [heroIndex, setHeroIndex] = useState(0);
   const [activeHeroVideo, setActiveHeroVideo] = useState<Video | null>(null);
-+  useEffect(() => {
+  useEffect(() => {
     if (!activeHeroVideo) return;
     const previous = document.activeElement as HTMLElement | null;
     const close = playerDialogRef.current?.querySelector<HTMLButtonElement>('[aria-label="Close player"]');
@@ -337,13 +344,6 @@ const App: React.FC = () => {
     setVideoMetadata(activeHeroVideo || undefined);
   }, [activeHeroVideo]);
   useEffect(() => {
-    if (videos.length === 0) return;
-    const timer = setInterval(() => {
-      setHeroIndex(prev => (prev + 1) % Math.min(5, videos.length));
-    }, 8000);
-    return () => clearInterval(timer);
-  }, [videos]);
-  useEffect(() => {
     if (!activeHeroVideo) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeVideo();
@@ -363,23 +363,23 @@ const App: React.FC = () => {
   }));
 
   // Dynamic Sub-Categories based on view
-  const [activeSubCategory, setActiveSubCategory] = useState('');
+  const [activeSubCategory, setActiveSubCategory] = useState('Trending');
 
   const getSubCategories = (view: ViewStateOrString) => {
     // System Views
     switch (view) {
       case ViewState.EDUCATION:
-        return ['CBC', 'High School', 'Revision', 'AI Learning', 'Teachers'];
+        return ['All', 'CBC', 'High School', 'Revision', 'AI Learning', 'Teachers'];
       case ViewState.FARMERS:
-        return ['Crops', 'Livestock', 'Climate', 'Agribusiness', 'Dairy'];
+        return ['All', 'Crops', 'Livestock', 'Climate', 'Agribusiness', 'Dairy'];
       case ViewState.FAITH:
-        return ['Sermons', 'Kids Bible', 'Worship', 'Devotion'];
+        return ['All', 'Sermons', 'Kids Bible', 'Worship', 'Devotion'];
       case ViewState.DIASPORA:
-        return ['Investments', 'Events', 'News', 'Culture'];
+        return ['All', 'Investments', 'Events', 'News', 'Culture'];
       case ViewState.KIDS:
-        return ['Cartoons', 'Learning', 'Songs', 'Stories'];
+        return ['All', 'Cartoons', 'Learning', 'Songs', 'Stories'];
       case ViewState.ORIGINALS:
-        return ['Micro Dramas', 'Series', 'Movies'];
+        return ['All', 'Micro Dramas', 'Series', 'Movies'];
       case ViewState.LIVE:
         return ['Sports', 'News', 'Events'];
       case ViewState.HOME:
@@ -387,8 +387,7 @@ const App: React.FC = () => {
       case ViewState.MICRO_DRAMAS:
         return ['All'];
       default:
-        // For custom categories, we can return generic filters
-        return ['Trending', 'New', 'Top Rated'];
+        return ['All'];
     }
   };
 
@@ -434,70 +433,10 @@ const App: React.FC = () => {
     }
   };
 
-  const getFilteredVideos = () => {
-    let filtered = videos;
+  const customCategory = navItems.find(item => item.id === currentView && item.isCustom)?.label;
+  const filteredVideos = filterDiscoveryVideos(videos, currentView, activeSubCategory, searchQuery, customCategory);
 
-    // Filter by Main View Category
-    if (currentView !== ViewState.HOME) {
-      const viewCategoryMap: Record<string, string> = {
-        [ViewState.MICRO_DRAMAS]: 'Micro Dramas',
-        [ViewState.EDUCATION]: 'Education',
-        [ViewState.FARMERS]: 'Farmers',
-        [ViewState.FAITH]: 'Faith',
-        [ViewState.DIASPORA]: 'Diaspora',
-        [ViewState.KIDS]: 'Kids',
-        [ViewState.LIVE]: 'Live',
-      };
-
-      const targetCategory = viewCategoryMap[currentView as string];
-
-      if (currentView === ViewState.ORIGINALS) {
-        filtered = filtered.filter(v => v.category === 'Movies' || v.category === 'Series' || v.category === 'Originals' || isMicroDrama(v));
-      } else if (targetCategory) {
-        filtered = filtered.filter(v => v.category === targetCategory);
-      } else {
-        // Custom Category Handling
-        // For demo purposes, check if the video has tags matching the custom category name
-        const customItem = navItems.find(i => i.id === currentView);
-        if (customItem && customItem.isCustom) {
-          // Loosely match tags or category strings
-          filtered = filtered.filter(v =>
-            v.tags?.some(tag => tag.toLowerCase().includes(customItem.label.toLowerCase())) ||
-            v.category.toLowerCase().includes(customItem.label.toLowerCase())
-          );
-        }
-      }
-    }
-
-    // Filter by Sub-Category Pills
-    if (activeSubCategory && activeSubCategory !== 'All') {
-      if (currentView === ViewState.ORIGINALS) {
-        filtered = filtered.filter(v => v.category === activeSubCategory || (activeSubCategory === 'Movies' && v.category === 'Originals'));
-      } else {
-        filtered = filtered.filter(v =>
-          v.genre?.includes(activeSubCategory) ||
-          v.tags?.includes(activeSubCategory) ||
-          v.title.includes(activeSubCategory) ||
-          (activeSubCategory === 'Trending' && v.category === 'Trending') ||
-          (activeSubCategory === 'Most Watched' && v.views > 1000)
-        );
-      }
-    }
-
-    // Filter by Search Query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(video =>
-        video.title.toLowerCase().includes(query) ||
-        video.category.toLowerCase().includes(query) ||
-        video.author.toLowerCase().includes(query)
-      );
-    }
-
-    return filtered;
-  };
-
-  const filteredVideos = getFilteredVideos();
+  useEffect(() => { if (mainRef.current) mainRef.current.scrollTop = 0; }, [currentView, activeSubCategory]);
 
   const toggleWatchLater = (id: string) => {
     const shouldSave = !watchLater.includes(id);
@@ -534,6 +473,7 @@ const App: React.FC = () => {
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
+    if (e.target.value && mainRef.current) mainRef.current.scrollTop = 0;
     if (e.target.value && currentView !== ViewState.HOME) {
       setCurrentView(ViewState.HOME);
     }
@@ -545,12 +485,7 @@ const App: React.FC = () => {
 
 
   const handleNavigate = (view: ViewStateOrString, category?: string) => {
-    // Guard: Settings and Admin require authentication
-    if (view === ViewState.SETTINGS && !isAuthenticated) {
-      setShowLogin(true);
-      return;
-    }
-    // Guard: Admin requires admin role
+    // Local playback settings are available to viewers; admin screens keep their own guards.
     if (view === ViewState.SETTINGS) setSettingsInitialTab('general');
     if (view === ViewState.ADMIN && !isAdmin) {
       return;
@@ -587,21 +522,8 @@ const App: React.FC = () => {
     );
   }
 
-  // Header Helper
-  const getViewTitle = () => {
-    const currentItem = navItems.find(i => i.id === currentView);
-    if (currentItem && currentView !== ViewState.HOME) {
-      return { title: currentItem.label, icon: currentItem.icon || Star };
-    }
-    return null;
-  };
-
   const renderContent = () => {
     if (catalogueError) return <div role="alert" className="mx-auto max-w-lg p-12 text-center"><h1 className="font-serif text-3xl">Catalogue unavailable</h1><p className="mt-4 text-zinc-400">{catalogueError}</p><button className="cinema-primary mt-6" onClick={() => window.dispatchEvent(new Event('tube-catalogue-change'))}>Try again</button></div>;
-    if (currentView === ViewState.HOME && !searchQuery) {
-      if (isLoadingVideos) return <LoadingPanel label="Finding your next story..." />;
-      return <CinematicHome videos={videos} demo={!isRealContent} onPlay={openVideo} onBrowse={() => handleNavigate(ViewState.MICRO_DRAMAS)} />;
-    }
     switch (currentView) {
       case ViewState.SHORTS:
         if (isLoadingVideos) {
@@ -612,7 +534,7 @@ const App: React.FC = () => {
             </div>
           );
         }
-        return <ShortsPlayer shorts={realShorts} onLoginRequest={() => setShowLogin(true)} />;
+        return <ShortsPlayer shorts={realShorts} onExit={() => handleNavigate(ViewState.HOME)} />;
       case ViewState.LIVE:
         return <LiveSection videos={isRealContent ? videos : []} />;
       case ViewState.SETTINGS:
@@ -710,10 +632,8 @@ const App: React.FC = () => {
 
       // Default / Generic Grid View for Home and all Categories (System + Custom)
       default:
-        const viewHeader = getViewTitle();
-
         return (
-          <div className="p-4 md:p-8 pb-24">
+          <div className={currentView === ViewState.HOME && !searchQuery ? 'catalogue-page landing-page p-4 md:p-8 pb-24' : 'catalogue-page p-4 md:p-8 pb-24'}>
             {/* Hero Section - Only on HOME and not searching */}
             {currentView === ViewState.HOME && !searchQuery && (() => {
               const dramaOpeners = videos.filter(video => isMicroDrama(video) && (video.episode || 1) === 1);
@@ -721,86 +641,18 @@ const App: React.FC = () => {
               const hero = featuredVideos[heroIndex % featuredVideos.length];
               if (!hero) return null;
               return (
-                <div className="w-full h-[45vh] md:h-[58vh] rounded-2xl overflow-hidden relative mb-10 group animate-in fade-in duration-700 shadow-2xl">
-                  {/* Thumbnail */}
-                  <img
-                    key={hero.id}
-                    src={hero.thumbnail}
-                    alt={hero.title}
-                    fetchPriority="high"
-                    decoding="async"
-                    className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-105 bg-zinc-800"
-                    onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }}
-                  />
-
-                  {/* Dark overlay — stronger at bottom so text is always readable */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent" />
-
-                  {/* Content — pinned to bottom-left, max 55% width to avoid right-side overflow */}
-                  <div className="absolute bottom-0 left-0 p-5 md:p-10 w-full md:max-w-[60%]">
-                    {/* Badges row */}
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">{isRealContent ? 'Featured' : 'Demo content'}</span>
-
-                      <span className="text-zinc-400 text-[10px] uppercase tracking-wide">{hero.category}</span>
-                    </div>
-
-                    {/* Title */}
-                    <h1 className="text-xl md:text-4xl font-black text-white leading-tight drop-shadow-lg line-clamp-2 mb-2">
-                      {hero.title}
-                    </h1>
-
-                    {/* Meta — single line, hidden on very small screens */}
-                    <p className="hidden sm:block text-zinc-300 text-xs md:text-sm line-clamp-1 mb-4">
-                      {hero.author} · {(hero.views / 1000).toFixed(0)}K views · {hero.duration}
-                    </p>
-
-                    {/* CTA Buttons */}
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => openVideo(hero)}
-                        className="bg-white text-black font-bold px-5 md:px-7 py-2.5 rounded-lg flex items-center gap-2 hover:bg-zinc-200 transition-colors shadow-lg text-sm"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                        Play Now
-                      </button>
-                      <button
-                        onClick={() => toggleWatchLater(hero.id)}
-                        className="bg-white/10 backdrop-blur text-white font-bold px-5 md:px-7 py-2.5 rounded-lg hover:bg-white/20 transition-colors flex items-center gap-2 border border-white/20 text-sm"
-                      >
-                        {watchLater.includes(hero.id) ? '✓ Saved' : '+ Watch Later'}
-                      </button>
-                    </div>
-
-                    {/* Dot indicators */}
-                    <div className="flex gap-1.5 mt-4">
-                      {featuredVideos.map((_, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setHeroIndex(i)}
-                          className={`h-1 rounded-full transition-all duration-500 ${i === heroIndex % featuredVideos.length ? 'w-6 bg-red-500' : 'w-1.5 bg-white/30 hover:bg-white/60'
-                            }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <LandingHero video={hero} real={isRealContent} saved={watchLater.includes(hero.id)} onPlay={() => openVideo(hero)} onSave={() => toggleWatchLater(hero.id)} count={featuredVideos.length} index={heroIndex % featuredVideos.length} onSelect={setHeroIndex} />
               );
             })()}
 
-            {/* View Specific Header (if not Home) */}
-            {viewHeader && (
-              <div className="mb-6 flex items-center gap-3">
-                <div className="p-3 bg-zinc-800 rounded-full">
-                  <viewHeader.icon className="w-6 h-6 text-white" />
-                </div>
-                <h1 className="text-3xl font-bold text-white">{viewHeader.title}</h1>
-              </div>
-            )}
+            {(currentView !== ViewState.HOME || searchQuery) && <BrowseIntro
+              view={currentView} subcategory={activeSubCategory} customLabel={customCategory}
+              search={searchQuery} resultCount={filteredVideos.length} loading={isLoadingVideos}
+              onClearSearch={clearSearch}
+            />}
 
             {/* Sub-Category Pills */}
-            <div className="flex gap-3 overflow-x-auto pb-4 mb-6 no-scrollbar sticky top-0 z-10 bg-zinc-950/90 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
+            {!searchQuery && <div className="flex gap-3 overflow-x-auto pb-4 mb-6 no-scrollbar sticky top-0 z-10 bg-zinc-950/90 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
               {currentSubCategories.map(cat => (
                 <button
                   key={cat}
@@ -813,10 +665,16 @@ const App: React.FC = () => {
                   {cat}
                 </button>
               ))}
-            </div>
+            </div>}
+
+            {/* Micro dramas lead discovery only when published titles exist. */}
+            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && !videos.some(isMicroDrama) && <MicroDramaComingSoon compact onExplore={() => handleNavigate(ViewState.MICRO_DRAMAS)} />}
+            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && videos.some(isMicroDrama) && (
+              <SeriesCarousel title="Micro Dramas · Small episodes. Big stories." videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} onPlay={openVideo} />
+            )}
 
             {/* Shorts Shelf (Vertical Video Carousel) - Only on Home */}
-            {currentView === ViewState.HOME && !searchQuery && (
+            {currentView === ViewState.HOME && !searchQuery && realShorts.length > 0 && (
               <ShortsShelf
                 shorts={realShorts}
                 onShortClick={() => setCurrentView(ViewState.SHORTS)}
@@ -824,18 +682,12 @@ const App: React.FC = () => {
             )}
 
             {/* Main Grid */}
-            <div className="mb-6 flex items-center gap-2">
-              <h2 className="text-xl font-bold text-white">
-                {searchQuery ? `Results for "${searchQuery}"` :
-                  activeSubCategory !== 'All' ? activeSubCategory :
-                    currentView === ViewState.HOME ? 'Trending Now' : 'Popular Videos'}
-              </h2>
-              {isRealContent ? (
-                <span className="text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">CATALOG</span>
-              ) : !isLoadingVideos && (
-                <span className="text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">DEMO</span>
-              )}
-            </div>
+            {(searchQuery || (currentView === ViewState.HOME && activeSubCategory !== 'Trending') || (currentView === ViewState.ORIGINALS && activeSubCategory === 'All') || (!Object.values(ViewState).includes(currentView as ViewState) && !searchQuery) || ([ViewState.EDUCATION, ViewState.FARMERS, ViewState.FAITH, ViewState.KIDS, ViewState.DIASPORA].includes(currentView as ViewState) && !searchQuery)) && (
+              <div className="catalogue-section-heading">
+                <h2>{searchQuery ? 'Matching titles' : currentView === ViewState.ORIGINALS ? 'The complete collection' : activeSubCategory === 'All' ? 'All titles' : activeSubCategory}</h2>
+                {!isRealContent && !isLoadingVideos && <span className="catalogue-demo-label">DEMO</span>}
+              </div>
+            )}
 
             {/* Skeleton loader while fetching from Bunny */}
             {(isLoadingVideos || (!isRealContent && videos.length === 0)) ? (
@@ -853,11 +705,10 @@ const App: React.FC = () => {
             ) : currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Trending' ? (
               // Netflix-style category carousels
               <div className="space-y-2 animate-in fade-in duration-500">
-                {videos.some(isMicroDrama) && <SeriesCarousel title="Micro Dramas · Small episodes. Big stories." videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} onPlay={openVideo} />}
                 {/* 🔥 Trending — sorted by real view count */}
                 <VideoCarousel
                   key="Trending"
-                  title="🔥 Trending Now"
+                  title="Trending Now"
                   videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 20)}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
@@ -865,20 +716,19 @@ const App: React.FC = () => {
                 />
 
                 {/* 📺 Series Carousel — groups episodes by seriesTitle/season */}
-                <SeriesCarousel
+                {videos.some(v => v.category === 'Series' || v.category === 'Originals') && <SeriesCarousel
                   onPlay={openVideo}
                   videos={videos.filter(v => v.category === 'Series' || v.category === 'Originals')}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
                   isAuthenticated={isAuthenticated}
-
-                />
+                />}
 
                 {/* Standard category carousels */}
                 {['Movies', 'Farmers', 'Education', 'Faith', 'Kids', 'Diaspora'].map(cat => {
                   // Fallback for old "Originals" tag until all content is migrated
                   const catVideos = videos.filter(v => v.category === cat || (cat === 'Movies' && v.category === 'Originals'));
-                  const label = cat === 'Movies' ? '🎬 Kenyan Movies' : cat;
+                  const label = cat === 'Movies' ? 'Kenyan Movies' : cat;
                   return (
                     <VideoCarousel
                       key={cat}
@@ -892,22 +742,27 @@ const App: React.FC = () => {
                 })}
               </div>
             ) : currentView === ViewState.MICRO_DRAMAS && !searchQuery ? (
-              <SeriesCarousel title="Micro Dramas" videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} onPlay={openVideo} />
+              videos.some(isMicroDrama) ? <SeriesCarousel title="Micro Dramas" videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} onPlay={openVideo} /> : <MicroDramaComingSoon onMovies={() => handleNavigate(ViewState.ORIGINALS, 'Movies')} onSeries={() => handleNavigate(ViewState.ORIGINALS, 'Series')} />
             ) : currentView === ViewState.ORIGINALS && !searchQuery ? (
               // Nested Originals View
               <div className="space-y-2 animate-in fade-in duration-500">
-                {activeSubCategory === 'Micro Dramas' ? (<SeriesCarousel title="Micro Dramas" videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} onPlay={openVideo} />) : activeSubCategory === 'Series' ? (
+                {activeSubCategory === 'All' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {filteredVideos.map(video => <div key={video.id}><VideoCard video={video} isWatchLater={watchLater.includes(video.id)} onToggleWatchLater={toggleWatchLater} /></div>)}
+                  </div>
+                ) : activeSubCategory === 'Micro Dramas' ? (videos.some(isMicroDrama) ? <SeriesCarousel title="Micro Dramas" videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} onPlay={openVideo} /> : <MicroDramaComingSoon onMovies={() => handleNavigate(ViewState.ORIGINALS, 'Movies')} onSeries={() => handleNavigate(ViewState.ORIGINALS, 'Series')} />) : activeSubCategory === 'Series' ? (
                   <>
-                    <SeriesCarousel
+                    {filteredVideos.length > 0 && <SeriesCarousel
                       title="All Series"
                       videos={filteredVideos}
                       watchLaterIds={watchLater}
                       onToggleWatchLater={toggleWatchLater}
                       onPlay={openVideo}
-                    />
+                    />}
                   </>
                 ) : (
                   <>
+                    {filteredVideos.length > 0 && <VideoCarousel title="All Movies" videos={filteredVideos} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} />}
                     {/* Movies Carousels */}
                     {['Swahili', 'Drama', 'Comedy', 'Documentary', 'Action'].map(genre => {
                       const genreVideos = filteredVideos.filter(v => v.genre?.includes(genre) || v.tags?.includes(genre));
@@ -915,7 +770,7 @@ const App: React.FC = () => {
                       return (
                         <VideoCarousel
                           key={genre}
-                          title={`🎬 ${genre} Movies`}
+                          title={`${genre} Movies`}
                           videos={genreVideos}
                           watchLaterIds={watchLater}
                           onToggleWatchLater={toggleWatchLater}
@@ -980,17 +835,13 @@ const App: React.FC = () => {
             )}
 
             {/* Empty state — only if not loading and no results */}
-            {!isLoadingVideos && filteredVideos.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mb-4">
-                  <Search className="w-8 h-8 text-zinc-500" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">No videos found</h3>
-                <p className="text-zinc-500">
-                  {currentView !== ViewState.HOME ? 'No content in this category yet.' : 'Try searching for something else or change the category.'}
-                </p>
-              </div>
+            {!isLoadingVideos && !(currentView === ViewState.MICRO_DRAMAS && !searchQuery) && !(currentView === ViewState.ORIGINALS && activeSubCategory === 'Micro Dramas' && !searchQuery) && (currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Trending' ? videos.length === 0 : filteredVideos.length === 0) && (
+              <CatalogueEmptyState search={searchQuery} subcategory={activeSubCategory}
+                onClearSearch={clearSearch} onShowAll={() => setActiveSubCategory('All')}
+                onBrowse={() => handleNavigate(ViewState.HOME)} />
             )}
+
+            {currentView === ViewState.HOME && !searchQuery && <ViewerWelcome navigate={handleNavigate} />}
 
           </div>
         );
@@ -1089,20 +940,21 @@ const App: React.FC = () => {
         </div>
       )}
       {/* Main Content Area */}
-      <div className="cinema-shell flex-1 flex flex-col h-screen overflow-hidden relative">
+      <div className={`cinema-shell flex-1 flex flex-col h-screen overflow-hidden relative ${currentView === ViewState.SHORTS ? 'shorts-shell' : ''}`}>
         <CinemaNavigation view={currentView} subcategory={activeSubCategory} items={translatedNavItems}
           authenticated={isAuthenticated} admin={isAdmin} search={searchQuery} onSearch={handleSearch}
           navigate={handleNavigate} login={() => setShowLogin(true)} logout={handleLogout} />
 
         {/* Scrollable View Content */}
-        <main className={`flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar ${currentView === ViewState.HOME && !searchQuery ? 'cinema-main-home' : ''}`}>
+        <main ref={mainRef} className={`flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar ${currentView === ViewState.HOME && !searchQuery ? 'landing-main' : ''} ${currentView === ViewState.SHORTS ? 'shorts-main' : ''}`}>
           <Suspense fallback={<LoadingPanel label="Loading Tube TV..." />}>
             {renderContent()}
+            {(currentView === ViewState.HOME || currentView === ViewState.ORIGINALS || currentView === ViewState.MICRO_DRAMAS || [ViewState.EDUCATION, ViewState.FARMERS, ViewState.FAITH, ViewState.KIDS, ViewState.DIASPORA, ViewState.LIVE, ViewState.WATCH_LATER].includes(currentView as ViewState) || navItems.some(item => item.id === currentView && item.isCustom)) && <LandingFooter navigate={handleNavigate} />}
           </Suspense>
         </main>
 
         {/* Mobile Bottom Nav (Simplified for common tasks) */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 flex justify-around p-3 z-50 pb-safe">
+        <div className={`md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 flex justify-around p-3 z-50 pb-safe ${currentView === ViewState.SHORTS ? 'shorts-hidden-mobile' : ''}`}>
           <button
             onClick={() => handleNavigate(ViewState.HOME)}
             className={`flex flex-col items-center gap-1 ${currentView === ViewState.HOME ? 'text-white' : 'text-zinc-500'}`}
@@ -1117,28 +969,9 @@ const App: React.FC = () => {
             <div className="w-5 h-5 border-2 border-current rounded-sm"></div>
             <span className="text-[10px]">Micro Dramas</span>
           </button>
-          <button
-            onClick={() => handleNavigate(ViewState.EDUCATION)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.EDUCATION ? 'text-white' : 'text-zinc-500'}`}
-          >
-            <GraduationCap size={20} />
-            <span className="text-[10px]">Learn</span>
-          </button>
-          <button
-            onClick={() => handleNavigate(ViewState.UPLOAD)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.UPLOAD ? 'text-white' : 'text-zinc-500'}`}
-          >
-            <div className="bg-red-600 rounded-full p-1 -mt-4 mb-1">
-              <span className="text-xl font-bold leading-none">+</span>
-            </div>
-          </button>
-          <button
-            onClick={() => handleNavigate(ViewState.ANALYTICS)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.ANALYTICS ? 'text-white' : 'text-zinc-500'}`}
-          >
-            <BarChart2 size={20} />
-            <span className="text-[10px]">Studio</span>
-          </button>
+          <button onClick={() => handleNavigate(ViewState.SHORTS)} className={`flex flex-col items-center gap-1 ${currentView === ViewState.SHORTS ? 'text-white' : 'text-zinc-500'}`}><PlayCircle size={20} /><span className="text-[10px]">Shorts</span></button>
+          <button onClick={() => handleNavigate(ViewState.WATCH_LATER)} className={`flex flex-col items-center gap-1 ${currentView === ViewState.WATCH_LATER ? 'text-white' : 'text-zinc-500'}`}><Clock size={20} /><span className="text-[10px]">My List</span></button>
+          {isAdmin && <button onClick={() => handleNavigate(ViewState.ANALYTICS)} className={`flex flex-col items-center gap-1 ${currentView === ViewState.ANALYTICS ? 'text-white' : 'text-zinc-500'}`}><BarChart2 size={20} /><span className="text-[10px]">Studio</span></button>}
         </div>
       </div>
     </div>

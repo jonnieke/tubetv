@@ -4,6 +4,6 @@ import React, { useEffect, useState } from 'react';
 export default function CatalogueArtwork({ src, className, priority = false }: { src: string; className?: string; priority?: boolean }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  if (failed) return <div aria-hidden="true" className={`cinema-artwork-fallback ${className || ''}`} />;
+  if (failed || !src) return <div aria-hidden="true" className={`cinema-artwork-fallback ${className || ''}`} />;
   return <img src={src} alt="" className={className} loading={priority ? 'eager' : 'lazy'} fetchPriority={priority ? 'high' : 'auto'} onError={() => setFailed(true)} />;
 }

@@ -21,6 +21,6 @@ describe('Cinematic discovery', () => {
   it('marks the selected movies destination in the top navigation', () => {
     const html = renderToStaticMarkup(<CinemaNavigation view={ViewState.ORIGINALS} subcategory="Movies" items={[]} authenticated={false} admin={false} search="" onSearch={() => {}} navigate={() => {}} login={() => {}} logout={() => {}} />);
     expect(html).toContain('aria-current="page">Movies');
-    expect(html).toContain('aria-label="Sign in"');
+    expect(html).toContain('aria-label="Admin sign in"');
   });
 });

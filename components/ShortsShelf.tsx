@@ -93,9 +93,6 @@ const ShortItem: React.FC<{ short: ShortVideo; onShortClick: () => void; index: 
                         short.author
                     )}
                 </p>
-                <p className="text-zinc-500 text-[10px] mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {(short.likes / 1000).toFixed(1)}K likes
-                </p>
             </div>
         </button>
     );
