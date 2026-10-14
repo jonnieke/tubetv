@@ -1,5 +1,5 @@
-﻿
-import React, { Suspense, lazy, useState, useEffect, useMemo, useRef } from 'react';
+
+import React, { Suspense, lazy, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import CinemaNavigation from './components/CinemaNavigation';
 import LandingHero from './components/LandingHero';
 import LandingFooter from './components/LandingFooter';
@@ -12,10 +12,11 @@ import ShortsShelf from './components/ShortsShelf';
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS } from './constants';
 import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
-import { fetchBunnyVideos, bunnyVideoToVideo } from './services/bunnyService';
+import { fetchBunnyVideos, fetchBunnyVideoById, bunnyVideoToVideo } from './services/bunnyService';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useLanguage } from './contexts/LanguageContext';
 import { isAdminUser } from './lib/authorization';
+import { featuredMovies } from './lib/featured';
 import { clearLocalAuthSession } from './lib/localAuth';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { verifiedActiveAdminUser } from './lib/adminSession';
@@ -29,6 +30,8 @@ import { filterDiscoveryVideos } from './lib/discovery';
 import { recommendVideos } from './lib/recommendations';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
 import { shouldSaveData } from './lib/network';
+import { isVideoLocked } from './lib/monetization';
+import { fetchActiveSubscription, getLocalGuestPass, getLocalUnlockedVideoIds } from './lib/subscriptions';
 
 import { TranslationKey } from './translations';
 
@@ -41,6 +44,7 @@ const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 const UploadSection = lazy(() => import('./components/UploadSection'));
 const WatchLaterSection = lazy(() => import('./components/WatchLaterSection'));
 const AuthModal = lazy(() => import('./components/AuthModal'));
+const PaywallModal = lazy(() => import('./components/PaywallModal'));
 const SettingsSection = lazy(() => import('./components/SettingsSection'));
 const LiveSection = lazy(() => import('./components/LiveSection'));
 const DEMO_VIDEO_URL = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
@@ -131,6 +135,24 @@ const App: React.FC = () => {
   }, []);
   const [preferences, setPreferences] = useState<PlaybackPreferences>(DEFAULT_PLAYBACK_PREFERENCES);
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
+  const [hasActivePass, setHasActivePass] = useState(false);
+  const [unlockedVideoIds, setUnlockedVideoIds] = useState<string[]>([]);
+  const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
+
+  const refreshAccessState = useCallback(async () => {
+    try {
+      const sub = await fetchActiveSubscription(currentUser?.id);
+      const guestPass = getLocalGuestPass();
+      setHasActivePass(Boolean(sub?.is_active || guestPass));
+      setUnlockedVideoIds(getLocalUnlockedVideoIds());
+    } catch {
+      // Ignore background check failure
+    }
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    void refreshAccessState();
+  }, [refreshAccessState]);
   useEffect(() => {
     let cancelled = false;
     const userId = currentUser?.id;
@@ -298,6 +320,7 @@ const App: React.FC = () => {
 
   // Hero spotlight: viewers select featured titles explicitly.
   const [heroIndex, setHeroIndex] = useState(0);
+  const heroMovies = useMemo(() => featuredMovies(videos), [videos]);
   const [activeHeroVideo, setActiveHeroVideo] = useState<Video | null>(null);
   useEffect(() => {
     if (!activeHeroVideo) return;
@@ -318,6 +341,10 @@ const App: React.FC = () => {
 
 
   const openVideo = (video: Video) => {
+    if (isVideoLocked(video, hasActivePass, unlockedVideoIds)) {
+      setPaywallVideo(video);
+      return;
+    }
     window.history.pushState({}, '', videoPath(video.id));
     setActiveHeroVideo(video);
   };
@@ -327,7 +354,8 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    const syncRoute = () => {
+    let active = true;
+    const syncRoute = async () => {
       const match = window.location.pathname.match(/^\/watch\/([^/]+)$/);
       if (!match) {
         setActiveHeroVideo(null);
@@ -335,12 +363,36 @@ const App: React.FC = () => {
       }
       const id = decodeURIComponent(match[1]);
       const video = videos.find((item) => item.id === id);
-      if (video) setActiveHeroVideo(video);
+      if (video) {
+        if (isVideoLocked(video, hasActivePass, unlockedVideoIds)) {
+          setPaywallVideo(video);
+        } else {
+          setActiveHeroVideo(video);
+        }
+        return;
+      }
+      // If not yet loaded in catalogue array, attempt direct single lookup
+      try {
+        const item = await fetchBunnyVideoById(id);
+        if (active && item) {
+          const directVideo = bunnyVideoToVideo(item) as Video;
+          if (isVideoLocked(directVideo, hasActivePass, unlockedVideoIds)) {
+            setPaywallVideo(directVideo);
+          } else {
+            setActiveHeroVideo(directVideo);
+          }
+        }
+      } catch {
+        // Leave activeHeroVideo unchanged on error
+      }
     };
-    syncRoute();
+    void syncRoute();
     window.addEventListener('popstate', syncRoute);
-    return () => window.removeEventListener('popstate', syncRoute);
-  }, [videos]);
+    return () => {
+      active = false;
+      window.removeEventListener('popstate', syncRoute);
+    };
+  }, [videos, hasActivePass, unlockedVideoIds]);
 
   useEffect(() => {
     setVideoMetadata(activeHeroVideo || undefined);
@@ -610,8 +662,7 @@ const App: React.FC = () => {
           <div className={currentView === ViewState.HOME && !searchQuery ? 'catalogue-page landing-page p-4 md:p-8 pb-24' : 'catalogue-page p-4 md:p-8 pb-24'}>
             {/* Hero Section - Only on HOME and not searching */}
             {currentView === ViewState.HOME && !searchQuery && (() => {
-              const dramaOpeners = videos.filter(video => isMicroDrama(video) && (video.episode || 1) === 1);
-              const featuredVideos = [...(dramaOpeners.length ? dramaOpeners : videos)].sort((a, b) => b.views - a.views).slice(0, 5);
+              const featuredVideos = heroMovies.length ? heroMovies : !isRealContent ? videos.slice(0, 5) : [];
               const hero = featuredVideos[heroIndex % featuredVideos.length];
               if (!hero) return null;
               return (
@@ -823,6 +874,24 @@ const App: React.FC = () => {
         </Suspense>
       )}
 
+      {/* Instant M-Pesa Paywall Modal */}
+      {paywallVideo && (
+        <Suspense fallback={<LoadingPanel label="Opening pass..." />}>
+          <PaywallModal
+            video={paywallVideo}
+            onSuccess={() => {
+              const target = paywallVideo;
+              setPaywallVideo(null);
+              void refreshAccessState().then(() => {
+                window.history.pushState({}, '', videoPath(target.id));
+                setActiveHeroVideo(target);
+              });
+            }}
+            onClose={() => setPaywallVideo(null)}
+          />
+        </Suspense>
+      )}
+
       {activeHeroVideo && (
         <div
           ref={playerDialogRef}
@@ -849,20 +918,48 @@ const App: React.FC = () => {
                 autoPlay
                 playerOnly
                 nextEpisode={nextEpisode(videos, activeHeroVideo.id)}
-                onNextEpisode={() => { const next = nextEpisode(videos, activeHeroVideo.id); if (next) { trackEvent('episode_next', { fromVideoId: activeHeroVideo.id, toVideoId: next.id, automatic: false }); openVideo(next); } }}
-
-
+                onNextEpisode={() => {
+                  const next = nextEpisode(videos, activeHeroVideo.id);
+                  if (next) {
+                    if (isVideoLocked(next, hasActivePass, unlockedVideoIds)) {
+                      setPaywallVideo(next);
+                    } else {
+                      trackEvent('episode_next', { fromVideoId: activeHeroVideo.id, toVideoId: next.id, automatic: false });
+                      openVideo(next);
+                    }
+                  }
+                }}
               />
             <div className="cinema-player-info bg-zinc-950 p-5">
               <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                 <span className="rounded border border-zinc-700 px-2 py-1">{activeHeroVideo.contentRating || 'UNRATED'}</span>
+                <span className={`rounded border px-2 py-0.5 font-bold ${activeHeroVideo.accessTier === 'premium' ? 'border-amber-500/40 bg-amber-500/20 text-amber-300' : 'border-emerald-500/40 bg-emerald-500/20 text-emerald-300'}`}>
+                  {activeHeroVideo.accessTier === 'premium' ? 'PREMIUM' : 'FREE'}
+                </span>
                 <span>{activeHeroVideo.category}</span>
                 <span>{activeHeroVideo.author}</span>
               </div>
               <h1 className="mt-3 text-xl font-bold">{activeHeroVideo.seriesTitle || activeHeroVideo.title}</h1>
               {seriesKey(activeHeroVideo) && <p className="mt-1 text-sm text-zinc-300">Season {activeHeroVideo.season || 1} · Episode {activeHeroVideo.episode || 1}</p>}
               {(activeHeroVideo.episodeSynopsis || activeHeroVideo.description) && <p className="mt-2 text-sm leading-6 text-zinc-300">{activeHeroVideo.episodeSynopsis || activeHeroVideo.description}</p>}
-              {nextEpisode(videos, activeHeroVideo.id) && <button className="cinema-primary mt-4 w-full" onClick={() => { const next = nextEpisode(videos, activeHeroVideo.id); if (next) { trackEvent('episode_next', { fromVideoId: activeHeroVideo.id, toVideoId: next.id, automatic: false }); openVideo(next); } }}>▶ Next episode</button>}
+              {nextEpisode(videos, activeHeroVideo.id) && (
+                <button
+                  className="cinema-primary mt-4 w-full"
+                  onClick={() => {
+                    const next = nextEpisode(videos, activeHeroVideo.id);
+                    if (next) {
+                      if (isVideoLocked(next, hasActivePass, unlockedVideoIds)) {
+                        setPaywallVideo(next);
+                      } else {
+                        trackEvent('episode_next', { fromVideoId: activeHeroVideo.id, toVideoId: next.id, automatic: false });
+                        openVideo(next);
+                      }
+                    }
+                  }}
+                >
+                  ▶ Next episode {isVideoLocked(nextEpisode(videos, activeHeroVideo.id)!, hasActivePass, unlockedVideoIds) ? '🔒' : ''}
+                </button>
+              )}
               {activeHeroVideo.transcript && (
                 <details className="mt-4 border-t border-zinc-800 pt-4">
                   <summary className="cursor-pointer font-medium">Transcript</summary>
@@ -873,15 +970,21 @@ const App: React.FC = () => {
             {seriesKey(activeHeroVideo) && <details className="cinema-player-episodes">
               <summary>Episodes <span>See all</span></summary>
               {activeHeroVideo.seriesSynopsis && <p>{activeHeroVideo.seriesSynopsis}</p>}
-              {videos.filter(video => seriesKey(video) === seriesKey(activeHeroVideo)).sort(compareEpisodes).map(video =>
-                <button key={video.id} aria-current={video.id === activeHeroVideo.id ? 'true' : undefined} onClick={() => openVideo(video)}>
-                  <CatalogueArtwork src={video.thumbnail} className={`cinema-player-episode-art ${isMicroDrama(video) ? 'cinema-player-episode-art-vertical' : ''}`} />
-                  <span className="cinema-player-episode-copy">
-                    <span>S{video.season || 1} · E{video.episode || 1} — {video.title}</span>
-                    <small>{video.episodeSynopsis || video.description}</small>
-                  </span>
-                </button>
-              )}
+              {videos.filter(video => seriesKey(video) === seriesKey(activeHeroVideo)).sort(compareEpisodes).map(video => {
+                const isLocked = isVideoLocked(video, hasActivePass, unlockedVideoIds);
+                return (
+                  <button key={video.id} aria-current={video.id === activeHeroVideo.id ? 'true' : undefined} onClick={() => openVideo(video)}>
+                    <CatalogueArtwork src={video.thumbnail} className={`cinema-player-episode-art ${isMicroDrama(video) ? 'cinema-player-episode-art-vertical' : ''}`} />
+                    <span className="cinema-player-episode-copy">
+                      <span className="flex items-center gap-1.5">
+                        S{video.season || 1} · E{video.episode || 1} — {video.title}
+                        {isLocked && <span className="text-[10px] text-amber-400 font-bold">🔒 LOCKED</span>}
+                      </span>
+                      <small>{video.episodeSynopsis || video.description}</small>
+                    </span>
+                  </button>
+                );
+              })}
             </details>}
             </Suspense>
       {/* Sidebar */}

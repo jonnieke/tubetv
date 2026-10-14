@@ -5,6 +5,8 @@ import { generateVideoMetadata, generateThumbnail } from '../services/geminiServ
 import { createVideoEntry, uploadVideoFile, getStreamUrl, getThumbnailUrl, updateVideoMetadata, getVideoStatus, uploadCustomThumbnail } from '../services/bunnyService';
 import { Video } from '../types';
 import type { ContentRating } from '../lib/contentRating';
+import { publicMediaUrl } from '../lib/mediaUrl';
+import { uploadSeriesPoster } from '../services/seriesArtwork';
 
 interface UploadMetadata {
   title: string;
@@ -13,12 +15,16 @@ interface UploadMetadata {
   contentRating: ContentRating;
   seriesTitle: string;
   seriesSynopsis: string;
+  seriesPosterUrl: string;
+  seriesTrailerUrl: string;
   seasonSynopsis: string;
   episodeSynopsis: string;
   season: string;
   episode: string;
   introEndSeconds: string;
   outroStartSeconds: string;
+  accessTier: 'free' | 'premium';
+  freeEpisodes: string;
 }
 
 interface UploadItem {
@@ -70,6 +76,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
   const [queue, setQueue] = useState<UploadItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isQueueProcessing, setIsQueueProcessing] = useState(false);
+  const [uploadingPosterId, setUploadingPosterId] = useState<string | null>(null);
   
   // Drag and Drop State
   const [isDragging, setIsDragging] = useState(false);
@@ -156,12 +163,27 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
       setQueue(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
   };
 
+  const handleSeriesPoster = async (id: string, event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      setUploadingPosterId(id);
+      try {
+          const url = await uploadSeriesPoster(file);
+          setQueue(previous => previous.map(item => item.id === id ? { ...item, metadata: { ...item.metadata, seriesPosterUrl: url } } : item));
+      } catch (error) {
+          alert(error instanceof Error ? error.message : 'Poster upload failed.');
+      } finally {
+          setUploadingPosterId(null);
+          event.target.value = '';
+      }
+  };
+
   const processFiles = (files: FileList | File[]) => {
       const newItems: UploadItem[] = Array.from(files).map(file => ({
           id: Math.random().toString(36).substring(7),
           file,
           previewUrl: URL.createObjectURL(file),
-          metadata: { title: file.name.split('.')[0], description: '', category: uploadKind, contentRating: 'UNRATED', seriesTitle: '', seriesSynopsis: '', seasonSynopsis: '', episodeSynopsis: '', season: '1', episode: '', introEndSeconds: '', outroStartSeconds: '' },
+          metadata: { title: file.name.split('.')[0], description: '', category: uploadKind, contentRating: 'UNRATED', seriesTitle: '', seriesSynopsis: '', seriesPosterUrl: '', seriesTrailerUrl: '', seasonSynopsis: '', episodeSynopsis: '', season: '1', episode: '', introEndSeconds: '', outroStartSeconds: '', accessTier: uploadKind === 'Micro Dramas' ? 'premium' : 'free', freeEpisodes: '2' },
           thumbnail: null,
           thumbnailPrompt: file.name.split('.')[0],
           status: 'idle',
@@ -332,6 +354,10 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
           updateQueueItem(item.id, { status: 'error', stageInfo: 'Add series, season and episode synopses plus positive season/episode numbers.' });
           return;
       }
+      if (episodic && [metadata.seriesPosterUrl, metadata.seriesTrailerUrl].some(value => value.trim() && !publicMediaUrl(value))) {
+          updateQueueItem(item.id, { status: 'error', stageInfo: 'Show poster and trailer must use public HTTPS URLs.' });
+          return;
+      }
       const intro = metadata.introEndSeconds.trim();
       const outro = metadata.outroStartSeconds.trim();
       if (episodic && ([intro, outro].some(value => value && !/^[1-9]\d*$/.test(value)) || (intro && outro && Number(intro) >= Number(outro)) || [intro, outro].some(value => value && item.duration > 0 && Number(value) >= item.duration))) {
@@ -360,9 +386,14 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
           { property: 'contentRating', value: item.metadata.contentRating },
           { property: 'author', value: creatorName },
           { property: 'published', value: 'processing' },
+          { property: 'accessTier', value: item.metadata.accessTier || 'free' },
+          { property: 'isPremium', value: String(item.metadata.accessTier === 'premium') },
+          ...(item.metadata.category === 'Micro Dramas' ? [{ property: 'freeEpisodes', value: item.metadata.freeEpisodes || '2' }] : []),
           ...(episodic ? [
             { property: 'seriesTitle', value: metadata.seriesTitle.trim() },
             { property: 'seriesSynopsis', value: metadata.seriesSynopsis.trim() },
+            ...(metadata.seriesPosterUrl.trim() ? [{ property: 'seriesPosterUrl', value: metadata.seriesPosterUrl.trim() }] : []),
+            ...(metadata.seriesTrailerUrl.trim() ? [{ property: 'seriesTrailerUrl', value: metadata.seriesTrailerUrl.trim() }] : []),
             { property: 'seasonSynopsis', value: metadata.seasonSynopsis.trim() },
             { property: 'episodeSynopsis', value: metadata.episodeSynopsis.trim() },
             { property: 'season', value: metadata.season },
@@ -418,7 +449,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                 url: getStreamUrl(videoId), duration: formatTime(item.duration), views: 0,
                 isPremium: false, author: creatorName,
                 category: item.metadata.category || 'New Releases',
-                ...(episodic ? { seriesTitle: metadata.seriesTitle.trim(), seriesSynopsis: metadata.seriesSynopsis.trim(), seasonSynopsis: metadata.seasonSynopsis.trim(), episodeSynopsis: metadata.episodeSynopsis.trim(), season: Number(metadata.season), episode: Number(metadata.episode), seriesFormat: metadata.category === 'Micro Dramas' ? 'micro-drama' as const : 'standard' as const, introEndSeconds: intro ? Number(intro) : undefined, outroStartSeconds: outro ? Number(outro) : undefined } : {}),
+                ...(episodic ? { seriesTitle: metadata.seriesTitle.trim(), seriesSynopsis: metadata.seriesSynopsis.trim(), seriesPosterUrl: metadata.seriesPosterUrl.trim() || undefined, seriesTrailerUrl: metadata.seriesTrailerUrl.trim() || undefined, seasonSynopsis: metadata.seasonSynopsis.trim(), episodeSynopsis: metadata.episodeSynopsis.trim(), season: Number(metadata.season), episode: Number(metadata.episode), seriesFormat: metadata.category === 'Micro Dramas' ? 'micro-drama' as const : 'standard' as const, introEndSeconds: intro ? Number(intro) : undefined, outroStartSeconds: outro ? Number(outro) : undefined } : {}),
                 tags: [item.metadata.category || 'New'],
                 contentRating: item.metadata.contentRating,
               });
@@ -695,6 +726,86 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                                 </div>
                             </div>
 
+                            {/* Monetization & Access Control */}
+                            <div className="rounded-xl border border-zinc-700 bg-zinc-900/60 p-4 space-y-3">
+                              <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                                <div>
+                                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-300">Monetization & Access Control</label>
+                                  <p className="text-xs text-zinc-400">Classify whether this video is free for all viewers or premium</p>
+                                </div>
+                                <span className={`text-xs px-2.5 py-1 rounded-full font-bold border ${activeItem.metadata.accessTier === 'premium' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'}`}>
+                                  {activeItem.metadata.accessTier === 'premium' ? '★ PREMIUM' : '✓ FREE'}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, accessTier: 'free' } })}
+                                  disabled={activeItem.status === 'completed'}
+                                  className={`p-3 rounded-xl border text-left transition-all ${
+                                    activeItem.metadata.accessTier === 'free'
+                                      ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm'
+                                      : 'bg-zinc-800/80 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-3 h-3 rounded-full ${activeItem.metadata.accessTier === 'free' ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
+                                    <span className="font-semibold text-sm text-white">Free Content</span>
+                                  </div>
+                                  <p className="text-xs text-zinc-400 mt-1">
+                                    Open to all viewers. No M-Pesa pass required.
+                                  </p>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, accessTier: 'premium' } })}
+                                  disabled={activeItem.status === 'completed'}
+                                  className={`p-3 rounded-xl border text-left transition-all ${
+                                    activeItem.metadata.accessTier === 'premium'
+                                      ? 'bg-amber-950/40 border-amber-500 text-white shadow-sm'
+                                      : 'bg-zinc-800/80 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-3 h-3 rounded-full ${activeItem.metadata.accessTier === 'premium' ? 'bg-amber-500' : 'bg-zinc-600'}`} />
+                                    <span className="font-semibold text-sm text-white">Premium Content</span>
+                                  </div>
+                                  <p className="text-xs text-zinc-400 mt-1">
+                                    {activeItem.metadata.category === 'Micro Dramas'
+                                      ? 'Model 1: Ep 1-2 free teaser, cliffhanger paywall.'
+                                      : 'Model 2: Requires 24h (KSh 10) or weekly pass.'}
+                                  </p>
+                                </button>
+                              </div>
+
+                              {activeItem.metadata.category === 'Micro Dramas' && activeItem.metadata.accessTier === 'premium' && (
+                                <div className="pt-2 border-t border-zinc-800">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                                    <div>
+                                      <label className="block text-xs font-medium text-zinc-300">Free Cliffhanger Episodes</label>
+                                      <p className="text-xs text-zinc-500 mt-0.5">Opening episodes available free before paywall triggers</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="50"
+                                        value={activeItem.metadata.freeEpisodes}
+                                        onChange={e => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, freeEpisodes: e.target.value } })}
+                                        disabled={activeItem.status === 'completed'}
+                                        className="w-24 bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-red-500"
+                                      />
+                                      <span className="text-xs text-zinc-400">
+                                        {Number(activeItem.metadata.freeEpisodes) > 0 ? `Ep 1-${activeItem.metadata.freeEpisodes} free; Ep ${Number(activeItem.metadata.freeEpisodes) + 1}+ locked` : 'All episodes locked'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
                             {(activeItem.metadata.category === 'Series' || activeItem.metadata.category === 'Micro Dramas') && (
                               <fieldset className="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900/60 p-4">
                                 <legend className="px-2 text-sm font-semibold text-white">{activeItem.metadata.category === 'Series' ? 'Series episode details' : 'Micro Drama episode details'}</legend>
@@ -712,6 +823,17 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                                 {([['seriesSynopsis', 'Series synopsis', 'The overall premise, without later-season spoilers'], ['seasonSynopsis', 'Season summary', 'What this season is about'], ['episodeSynopsis', 'Episode synopsis', 'A brief, spoiler-conscious episode description']] as const).map(([key, label, placeholder]) => <label key={key} className="block text-xs text-zinc-300">{label}
                                   <textarea required rows={2} value={activeItem.metadata[key]} onChange={e => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, [key]: e.target.value } })} disabled={activeItem.status === 'completed'} placeholder={placeholder} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white" />
                                 </label>)}
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  {([['seriesPosterUrl', 'Overall show poster URL', 'https://... (portrait 2:3 image)'], ['seriesTrailerUrl', 'Series trailer URL', 'https://... (public trailer link)']] as const).map(([key, label, placeholder]) => <label key={key} className="text-xs text-zinc-300">{label}
+                                    <input type="url" value={activeItem.metadata[key]} onChange={e => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, [key]: e.target.value } })} disabled={activeItem.status === 'completed'} placeholder={placeholder} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white" />
+                                  </label>)}
+                                </div>
+                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-600 px-3 py-2 text-xs text-white hover:bg-zinc-800">
+                                  <UploadCloud size={15} />{uploadingPosterId === activeItem.id ? 'Uploading poster…' : 'Upload show poster'}
+                                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => handleSeriesPoster(activeItem.id, event)} disabled={activeItem.status === 'completed' || isQueueProcessing || uploadingPosterId !== null} className="sr-only" />
+                                </label>
+                                {publicMediaUrl(activeItem.metadata.seriesPosterUrl) && <img src={publicMediaUrl(activeItem.metadata.seriesPosterUrl)} alt="Overall show poster preview" className="h-40 w-auto rounded-lg object-cover" />}
+                                <p className="text-xs text-zinc-400">Upload a JPG, PNG or WebP poster up to 5 MB, or use a public HTTPS URL. These optional show-level links are shared across episodes; episode thumbnails stay separate.</p>
                                 <div className="grid gap-4 md:grid-cols-2">
                                   {([['introEndSeconds', 'Intro ends at · seconds'], ['outroStartSeconds', 'Outro starts at · seconds']] as const).map(([key, label]) => <label key={key} className="text-xs text-zinc-300">{label}
                                     <input type="number" min="1" step="1" value={activeItem.metadata[key]} onChange={e => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, [key]: e.target.value } })} disabled={activeItem.status === 'completed'} placeholder="Optional" className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white" />
@@ -792,7 +914,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
               {queue.length > 0 && !isAllDone && (
                   <button 
                     onClick={startUploadQueue}
-                    disabled={isQueueProcessing || pendingCount === 0}
+                    disabled={isQueueProcessing || uploadingPosterId !== null || pendingCount === 0}
                     className="w-full mt-4 bg-red-600 hover:bg-red-700 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
                   >
                       {isQueueProcessing ? (

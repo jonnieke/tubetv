@@ -5,7 +5,10 @@ export type AnalyticsEventName =
   | 'playback_first_frame'
   | 'playback_complete'
   | 'playback_buffer'
-  | 'episode_next';
+  | 'episode_next'
+  | 'paywall_view'
+  | 'paywall_initiated'
+  | 'paywall_completed';
 
 type EventProperties = Record<string, string | number | boolean | undefined>;
 

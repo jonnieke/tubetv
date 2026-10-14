@@ -27,6 +27,21 @@ serve(async req => {
   if (origin && !allowed.includes(origin)) return reply(req, {error:'Origin not allowed.'}, 403);
   if (!libraryId || !accessKey) return reply(req, {error:'Catalogue unavailable.'}, 503);
   const query = new URL(req.url).searchParams;
+  const singleId = query.get('id');
+  if (singleId) {
+    if (!/^[0-9a-f-]{36}$/i.test(singleId)) return reply(req, {error:'Invalid video ID.'}, 400);
+    try {
+      const upstream = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${singleId}`, {headers:{AccessKey:accessKey,Accept:'application/json'}});
+      if (!upstream.ok) return reply(req, {error:'Video not found.'}, upstream.status === 404 ? 404 : 503);
+      const data = await upstream.json();
+      const item = publicItem(data, enforceRating);
+      if (!item) return reply(req, {error:'Video is not available for public playback.'}, 404);
+      return reply(req, {item}, 200);
+    } catch (error) {
+      console.error('public_catalogue_single_error', error);
+      return reply(req, {error:'Video unavailable.'}, 503);
+    }
+  }
   const page = Number(query.get('page') || 1);
   const itemsPerPage = Number(query.get('itemsPerPage') || 100);
   if (!Number.isSafeInteger(page) || page < 1 || page > 10000 || !Number.isSafeInteger(itemsPerPage) || itemsPerPage < 10 || itemsPerPage > 100) return reply(req, {error:'Invalid page or page size.'}, 400);

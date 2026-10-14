@@ -285,6 +285,23 @@ export const fetchBunnyVideos = async (admin = false): Promise<BunnyVideoItem[]>
 };
 
 /**
+ * Fetches a single video by its GUID from the public catalogue endpoint.
+ */
+export const fetchBunnyVideoById = async (id: string): Promise<BunnyVideoItem | null> => {
+  if (!PUBLIC_URL || !ANON_KEY || !id) return null;
+  try {
+    const headers = await getHeaders();
+    const res = await fetch(`${PUBLIC_URL}?id=${encodeURIComponent(id)}`, { headers, cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.item || null;
+  } catch (error) {
+    console.error('fetchBunnyVideoById failed:', error);
+    return null;
+  }
+};
+
+/**
  * Maps a Bunny API item to the app's Video shape.
  *
  * Creators can tag videos in the Bunny dashboard (Video › Edit › Meta Tags):
@@ -335,6 +352,27 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   const cleanTitle = seMatch ? activeItem.title.replace(seMatch[0], '').trim() : activeItem.title;
 
   const productionYearRaw = getMeta(activeItem.metaTags, 'productionYear') || getMeta(activeItem.metaTags, 'year');
+  const seriesFormat = (category === 'Micro Dramas' || getMeta(activeItem.metaTags, 'seriesFormat') === 'micro-drama' ? 'micro-drama' : 'standard') as 'micro-drama' | 'standard';
+
+  const rawTier = getMeta(activeItem.metaTags, 'accessTier').toLowerCase().trim();
+  const rawIsPremium = getMeta(activeItem.metaTags, 'isPremium').toLowerCase().trim();
+  const isMicro = category === 'Micro Dramas' || seriesFormat === 'micro-drama';
+
+  let isPremium: boolean;
+  if (rawTier === 'free' || rawIsPremium === 'false') {
+    isPremium = false;
+  } else if (rawTier === 'premium' || rawIsPremium === 'true') {
+    isPremium = true;
+  } else {
+    // Model 1: Micro Dramas are premium by default (episodes 1 & 2 free teaser, cliffhanger thereafter)
+    // Model 2: Other shows are free by default unless classified as premium
+    isPremium = isMicro;
+  }
+  const accessTier = isPremium ? ('premium' as const) : ('free' as const);
+  const rawFreeEpisodes = getMeta(activeItem.metaTags, 'freeEpisodes');
+  const parsedFreeEpisodes = rawFreeEpisodes ? parseInt(rawFreeEpisodes, 10) : NaN;
+  const freeEpisodes = Number.isFinite(parsedFreeEpisodes) && parsedFreeEpisodes >= 0 ? parsedFreeEpisodes : 2;
+
 
   return {
     id: activeItem.guid,
@@ -344,7 +382,9 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     url: getStreamUrl(activeItem.guid),
     duration: formatDuration(activeItem.length),
     views: activeItem.views ?? 0,
-    isPremium: false,
+    isPremium,
+    accessTier,
+    freeEpisodes,
     author: getMeta(activeItem.metaTags, 'author') || getMeta(activeItem.metaTags, 'creator') || 'Tube Creator',
     category,
     tags: getMeta(activeItem.metaTags, 'tags')
@@ -354,10 +394,12 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     seriesTitle: rawSeriesTitle || undefined,
     seriesId: getMeta(activeItem.metaTags, 'seriesId') || undefined,
     seriesSynopsis: getMeta(activeItem.metaTags, 'seriesSynopsis') || undefined,
+    seriesPosterUrl: getMeta(activeItem.metaTags, 'seriesPosterUrl') || undefined,
+    seriesTrailerUrl: getMeta(activeItem.metaTags, 'seriesTrailerUrl') || undefined,
     seasonSynopsis: getMeta(activeItem.metaTags, 'seasonSynopsis') || undefined,
     episodeSynopsis: getMeta(activeItem.metaTags, 'episodeSynopsis') || getMeta(activeItem.metaTags, 'description') || undefined,
     captionsUrl: getMeta(activeItem.metaTags, 'captionsUrl') || undefined,
-    seriesFormat: (category === 'Micro Dramas' || getMeta(activeItem.metaTags, 'seriesFormat') === 'micro-drama' ? 'micro-drama' : 'standard') as 'micro-drama' | 'standard',
+    seriesFormat,
     season: parsedSeason,
     episode: parsedEpisode,
     introEndSeconds: Number(getMeta(activeItem.metaTags, 'introEndSeconds')) || undefined,
@@ -370,6 +412,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     transcript: getMeta(activeItem.metaTags, 'transcript') || undefined,
     transcriptUrl: getMeta(activeItem.metaTags, 'transcriptUrl') || undefined,
     uploadDate: activeItem.dateUploaded || undefined,
+    editorialUpdatedAt: getMeta(activeItem.metaTags, 'editorialUpdatedAt') || undefined,
     muted: getMeta(activeItem.metaTags, 'muted') === 'true',
   };
 };

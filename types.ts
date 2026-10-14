@@ -41,6 +41,8 @@ export interface Video {
   views: number;
   duration: string;
   isPremium: boolean;
+  accessTier?: 'free' | 'premium';
+  freeEpisodes?: number;
   author: string;
   description?: string;
   category: string;
@@ -52,10 +54,13 @@ export interface Video {
   transcript?: string;
   transcriptUrl?: string;
   uploadDate?: string;
+  editorialUpdatedAt?: string;
   // Series metadata
   seriesTitle?: string;   // Parent series name, e.g. "Nairobi Noir"
   seriesId?: string;
   seriesSynopsis?: string;
+  seriesPosterUrl?: string;
+  seriesTrailerUrl?: string;
   seasonSynopsis?: string;
   episodeSynopsis?: string;
   seriesFormat?: 'standard' | 'micro-drama';

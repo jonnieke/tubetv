@@ -3,6 +3,17 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/watch/(.*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|WhatsApp|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview).*"
+        }
+      ],
+      "destination": "/api/og?id=$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

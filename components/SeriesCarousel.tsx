@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import type { Video } from '../types';
 import { compareEpisodes, isMicroDrama, seriesKey } from '../lib/series';
+import { publicMediaUrl } from '../lib/mediaUrl';
 import CatalogueArtwork from './CatalogueArtwork';
 import SeriesDetails from './SeriesDetails';
 
@@ -18,9 +19,10 @@ const SeriesCard: React.FC<{ episodes: Video[]; onPlay: (video: Video) => void; 
   const first = episodes[0];
   const synopsis = episodes.find(episode => episode.seriesSynopsis)?.seriesSynopsis;
   const portrait = isMicroDrama(first);
-  return <article className={`cinema-series-card shrink-0 overflow-hidden ${portrait ? 'cinema-series-vertical w-[200px] md:w-[240px]' : 'w-[300px] md:w-[340px]'}`}>
-    <button type="button" onClick={portrait ? () => onPlay(first) : onDetails} aria-label={portrait ? `Watch ${first.seriesTitle || first.title} from episode ${first.episode || 1}` : `Explore ${first.seriesTitle || first.title} seasons and episodes`} className={`cinema-series-art relative block w-full overflow-hidden text-left group ${portrait ? 'aspect-[9/16]' : 'aspect-video'}`}>
-      <CatalogueArtwork src={first.thumbnail} className="h-full w-full object-cover" />
+  const poster = episodes.map(episode => publicMediaUrl(episode.seriesPosterUrl)).find(Boolean);
+  return <article className={`cinema-series-card shrink-0 overflow-hidden ${portrait || poster ? 'cinema-series-vertical w-[200px] md:w-[240px]' : 'w-[300px] md:w-[340px]'}`}>
+    <button type="button" onClick={portrait ? () => onPlay(first) : onDetails} aria-label={portrait ? `Watch ${first.seriesTitle || first.title} from episode ${first.episode || 1}` : `Explore ${first.seriesTitle || first.title} seasons and episodes`} className={`cinema-series-art relative block w-full overflow-hidden text-left group ${portrait && !poster ? 'aspect-[9/16]' : poster ? 'aspect-[2/3]' : 'aspect-video'}`}>
+      <CatalogueArtwork src={poster || first.thumbnail} className="h-full w-full object-cover" />
       <span className="cinema-series-play" aria-hidden="true"><Play size={16} fill="currentColor" /></span>
     </button>
     <div className="cinema-series-info p-4">

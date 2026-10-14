@@ -27,10 +27,38 @@ function headers(origin: string) {
   };
 }
 
+const ipCounts = new Map<string, { count: number; resetAt: number }>();
+const MAX_EVENTS_PER_MINUTE = 60;
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  if (ipCounts.size > 5000) {
+    for (const [key, value] of ipCounts.entries()) {
+      if (now > value.resetAt) ipCounts.delete(key);
+    }
+  }
+  const record = ipCounts.get(ip);
+  if (!record || now > record.resetAt) {
+    ipCounts.set(ip, { count: 1, resetAt: now + 60000 });
+    return false;
+  }
+  record.count += 1;
+  return record.count > MAX_EVENTS_PER_MINUTE;
+}
+
 serve(async (req) => {
   const origin = allowedOrigin(req);
   if (req.method === "OPTIONS") return new Response(null, { status: origin ? 204 : 403, headers: headers(origin) });
   if (req.method !== "POST" || !origin) return new Response(null, { status: 403 });
+  
+  const clientIp = req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
+  if (isRateLimited(clientIp)) {
+    return new Response(JSON.stringify({ error: "Too many events. Please try again later." }), {
+      status: 429,
+      headers: { ...headers(origin), "Content-Type": "application/json" }
+    });
+  }
+
   if (Number(req.headers.get("Content-Length") || 0) > 4096) return new Response(null, { status: 413 });
   const raw = await req.text();
   if (raw.length > 4096) return new Response(null, { status: 413, headers: headers(origin) });

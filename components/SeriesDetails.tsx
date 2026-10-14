@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, Play, Plus, X } from 'lucide-react';
 import type { Video } from '../types';
 import { isMicroDrama } from '../lib/series';
+import { publicMediaUrl } from '../lib/mediaUrl';
 import CatalogueArtwork from './CatalogueArtwork';
 
 interface Props {
@@ -16,6 +17,8 @@ interface Props {
 export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLater, onPlay, onClose }: Props) {
   const first = episodes[0];
   const portrait = isMicroDrama(first);
+  const poster = episodes.map(episode => publicMediaUrl(episode.seriesPosterUrl)).find(Boolean);
+  const trailer = episodes.map(episode => publicMediaUrl(episode.seriesTrailerUrl)).find(Boolean);
   const synopsis = episodes.find(episode => episode.seriesSynopsis)?.seriesSynopsis;
   const seasons = [...new Set(episodes.map(episode => episode.season || 1))].sort((a, b) => a - b);
   const [season, setSeason] = useState(first.season || 1);
@@ -49,13 +52,15 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
     <div ref={dialogRef} className="series-details-panel" role="dialog" aria-modal="true" aria-labelledby="series-details-title">
       <header className="series-details-bar"><span className="cinema-card-kicker">{portrait ? 'MICRO DRAMA' : 'SERIES'} · {episodes.length} {episodes.length === 1 ? 'EPISODE' : 'EPISODES'}</span><button type="button" onClick={onClose} aria-label="Close series details"><X size={20} /></button></header>
       <div className="series-details-scroll">
-        <div className={`series-details-feature ${portrait ? 'series-details-feature-portrait' : ''}`}>
-          <CatalogueArtwork src={first.thumbnail} className="series-details-art" />
+        <div className={`series-details-feature ${portrait || poster ? 'series-details-feature-portrait' : ''}`}>
+          <CatalogueArtwork src={poster || first.thumbnail} className="series-details-art" />
           <div className="series-details-feature-copy">
             <h2 id="series-details-title">{first.seriesTitle || first.title}</h2>
             <p className="series-details-meta">{first.author}{first.genre ? ` · ${first.genre}` : ''}{portrait ? ' · Vertical episodes' : ''}</p>
             {synopsis && <><p className="series-details-label">The story</p><p className="series-details-synopsis">{synopsis}</p></>}
-            <button type="button" className="cinema-primary" onClick={() => onPlay(seasonEpisodes[0])}><Play size={15} fill="currentColor" /> Start season {season}</button>
+            <div className="series-details-actions"><button type="button" className="cinema-primary" onClick={() => onPlay(seasonEpisodes[0])}><Play size={15} fill="currentColor" /> Start season {season}</button>
+              {trailer && <a className="cinema-secondary" href={trailer} target="_blank" rel="noopener noreferrer" aria-label={`Watch trailer for ${first.seriesTitle || first.title} (opens in new tab)`}><Play size={15} /> Watch trailer</a>}
+            </div>
           </div>
         </div>
         <div className="series-details-episode-heading">

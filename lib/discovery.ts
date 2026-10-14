@@ -28,7 +28,7 @@ export function filterDiscoveryVideos(videos: Video[], view: ViewStateOrString, 
   if (!subcategory || subcategory === 'All') return result;
   if (view === ViewState.ORIGINALS) return result.filter(video => subcategory === 'Micro Dramas' ? isMicroDrama(video) : subcategory === 'Movies' ? ['Movies', 'Originals'].includes(video.category) && !isMicroDrama(video) : video.category === subcategory);
   if (view === ViewState.HOME && subcategory === 'Trending') return result;
-  if (view === ViewState.HOME && subcategory === 'Most Watched') return result.filter(video => video.views > 1000);
+  if (view === ViewState.HOME && subcategory === 'Most Watched') return [...result].sort((a, b) => b.views - a.views || (Date.parse(b.uploadDate || '') || 0) - (Date.parse(a.uploadDate || '') || 0));
   if (view === ViewState.HOME && subcategory === 'New Releases') return [...result].sort((a, b) => (Date.parse(b.uploadDate || '') || 0) - (Date.parse(a.uploadDate || '') || 0));
   const term = subcategory.toLocaleLowerCase();
   return result.filter(video => video.genre?.toLocaleLowerCase().includes(term) || video.tags?.some(tag => tag.toLocaleLowerCase().includes(term)) || video.title.toLocaleLowerCase().includes(term));

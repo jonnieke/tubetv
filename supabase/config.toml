@@ -39,3 +39,19 @@ entrypoint = "./functions/admin-ai/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/analytics-summary/index.ts"
+
+[functions.bunny-api]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/bunny-api/index.ts"
+
+[functions.mpesa-stk-push]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/mpesa-stk-push/index.ts"
+
+[functions.mpesa-callback]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/mpesa-callback/index.ts"
+

@@ -17,6 +17,8 @@ describe('Landing presentation preserves the platform', () => {
     expect(html).toContain('Watch later');
     expect(html).toContain('aria-label="Featured titles"');
     expect(html).toContain('Show featured title 2');
+    expect(html).toContain('Previous featured movie');
+    expect(html).toContain('Next featured movie');
     expect(html).not.toContain('A Nairobi Secret');
   });
   it('labels micro dramas as upcoming without inventing playable titles', () => {

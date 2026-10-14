@@ -35,4 +35,16 @@ describe('Series details sheet', () => {
     expect(html).toContain('<select');
     expect(html).toContain('value="2"');
   });
+
+  it('uses a show poster and links the shared trailer without replacing episode art', () => {
+    const episodes = [episode(1), episode(2)].map(item => ({
+      ...item, seriesPosterUrl: 'https://cdn.example.com/show-poster.jpg', seriesTrailerUrl: 'https://video.example.com/trailer',
+    }));
+    const html = renderToStaticMarkup(<SeriesDetails episodes={episodes} watchLaterIds={[]}
+      onToggleWatchLater={() => {}} onPlay={() => {}} onClose={() => {}} />);
+    expect(html).toContain('src="https://cdn.example.com/show-poster.jpg"');
+    expect(html).toContain('href="https://video.example.com/trailer"');
+    expect(html).toContain('Watch trailer');
+    expect(html).toContain('src="/real-episode.jpg"');
+  });
 });

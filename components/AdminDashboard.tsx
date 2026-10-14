@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert
+  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
 import UploadSection from './UploadSection';
@@ -9,6 +9,8 @@ import AnalyticsDashboard from './AnalyticsDashboard';
 import { NavItem, Video } from '../types';
 import { normalizeContentRating, ratingDescription, type ContentRating } from '../lib/contentRating';
 import { CONTENT_RATING_ENFORCED } from '../constants';
+import { publicMediaUrl } from '../lib/mediaUrl';
+import { uploadSeriesPoster } from '../services/seriesArtwork';
 
 interface AdminDashboardProps {
   onUploadComplete?: (video: Video) => void;
@@ -45,6 +47,8 @@ const EMPTY_FORM = {
   seriesTitle: '',
   seriesId: '',
   seriesSynopsis: '',
+  seriesPosterUrl: '',
+  seriesTrailerUrl: '',
   seasonSynopsis: '',
   episodeSynopsis: '',
   seriesFormat: 'standard',
@@ -62,6 +66,8 @@ const EMPTY_FORM = {
   contentRating: 'UNRATED' as ContentRating,
   classificationNumber: '',
   tags: '',
+  accessTier: 'free' as 'free' | 'premium',
+  freeEpisodes: '2',
 };
 
 type EditForm = typeof EMPTY_FORM;
@@ -71,6 +77,23 @@ const EDIT_DRAFTS_STORAGE_KEY = 'tube_content_overrides';
 
 const getMeta = (tags: BunnyVideoItem['metaTags'], prop: string) =>
   tags?.find(t => t.property.toLowerCase() === prop.toLowerCase())?.value || '';
+
+function seriesDetailsFor(items: BunnyVideoItem[]) {
+  const details: Record<string, { seriesId: string; seriesSynopsis: string; seriesPosterUrl: string; seriesTrailerUrl: string }> = {};
+  for (const item of items) {
+    const title = getMeta(item.metaTags, 'seriesTitle').trim();
+    if (!title) continue;
+    const key = `${bunnyVideoToVideo(item).category}:${title.toLowerCase()}`;
+    const previous = details[key];
+    details[key] = {
+      seriesId: previous?.seriesId || getMeta(item.metaTags, 'seriesId'),
+      seriesSynopsis: previous?.seriesSynopsis || getMeta(item.metaTags, 'seriesSynopsis'),
+      seriesPosterUrl: previous?.seriesPosterUrl || getMeta(item.metaTags, 'seriesPosterUrl'),
+      seriesTrailerUrl: previous?.seriesTrailerUrl || getMeta(item.metaTags, 'seriesTrailerUrl'),
+    };
+  }
+  return details;
+}
 
 const StatCard = ({ label, value, icon: Icon, color }: { label: string; value: string | number; icon: React.ElementType; color: string }) => (
   <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex items-center gap-4">
@@ -102,13 +125,14 @@ const EditModal = ({
   setForm: React.Dispatch<React.SetStateAction<EditForm>>;
   saving: boolean;
   existingSeries: string[];
-  seriesDetails: Record<string, { seriesId: string; seriesSynopsis: string }>;
+  seriesDetails: Record<string, { seriesId: string; seriesSynopsis: string; seriesPosterUrl: string; seriesTrailerUrl: string }>;
   existingAuthors: string[];
   onSave: () => void;
   onClose: () => void;
 }) => {
   const [thumbError, setThumbError] = useState(false);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
+  const [isUploadingPoster, setIsUploadingPoster] = useState(false);
   const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName);
 
   const handleThumbUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -132,6 +156,21 @@ const EditModal = ({
       alert('Upload error.');
     } finally {
       setIsUploadingThumb(false);
+    }
+  };
+
+  const handlePosterUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsUploadingPoster(true);
+    try {
+      const url = await uploadSeriesPoster(file);
+      setForm(previous => ({ ...previous, seriesPosterUrl: url }));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Poster upload failed.');
+    } finally {
+      setIsUploadingPoster(false);
+      event.target.value = '';
     }
   };
 
@@ -243,7 +282,7 @@ const EditModal = ({
                 </button>
               </div>
             </div>
-            {field('Trailer URL', 'trailerUrl', { placeholder: 'https://... (optional YouTube/CDN trailer link)' })}
+            {form.category !== 'Series' && form.category !== 'Micro Dramas' && field('Trailer URL', 'trailerUrl', { placeholder: 'https://... (optional YouTube/CDN trailer link)' })}
           </div>
 
           {/* Core Metadata */}
@@ -260,6 +299,16 @@ const EditModal = ({
               </div>
               <div className="col-span-3">
                 {field('Main series synopsis', 'seriesSynopsis', { as: 'textarea', placeholder: 'The overall story premise, characters and stakes. Avoid episode spoilers.' })}
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  {field('Overall show poster URL', 'seriesPosterUrl', { placeholder: 'https://... (portrait 2:3 artwork)' })}
+                  {field('Series trailer URL', 'seriesTrailerUrl', { placeholder: 'https://... (public trailer link)' })}
+                </div>
+                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-600 px-3 py-2 text-xs text-white hover:bg-zinc-800">
+                  <UploadCloud size={15} />{isUploadingPoster ? 'Uploading poster…' : 'Upload show poster'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePosterUpload} disabled={isUploadingPoster || saving} className="sr-only" />
+                </label>
+                {publicMediaUrl(form.seriesPosterUrl) && <img src={publicMediaUrl(form.seriesPosterUrl)} alt="Overall show poster preview" className="mt-3 h-40 w-auto rounded-lg border border-zinc-700 object-cover" />}
+                <p className="mt-2 text-xs text-zinc-400">Upload a JPG, PNG or WebP poster up to 5 MB, or paste a public HTTPS image URL. Save Changes to attach it to the show and its episodes; episode thumbnails stay separate.</p>
                 {field('Season summary', 'seasonSynopsis', { as: 'textarea', placeholder: 'What is this season about? Keep later-season twists out.' })}
                 {field('Episode synopsis', 'episodeSynopsis', { as: 'textarea', placeholder: 'What happens in this episode? Keep the cliffhanger a surprise.' })}
                 <p className="mt-2 text-xs text-zinc-400">{form.category === 'Micro Dramas' ? 'Micro Dramas use portrait playback and their own catalogue shelf.' : 'Series use landscape artwork and a season-first episode page.'} Episode numbers must be unique within a season.</p>
@@ -343,6 +392,83 @@ const EditModal = ({
             {field('Classification number', 'classificationNumber', { placeholder: 'Optional KFCB certificate number' })}
           </div>
 
+          {/* Monetization & Access Control */}
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-zinc-300">Monetization & Access Control</p>
+                <p className="text-xs text-zinc-400">Classify whether this video is free for all viewers or premium</p>
+              </div>
+              <span className={`text-xs px-2.5 py-1 rounded-full font-bold border ${form.accessTier === 'premium' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'}`}>
+                {form.accessTier === 'premium' ? '★ PREMIUM' : '✓ FREE'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, accessTier: 'free' }))}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  form.accessTier === 'free'
+                    ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm'
+                    : 'bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full ${form.accessTier === 'free' ? 'bg-emerald-500' : 'bg-zinc-700'}`} />
+                  <span className="font-semibold text-sm text-white">Free Content</span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Open to all viewers. No M-Pesa pass required.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, accessTier: 'premium' }))}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  form.accessTier === 'premium'
+                    ? 'bg-amber-950/40 border-amber-500 text-white shadow-sm'
+                    : 'bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full ${form.accessTier === 'premium' ? 'bg-amber-500' : 'bg-zinc-700'}`} />
+                  <span className="font-semibold text-sm text-white">Premium Content</span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-1">
+                  {form.category === 'Micro Dramas'
+                    ? 'Model 1: Ep 1-2 free teaser, cliffhanger paywall.'
+                    : 'Model 2: Requires 24h (KSh 10) or weekly pass.'}
+                </p>
+              </button>
+            </div>
+
+            {form.category === 'Micro Dramas' && form.accessTier === 'premium' && (
+              <div className="pt-2 border-t border-zinc-800">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-300">Free Cliffhanger Episodes</label>
+                    <p className="text-xs text-zinc-500 mt-0.5">Opening episodes available free before paywall triggers</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={form.freeEpisodes}
+                      onChange={e => setForm(f => ({ ...f, freeEpisodes: e.target.value }))}
+                      className="w-24 bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-red-500"
+                    />
+                    <span className="text-xs text-zinc-400">
+                      {Number(form.freeEpisodes) > 0 ? `Ep 1-${form.freeEpisodes} free; Ep ${Number(form.freeEpisodes) + 1}+ locked` : 'All episodes locked'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Tags */}
           {field('Tags', 'tags', { placeholder: 'farming, maize, kenya (comma-separated)' })}
 
@@ -387,12 +513,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [filterCat, setFilterCat] = useState('All');
   const [sortBy, setSortBy] = useState<'date' | 'views' | 'title'>('date');
   const [filterRating, setFilterRating] = useState<'All' | ContentRating>('All');
+  const [filterAccess, setFilterAccess] = useState<'All' | 'free' | 'premium'>('All');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [editingItem, setEditingItem] = useState<BunnyVideoItem | null>(null);
   const [editForm, setEditForm] = useState<EditForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [visibilitySavingIds, setVisibilitySavingIds] = useState<Set<string>>(new Set());
+  const [tierSavingIds, setTierSavingIds] = useState<Set<string>>(new Set());
 
   // Load overrides from localStorage
   const getOverrides = useCallback((): Record<string, Partial<EditForm>> => {
@@ -436,6 +564,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       seriesTitle: saved.seriesTitle ?? getMeta(item.metaTags, 'seriesTitle'),
       seriesId: saved.seriesId ?? mapped.seriesId ?? '',
       seriesSynopsis: saved.seriesSynopsis ?? mapped.seriesSynopsis ?? '',
+      seriesPosterUrl: saved.seriesPosterUrl ?? mapped.seriesPosterUrl ?? '',
+      seriesTrailerUrl: saved.seriesTrailerUrl ?? mapped.seriesTrailerUrl ?? '',
       seasonSynopsis: saved.seasonSynopsis ?? mapped.seasonSynopsis ?? '',
       episodeSynopsis: saved.episodeSynopsis ?? mapped.episodeSynopsis ?? mapped.description ?? '',
       seriesFormat: saved.seriesFormat ?? mapped.seriesFormat ?? 'standard',
@@ -453,6 +583,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       contentRating: normalizeContentRating(saved.contentRating ?? mapped.contentRating),
       classificationNumber: saved.classificationNumber ?? getMeta(item.metaTags, 'classificationNumber'),
       tags: saved.tags ?? getMeta(item.metaTags, 'tags'),
+      accessTier: (saved.accessTier as 'free' | 'premium') ?? mapped.accessTier ?? (mapped.isPremium ? 'premium' : 'free'),
+      freeEpisodes: saved.freeEpisodes ?? String(mapped.freeEpisodes ?? 2),
     });
     setEditingItem(item);
   };
@@ -462,6 +594,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const episodic = ['Series', 'Micro Dramas'].includes(editForm.category);
     if (episodic && (!editForm.seriesTitle.trim() || ![editForm.season, editForm.episode].every(value => /^[1-9]\d*$/.test(value)))) {
       alert('Enter a series name and positive whole numbers for season and episode.');
+      return;
+    }
+    if (episodic && [editForm.seriesPosterUrl, editForm.seriesTrailerUrl].some(value => value.trim() && !publicMediaUrl(value))) {
+      alert('Use public HTTPS URLs for the show poster and trailer.');
       return;
     }
     const intro = editForm.introEndSeconds.trim();
@@ -480,15 +616,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
     const seriesId = episodic ? editForm.seriesId || siblings.map(item => getMeta(item.metaTags, 'seriesId')).find(Boolean) || crypto.randomUUID() : '';
+    const isPremium = editForm.accessTier === 'premium';
     const normalizedForm = {
       ...editForm, seriesId,
       seriesTitle: episodic ? editForm.seriesTitle.trim() : '',
       seriesSynopsis: episodic ? editForm.seriesSynopsis : '',
+      seriesPosterUrl: episodic ? editForm.seriesPosterUrl.trim() : '',
+      seriesTrailerUrl: episodic ? editForm.seriesTrailerUrl.trim() : '',
       seasonSynopsis: episodic ? editForm.seasonSynopsis : '',
       episodeSynopsis: episodic ? editForm.episodeSynopsis : '',
       season: episodic ? editForm.season : '', episode: episodic ? editForm.episode : '',
       introEndSeconds: episodic ? intro : '', outroStartSeconds: episodic ? outro : '',
       seriesFormat: editForm.category === 'Micro Dramas' ? 'micro-drama' : 'standard',
+      accessTier: editForm.accessTier,
+      isPremium: String(isPremium),
+      freeEpisodes: editForm.category === 'Micro Dramas' ? (editForm.freeEpisodes || '2') : '',
     };
     setEditForm(normalizedForm);
     persistEditDraft(editingItem.guid, normalizedForm);
@@ -497,14 +639,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       // 1. Prepare the updated metadata
       // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds'];
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'accesstier', 'ispremium', 'freeepisodes', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seriesposterurl', 'seriestrailerurl', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds', 'editorialupdatedat'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
       
       const newMetaTags = [
         ...filteredMetaTags,
-        ...Object.entries(normalizedForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) }))
+        ...Object.entries(normalizedForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) })),
+        { property: 'editorialUpdatedAt', value: new Date().toISOString() },
       ];
 
       // 2. Save to Bunny CDN via Supabase Proxy
@@ -518,7 +661,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (result) {
         // Bunny metadata has no multi-video transaction. Keep the draft until
         // every shared-series update succeeds, so a partial save can be retried.
-        const shared = { seriesId, seriesTitle: normalizedForm.seriesTitle, seriesSynopsis: normalizedForm.seriesSynopsis, seriesFormat: normalizedForm.seriesFormat, category: normalizedForm.category };
+        const shared = { seriesId, seriesTitle: normalizedForm.seriesTitle, seriesSynopsis: normalizedForm.seriesSynopsis, seriesPosterUrl: normalizedForm.seriesPosterUrl, seriesTrailerUrl: normalizedForm.seriesTrailerUrl, seriesFormat: normalizedForm.seriesFormat, category: normalizedForm.category };
         for (const sibling of siblings) {
           const sameSeason = Number(getMeta(sibling.metaTags, 'season') || 1) === Number(normalizedForm.season);
           const siblingShared = sameSeason && normalizedForm.seasonSynopsis.trim() ? { ...shared, seasonSynopsis: normalizedForm.seasonSynopsis } : shared;
@@ -580,6 +723,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const toggleAccessTier = async (item: BunnyVideoItem) => {
+    if (tierSavingIds.has(item.guid)) return;
+    const mapped = bunnyVideoToVideo(item);
+    const newTier = mapped.accessTier === 'premium' ? 'free' : 'premium';
+    const isPremium = newTier === 'premium';
+    setTierSavingIds((current) => new Set(current).add(item.guid));
+
+    const keys = ['accesstier', 'ispremium'];
+    const filtered = (item.metaTags || []).filter(t => !keys.includes(t.property.toLowerCase()));
+    const newMetaTags = [
+      ...filtered,
+      { property: 'accessTier', value: newTier },
+      { property: 'isPremium', value: String(isPremium) },
+      { property: 'editorialUpdatedAt', value: new Date().toISOString() },
+    ];
+
+    setItems((current) => current.map((video) => (
+      video.guid === item.guid ? { ...video, metaTags: newMetaTags } : video
+    )));
+
+    try {
+      await updateVideoMetadata(item.guid, { metaTags: newMetaTags });
+    } catch (err) {
+      console.error('Failed to toggle access tier:', err);
+    } finally {
+      setTierSavingIds((current) => {
+        const next = new Set(current);
+        next.delete(item.guid);
+        return next;
+      });
+    }
+  };
+
   // Merge overrides into display items
   const overrides = getOverrides();
   const enriched = items.map(item => {
@@ -589,7 +765,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ...item,
       title: o.title || item.title,
       metaTags: [
-        ...(item.metaTags || []).filter(t => !['category','author','genre','description','thumbnailUrl','trailerUrl','productionYear','isPremium','tags'].includes(t.property.toLowerCase())),
+        ...(item.metaTags || []).filter(t => !['category','author','genre','description','thumbnailUrl','trailerUrl','productionYear','isPremium','accessTier','freeEpisodes','tags'].includes(t.property.toLowerCase())),
         ...(Object.entries(o).map(([k, v]) => ({ property: k, value: String(v) }))),
       ],
     } as BunnyVideoItem;
@@ -600,6 +776,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     .filter(v => {
       const mapped = bunnyVideoToVideo(v);
       if (filterRating !== 'All' && mapped.contentRating !== filterRating) return false;
+      if (filterAccess !== 'All' && mapped.accessTier !== filterAccess) return false;
       if (filterCat !== 'All' && mapped.category !== filterCat && filterCat !== mapped.category) {
         return false;
       }
@@ -629,6 +806,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Stats
   const totalViews = items.reduce((s, v) => s + (v.views ?? 0), 0);
   const unratedCount = enriched.filter(v => bunnyVideoToVideo(v).contentRating === 'UNRATED').length;
+  const freeCount = enriched.filter(v => bunnyVideoToVideo(v).accessTier === 'free').length;
+  const premiumCount = enriched.filter(v => bunnyVideoToVideo(v).accessTier === 'premium').length;
   const catBreakdown: Record<string, number> = {};
   enriched.forEach(v => {
     const cat = bunnyVideoToVideo(v).category;
@@ -696,7 +875,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div>
               <h2 className="text-xl font-bold text-white">Content Library</h2>
               <p className="text-zinc-400 text-xs mt-1">
-                {items.length} videos · {Object.keys(overrides).length} with local edits
+                {items.length} videos · {freeCount} Free · {premiumCount} Premium
               </p>
             </div>
         <button
@@ -710,12 +889,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         <StatCard label="Total Videos" value={items.length} icon={Film} color="bg-red-600/80" />
         <StatCard label="Total Views" value={totalViews >= 1000 ? `${(totalViews / 1000).toFixed(1)}K` : totalViews} icon={Eye} color="bg-blue-600/80" />
-        <StatCard label="Originals" value={(catBreakdown['Originals'] || 0)} icon={Play} color="bg-purple-600/80" />
-        <StatCard label="Categories" value={Object.keys(catBreakdown).length} icon={Tag} color="bg-green-600/80" />
-        <StatCard label="Needs Rating" value={unratedCount} icon={ShieldAlert} color="bg-amber-600/80" />
+        <StatCard label="Free Content" value={freeCount} icon={Play} color="bg-emerald-600/80" />
+        <StatCard label="Premium Pass" value={premiumCount} icon={Star} color="bg-amber-600/80" />
+        <StatCard label="Categories" value={Object.keys(catBreakdown).length} icon={Tag} color="bg-purple-600/80" />
+        <StatCard label="Needs Rating" value={unratedCount} icon={ShieldAlert} color="bg-rose-600/80" />
       </div>
 
       {/* Category breakdown bar */}
@@ -746,7 +926,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search & Filters */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row">
         <div className="relative min-w-0 flex-1">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
@@ -763,6 +943,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
           )}
         </div>
+        <select
+          aria-label="Filter by access tier"
+          value={filterAccess}
+          onChange={e => setFilterAccess(e.target.value as 'All' | 'free' | 'premium')}
+          className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-white focus:border-red-500 focus:outline-none"
+        >
+          <option value="All">All access tiers</option>
+          <option value="free">✓ Free content only</option>
+          <option value="premium">★ Premium only</option>
+        </select>
         <select
           aria-label="Filter by content rating"
           value={filterRating}
@@ -841,10 +1031,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <p className="text-zinc-500 text-xs flex items-center gap-1 mt-0.5">
                             <User size={10} /> {o?.author || mapped.author}
                           </p>
-                          <div className="flex items-center gap-1.5 mt-1">
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                             <span className={`text-[9px] px-1.5 py-0.5 rounded border ${mapped.contentRating === 'UNRATED' ? 'bg-amber-600/20 text-amber-400 border-amber-600/30' : 'bg-zinc-800 text-zinc-300 border-zinc-700'}`}>
                               {mapped.contentRating}
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => void toggleAccessTier(item)}
+                              disabled={tierSavingIds.has(item.guid)}
+                              title="Click to toggle between Free and Premium pass"
+                              className={`text-[9px] px-2 py-0.5 rounded font-bold border transition-all ${
+                                mapped.accessTier === 'premium'
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                              }`}
+                            >
+                              {tierSavingIds.has(item.guid) ? '...' : mapped.accessTier === 'premium' ? '★ PREMIUM' : '✓ FREE'}
+                            </button>
+                            {mapped.category === 'Micro Dramas' && mapped.accessTier === 'premium' && (
+                              <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded">
+                                Ep 1-{mapped.freeEpisodes ?? 2} free
+                              </span>
+                            )}
                             {isHidden && <span className="text-[9px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded border border-zinc-600">HIDDEN</span>}
                             {isSaved && <span className="text-[9px] bg-green-600/20 text-green-400 px-1.5 py-0.5 rounded border border-green-600/30">EDITED</span>}
                           </div>
@@ -916,7 +1124,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setForm={setEditForm}
           saving={saving}
           existingSeries={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'seriesTitle')).filter(Boolean))) as string[]).sort()}
-          seriesDetails={Object.fromEntries(items.filter(item => getMeta(item.metaTags, 'seriesTitle')).map(item => [`${bunnyVideoToVideo(item).category}:${getMeta(item.metaTags, 'seriesTitle').trim().toLowerCase()}`, { seriesId: getMeta(item.metaTags, 'seriesId'), seriesSynopsis: getMeta(item.metaTags, 'seriesSynopsis') }]))}
+          seriesDetails={seriesDetailsFor(items)}
           existingAuthors={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'author') || getMeta(v.metaTags, 'creator') || 'Tube Creator').filter(Boolean))) as string[]).sort()}
           onSave={saveEdit}
           onClose={() => setEditingItem(null)}

@@ -29,4 +29,8 @@ describe('discovery filtering', () => {
     const dated = [video('old', 'Earlier', 'Movies', { uploadDate: '2026-01-01' }), video('new', 'Later', 'Movies', { uploadDate: '2026-08-01' })];
     expect(filterDiscoveryVideos(dated, ViewState.HOME, 'New Releases', '').map(item => item.id)).toEqual(['new', 'old']);
   });
+  it('shows Most Watched in view order without an arbitrary view threshold', () => {
+    const watched = [video('low', 'One view', 'Movies', { views: 1 }), video('high', 'Ten views', 'Movies', { views: 10 })];
+    expect(filterDiscoveryVideos(watched, ViewState.HOME, 'Most Watched', '').map(item => item.id)).toEqual(['high', 'low']);
+  });
 });
