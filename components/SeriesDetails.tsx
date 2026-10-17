@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Play, Plus, X } from 'lucide-react';
 import type { Video } from '../types';
-import { isMicroDrama } from '../lib/series';
+import { isMicroDrama, isFreeVideo } from '../lib/series';
 import CatalogueArtwork from './CatalogueArtwork';
 
 interface Props {
@@ -71,7 +71,14 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
             <button type="button" onClick={() => onPlay(episode)} className="series-details-episode-play" aria-label={`Watch episode ${episode.episode || 1}: ${episode.title}`}>
               <CatalogueArtwork src={episode.thumbnail} className={`series-details-episode-art ${portrait ? 'series-details-episode-art-portrait' : ''}`} />
               <span className="series-details-episode-copy">
-                <span className="series-details-episode-kicker">EPISODE {episode.episode || 1}{episode.duration ? ` · ${episode.duration}` : ''}</span>
+                <span className="series-details-episode-kicker flex items-center gap-2">
+                  <span>EPISODE {episode.episode || 1}{episode.duration ? ` · ${episode.duration}` : ''}</span>
+                  {isFreeVideo(episode) && (
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-600/90 text-white font-black text-[9px] uppercase tracking-wider">
+                      FREE
+                    </span>
+                  )}
+                </span>
                 <strong>{episode.title}</strong>
                 {(episode.episodeSynopsis || episode.description) && <span className="series-details-episode-synopsis">{episode.episodeSynopsis || episode.description}</span>}
               </span>

@@ -4,3 +4,4 @@ Disallow: /admin
 Disallow: /upload
 
 Sitemap: https://www.tube.co.ke/sitemap.xml
+Sitemap: https://www.tube.co.ke/sitemap-video.xml

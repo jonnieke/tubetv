@@ -9,6 +9,7 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { canWatchContent, normalizeContentRating, ratingDescription } from '../lib/contentRating';
 import { trackEvent } from '../lib/analytics';
 import { shouldSaveData } from '../lib/network';
+import { isFreeVideo } from '../lib/series';
 import CatalogueArtwork from './CatalogueArtwork';
 
 interface VideoCardProps {
@@ -425,6 +426,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 <Clock size={10} />
                 {video.duration}
             </div>
+
+            {/* Selected Free Content Badge (Only free videos show a badge; premium shows no badge) */}
+            {isFreeVideo(video) && (
+              <div className="absolute top-2 left-2 rounded bg-emerald-600/95 px-2 py-0.5 text-[10px] font-black tracking-wider text-white shadow-md pointer-events-none z-10 uppercase flex items-center gap-1">
+                <span>FREE</span>
+              </div>
+            )}
 
             <div className="absolute top-2 right-2 rounded bg-black/85 px-2 py-1 text-xs font-bold text-white">
               {contentRating}

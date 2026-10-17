@@ -1,74 +1,121 @@
-self.addEventListener('install', function(event) {
-  event.waitUntil(self.skipWaiting());
-});
+// ==============================================================================
+// TubeTV Service Worker: Offline-First & Low-Bandwidth Caching
+// Target: Safari iOS, Chrome Android, Edge, Desktop PWA
+// ==============================================================================
 
-self.addEventListener('activate', function(event) {
-  event.waitUntil((async function() {
-    const cacheNames = await caches.keys();
-    const staleAppCaches = cacheNames.filter(function(cacheName) {
-      return cacheName.startsWith('tube-tv-shell-') ||
-        cacheName.startsWith('tube-tv-static-') ||
-        cacheName.startsWith('workbox-');
-    });
+const CACHE_VERSION = 'tubetv-v1.0.0';
+const STATIC_CACHE = `tubetv-static-${CACHE_VERSION}`;
+const IMAGE_CACHE = `tubetv-images-${CACHE_VERSION}`;
+const API_CACHE = `tubetv-api-${CACHE_VERSION}`;
 
-    await Promise.all(staleAppCaches.map(function(cacheName) {
-      return caches.delete(cacheName);
-    }));
-    await self.clients.claim();
+// Pre-cached critical assets
+const PRECACHE_URLS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/offline.html',
+  '/favicon.ico',
+];
 
-    // Older TubeTV workers cached the application shell. Reload their open
-    // tabs once after cleanup so they cannot keep calling APIs with stale code.
-    if (staleAppCaches.length > 0) {
-      const windowClients = await self.clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true
-      });
-      await Promise.all(windowClients.map(function(client) {
-        return 'navigate' in client ? client.navigate(client.url) : undefined;
-      }));
-    }
-  })());
-});
-
-self.addEventListener('push', function(event) {
-  if (event.data) {
-    const data = event.data.json();
-    let targetUrl = '/';
-    try {
-      const candidate = new URL(data.url || '/', self.location.origin);
-      if (candidate.origin === self.location.origin) targetUrl = candidate.href;
-    } catch {
-      targetUrl = '/';
-    }
-    const options = {
-      body: data.body,
-      vibrate: [100, 50, 100],
-      data: {
-        dateOfArrival: Date.now(),
-        primaryKey: '2',
-        url: targetUrl
-      }
-    };
-    event.waitUntil(
-      self.registration.showNotification(data.title, options)
-    );
-  }
-});
-
-self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
+// Install Event: Pre-cache core shell & offline page
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    clients.matchAll({ type: 'window' }).then(function(clientList) {
-      const url = event.notification.data.url;
-      for (let i = 0; i < clientList.length; i++) {
-        const client = clientList[i];
-        if (client.url === url && 'focus' in client) {
-          return client.focus();
+    caches.open(STATIC_CACHE).then((cache) => {
+      return cache.addAll(PRECACHE_URLS);
+    }).then(() => self.skipWaiting())
+  );
+});
+
+// Activate Event: Clean up old version caches
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.map((key) => {
+          if (![STATIC_CACHE, IMAGE_CACHE, API_CACHE].includes(key)) {
+            return caches.delete(key);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+// Fetch Event: Intelligent routing strategy
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // 1. Skip non-GET requests and cross-origin video byte streams (HLS .ts chunks are buffered by player)
+  if (request.method !== 'GET') return;
+  if (url.pathname.endsWith('.ts') || url.pathname.endsWith('.m4s')) return;
+
+  // 2. Images (Thumbnails, Posters, Bunny CDN thumbs) -> Cache First, fall back to network
+  if (
+    request.destination === 'image' ||
+    url.hostname.includes('b-cdn.net') ||
+    url.pathname.match(/\.(png|jpg|jpeg|webp|svg|gif|ico)$/)
+  ) {
+    event.respondWith(
+      caches.open(IMAGE_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+
+        try {
+          const networkResponse = await fetch(request);
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(request, networkResponse.clone());
+          }
+          return networkResponse;
+        } catch {
+          // If offline and image missing, return null or fallback
+          return cached || new Response('', { status: 408 });
         }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow(url);
-      }
-    })
+      })
+    );
+    return;
+  }
+
+  // 3. Static Assets (Scripts, CSS, Fonts) -> Stale-While-Revalidate
+  if (
+    request.destination === 'script' ||
+    request.destination === 'style' ||
+    request.destination === 'font' ||
+    url.pathname.startsWith('/assets/')
+  ) {
+    event.respondWith(
+      caches.open(STATIC_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        const fetchPromise = fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(request, networkResponse.clone());
+          }
+          return networkResponse;
+        }).catch(() => cached);
+
+        return cached || fetchPromise;
+      })
+    );
+    return;
+  }
+
+  // 4. HTML Navigation Requests -> Network First, fall back to offline.html
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(async () => {
+        const cache = await caches.open(STATIC_CACHE);
+        const cachedIndex = await cache.match('/index.html');
+        if (cachedIndex) return cachedIndex;
+
+        const cachedOffline = await cache.match('/offline.html');
+        return cachedOffline || new Response('Offline', { status: 503 });
+      })
+    );
+    return;
+  }
+
+  // Default fallback
+  event.respondWith(
+    caches.match(request).then((response) => response || fetch(request))
   );
 });

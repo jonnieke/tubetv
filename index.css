@@ -420,3 +420,13 @@
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+.pt-safe {
+    padding-top: max(16px, env(safe-area-inset-top));
+}
+.pb-safe {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+.text-shadow-sm {
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+}

@@ -23,4 +23,19 @@ describe('video discovery metadata', () => {
     expect(schema['@type']).toBe('VideoObject');
     expect(schema.isFamilyFriendly).toBe(true);
   });
+
+  it('emits TVEpisode structured data for micro-dramas', () => {
+    const drama = {
+      ...video,
+      category: 'Micro Dramas',
+      seriesFormat: 'micro-drama' as const,
+      seriesTitle: 'Nairobi Secrets',
+      episode: 3,
+      season: 1,
+    };
+    const schema = videoStructuredData(drama);
+    expect(schema['@type']).toBe('TVEpisode');
+    expect((schema as any).episodeNumber).toBe(3);
+    expect((schema as any).partOfSeries?.name).toBe('Nairobi Secrets');
+  });
 });

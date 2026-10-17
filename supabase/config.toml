@@ -39,3 +39,24 @@ entrypoint = "./functions/admin-ai/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/analytics-summary/index.ts"
+
+[functions.paystack-checkout]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/paystack-checkout/index.ts"
+
+[functions.paystack-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/paystack-webhook/index.ts"
+
+[functions.playback-token]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/playback-token/index.ts"
+
+[functions.payout-transfer]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/payout-transfer/index.ts"
+

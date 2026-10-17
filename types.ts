@@ -17,7 +17,9 @@ export enum ViewState {
   UPLOAD = 'UPLOAD',
   WATCH_LATER = 'WATCH_LATER',
   SETTINGS = 'SETTINGS',
-  ADMIN = 'ADMIN'
+  ADMIN = 'ADMIN',
+  CREATOR_STUDIO = 'CREATOR_STUDIO',
+  MODERATION = 'MODERATION'
 }
 
 // Allow ViewState to be treated as string for dynamic categories

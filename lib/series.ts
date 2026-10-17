@@ -11,3 +11,16 @@ export function nextEpisode(videos: Video[], currentId: string): Video | undefin
   const episodes = videos.filter(video => seriesKey(video) === seriesKey(current)).sort(compareEpisodes);
   return episodes[episodes.findIndex(video => video.id === currentId) + 1];
 }
+
+/**
+ * Determines whether a video or episode is available for free preview.
+ * By default, TubeTV content is premium (without showing a badge).
+ * Only selected free episodes/videos display the "FREE" badge.
+ */
+export function isFreeVideo(video: Video): boolean {
+  if (isMicroDrama(video)) {
+    // Only Episode 1 is free preview; Episode 2+ requires coins or VIP pass
+    return (video.episode || 1) <= 1 && video.isPremium === false;
+  }
+  return video.isPremium === false;
+}

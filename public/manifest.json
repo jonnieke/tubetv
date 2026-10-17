@@ -1,18 +1,19 @@
 {
-  "name": "TubeTV",
+  "name": "TubeTV - Kenyan Micro Dramas & Originals",
   "short_name": "TubeTV",
-  "description": "Kenya's home for original content, education, farming, faith and live streams.",
-  "start_url": "/",
+  "description": "Kenya's home for vertical micro dramas, movies, comedy, education, and diaspora stories.",
+  "start_url": "/?view=MICRO_DRAMAS",
   "display": "standalone",
   "background_color": "#09090b",
   "theme_color": "#dc2626",
-  "orientation": "any",
+  "orientation": "portrait-primary",
   "lang": "en-KE",
   "scope": "/",
-  "categories": ["entertainment", "education", "news"],
+  "categories": ["entertainment", "video", "movies"],
   "shortcuts": [
-    { "name": "Watch Live", "short_name": "Live", "url": "/?view=LIVE" },
+    { "name": "Micro Dramas", "short_name": "Dramas", "url": "/?view=MICRO_DRAMAS" },
+    { "name": "Explore All", "short_name": "Browse", "url": "/?view=HOME" },
     { "name": "Shorts", "short_name": "Shorts", "url": "/?view=SHORTS" },
-    { "name": "Education", "short_name": "Learn", "url": "/?view=EDUCATION" }
+    { "name": "My Watch List", "short_name": "Watch List", "url": "/?view=WATCH_LATER" }
   ]
 }

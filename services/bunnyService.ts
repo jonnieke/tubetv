@@ -332,7 +332,8 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   const seMatch = activeItem.title?.match(/^S(\d+)\s*E(\d+)\s*[-–:]?\s*/i);
   const parsedSeason = rawSeason ? parseInt(rawSeason) : (seMatch ? parseInt(seMatch[1]) : undefined);
   const parsedEpisode = rawEpisode ? parseInt(rawEpisode) : (seMatch ? parseInt(seMatch[2]) : undefined);
-  const cleanTitle = seMatch ? activeItem.title.replace(seMatch[0], '').trim() : activeItem.title;
+  const rawCleanTitle = seMatch ? activeItem.title.replace(seMatch[0], '').trim() : activeItem.title;
+  const cleanTitle = rawCleanTitle ? rawCleanTitle.replace(/\.(mp4|mov|mkv|webm|avi|m4v)$/i, '').trim() : 'Untitled';
 
   const productionYearRaw = getMeta(activeItem.metaTags, 'productionYear') || getMeta(activeItem.metaTags, 'year');
 
@@ -344,7 +345,11 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     url: getStreamUrl(activeItem.guid),
     duration: formatDuration(activeItem.length),
     views: activeItem.views ?? 0,
-    isPremium: false,
+    isPremium: getMeta(activeItem.metaTags, 'free') === 'true'
+      ? false
+      : (category === 'Micro Dramas' || getMeta(activeItem.metaTags, 'seriesFormat') === 'micro-drama')
+        ? (parsedEpisode ? parsedEpisode > 3 : false)
+        : true,
     author: getMeta(activeItem.metaTags, 'author') || getMeta(activeItem.metaTags, 'creator') || 'Tube Creator',
     category,
     tags: getMeta(activeItem.metaTags, 'tags')

@@ -1,0 +1,28 @@
+# TubeTV
+
+> TubeTV is Kenya's leading streaming platform for vertical micro-dramas, original serials, movies, comedy, and vernacular culture, serving domestic viewers in Kenya and the global African diaspora.
+
+## Platform Summary
+- **Website**: https://www.tube.co.ke
+- **Format**: High-velocity vertical micro-dramas (60–180 second episodes), standard web series, full-length feature films, and shorts.
+- **Languages**: English (en-KE), Swahili (sw-KE), Sheng, and Kenyan regional languages.
+- **Regions**: Kenya (East Africa) and international diaspora (United States, United Kingdom, Europe, Canada, UAE, Australia).
+- **Access**: Free-to-browse with no account required for initial playback.
+
+## Content Verticals
+- **Micro Dramas**: Fast-paced, vertical 9:16 mobile-first drama series characterized by rapid cliffhangers, high emotional stakes, and continuous episode progression.
+- **Originals & Movies**: Kenyan narrative films, urban comedies, and social commentaries set in Nairobi, Mombasa, and rural hubs.
+- **Shorts**: Standalone bite-sized creator moments, trending comedy skits, and cultural highlights.
+- **Education**: Competency-Based Curriculum (CBC) lessons, secondary revision (KCSE), and digital skills.
+- **Farmers (Shamba)**: Agribusiness guidance, crop management, dairy farming, and climate resilience.
+- **Faith**: Inspiring sermons, gospel worship, and family devotionals.
+- **Kids**: Educational cartoons, Swahili nursery rhymes, and traditional African folklore.
+- **Diaspora**: Investment guides, land acquisition, community events, and homecoming stories for Kenyans living abroad.
+
+## Video Streaming Specifications
+- **Delivery Protocol**: HTTP Live Streaming (HLS) with adaptive bitrate switching (360p, 480p, 720p, 1080p).
+- **Data Optimization**: Built-in Data Saver mode tuned for prepaid 3G/4G mobile data bundles in Kenya.
+- **Episode Linking**: Direct episodes can be accessed and deep-linked via `https://www.tube.co.ke/watch/{videoId}`.
+
+## Licensing & Creator Distribution
+TubeTV works with Kenyan independent filmmakers, digital production houses, and African creators. Submissions and catalog inquiries are handled via verified creator portals.

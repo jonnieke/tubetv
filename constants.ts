@@ -8,6 +8,96 @@ import { Video, ShortVideo, DailyStat } from './types';
 export const CONTENT_RATING_ENFORCED = import.meta.env.VITE_CONTENT_RATING_ENFORCED === 'true';
 
 export const MOCK_VIDEOS: Video[] = [
+  // Micro Dramas (Kenyan Vertical Episodic Stories)
+  {
+    id: 'micro-ns-1',
+    title: 'The Stolen Ledger',
+    seriesTitle: 'Nairobi Secrets',
+    seriesId: 'nairobi-secrets',
+    seriesFormat: 'micro-drama',
+    seriesSynopsis: 'When a junior accountant at a Kilimani tech firm discovers an offshore fraud scheme, she becomes the target of a high-stakes corporate syndicate.',
+    seasonSynopsis: 'Season 1: Survival in the City.',
+    episodeSynopsis: 'Wanjiku stumbles upon an encrypted flash drive after her boss mysteriously vanishes from his penthouse.',
+    season: 1,
+    episode: 1,
+    thumbnail: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
+    views: 450000,
+    duration: '1m 45s',
+    isPremium: false,
+    author: 'TubeTV Originals',
+    category: 'Micro Dramas',
+    introEndSeconds: 5,
+    outroStartSeconds: 95,
+    contentRating: 'PG',
+    tags: ['Drama', 'Thriller', 'Nairobi']
+  },
+  {
+    id: 'micro-ns-2',
+    title: 'Midnight Call',
+    seriesTitle: 'Nairobi Secrets',
+    seriesId: 'nairobi-secrets',
+    seriesFormat: 'micro-drama',
+    seriesSynopsis: 'When a junior accountant at a Kilimani tech firm discovers an offshore fraud scheme, she becomes the target of a high-stakes corporate syndicate.',
+    seasonSynopsis: 'Season 1: Survival in the City.',
+    episodeSynopsis: 'An unknown caller gives Wanjiku 30 minutes to drop the drive at Westlands roundabout or her family faces the consequences.',
+    season: 1,
+    episode: 2,
+    thumbnail: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80',
+    views: 380000,
+    duration: '2m 10s',
+    isPremium: true,
+    author: 'TubeTV Originals',
+    category: 'Micro Dramas',
+    introEndSeconds: 4,
+    outroStartSeconds: 120,
+    contentRating: 'PG',
+    tags: ['Drama', 'Thriller', 'Nairobi']
+  },
+  {
+    id: 'micro-ns-3',
+    title: 'The Trap in Westlands',
+    seriesTitle: 'Nairobi Secrets',
+    seriesId: 'nairobi-secrets',
+    seriesFormat: 'micro-drama',
+    seriesSynopsis: 'When a junior accountant at a Kilimani tech firm discovers an offshore fraud scheme, she becomes the target of a high-stakes corporate syndicate.',
+    seasonSynopsis: 'Season 1: Survival in the City.',
+    episodeSynopsis: 'Wanjiku arrives at the drop point with an undercover DCI detective, only to find the caller was waiting for someone else.',
+    season: 1,
+    episode: 3,
+    thumbnail: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80',
+    views: 290000,
+    duration: '2m 05s',
+    isPremium: true,
+    author: 'TubeTV Originals',
+    category: 'Micro Dramas',
+    introEndSeconds: 5,
+    outroStartSeconds: 115,
+    contentRating: 'PG',
+    tags: ['Drama', 'Thriller', 'Nairobi']
+  },
+  {
+    id: 'micro-ns-4',
+    title: 'Syndicate Exposed',
+    seriesTitle: 'Nairobi Secrets',
+    seriesId: 'nairobi-secrets',
+    seriesFormat: 'micro-drama',
+    seriesSynopsis: 'When a junior accountant at a Kilimani tech firm discovers an offshore fraud scheme, she becomes the target of a high-stakes corporate syndicate.',
+    seasonSynopsis: 'Season 1: Survival in the City.',
+    episodeSynopsis: 'Cornered in an underground garage on Parklands Road, Wanjiku must choose between signing away her life or hitting the decrypt broadcast switch.',
+    season: 1,
+    episode: 4,
+    thumbnail: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80',
+    views: 180000,
+    duration: '2m 15s',
+    isPremium: true,
+    author: 'TubeTV Originals',
+    category: 'Micro Dramas',
+    introEndSeconds: 5,
+    outroStartSeconds: 125,
+    contentRating: 'PG',
+    tags: ['Drama', 'Thriller', 'Nairobi']
+  },
+
   // Trending / General
   {
     id: '1',
@@ -15,7 +105,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=1',
     views: 1200000,
     duration: '24m',
-    isPremium: false,
+    isPremium: true,
     author: 'Discover 254',
     category: 'Trending',
     tags: ['Lifestyle', 'Travel']
@@ -26,7 +116,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=2',
     views: 890000,
     duration: '45m',
-    isPremium: false,
+    isPremium: true,
     author: 'Urban Pulse',
     category: 'Originals',
     tags: ['Documentary', 'Culture']
@@ -39,7 +129,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=3',
     views: 3400000,
     duration: '22m',
-    isPremium: false,
+    isPremium: true,
     author: 'Laugh Industry',
     category: 'Originals',
     tags: ['Comedy', 'Series']
@@ -50,7 +140,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=4',
     views: 450000,
     duration: '30m',
-    isPremium: false,
+    isPremium: true,
     author: 'Youth TV',
     category: 'Originals',
     tags: ['Drama', 'Youth']
@@ -63,7 +153,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=5',
     views: 12000,
     duration: '15m',
-    isPremium: false,
+    isPremium: false, // Selected free educational preview
     author: 'Teacher Wanjiku',
     category: 'Education',
     tags: ['CBC', 'Math', 'Primary']
@@ -74,7 +164,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=6',
     views: 85000,
     duration: '1h 10m',
-    isPremium: false,
+    isPremium: true,
     author: 'Smart Brains Academy',
     category: 'Education',
     tags: ['High School', 'Revision']
@@ -85,7 +175,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=7',
     views: 5000,
     duration: '10m',
-    isPremium: false,
+    isPremium: true,
     author: 'Soma AI',
     category: 'Education',
     tags: ['Tech', 'Kids']
@@ -98,7 +188,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=8',
     views: 230000,
     duration: '18m',
-    isPremium: false,
+    isPremium: true,
     author: 'Shamba Shape Up Fan',
     category: 'Farmers',
     tags: ['Agribusiness', 'Crops']
@@ -109,7 +199,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=9',
     views: 150000,
     duration: '25m',
-    isPremium: false,
+    isPremium: true,
     author: 'AgriBiz Kenya',
     category: 'Farmers',
     tags: ['Livestock', 'Dairy']
@@ -122,7 +212,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=10',
     views: 45000,
     duration: '1h 30m',
-    isPremium: false,
+    isPremium: true,
     author: 'City Church',
     category: 'Faith',
     tags: ['Worship', 'Live']
@@ -133,7 +223,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=11',
     views: 8000,
     duration: '5m',
-    isPremium: false,
+    isPremium: true,
     author: 'Faith Kids',
     category: 'Faith',
     tags: ['Kids', 'Bible']
@@ -146,7 +236,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=12',
     views: 560000,
     duration: '3m',
-    isPremium: false,
+    isPremium: false, // Selected free kids song
     author: 'Watoto TV',
     category: 'Kids',
     tags: ['Learning', 'Music']
@@ -157,7 +247,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=13',
     views: 120000,
     duration: '10m',
-    isPremium: false,
+    isPremium: true,
     author: 'African Tales',
     category: 'Kids',
     tags: ['Folktales']
@@ -170,7 +260,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=14',
     views: 95000,
     duration: '40m',
-    isPremium: false,
+    isPremium: true,
     author: 'Diaspora Connect',
     category: 'Diaspora',
     tags: ['Investment', 'Real Estate']
@@ -181,7 +271,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=15',
     views: 210000,
     duration: '2h',
-    isPremium: false,
+    isPremium: true,
     author: 'Events 254',
     category: 'Diaspora',
     tags: ['Music', 'Events']
@@ -194,7 +284,7 @@ export const MOCK_VIDEOS: Video[] = [
     thumbnail: 'https://picsum.photos/800/450?random=16',
     views: 300000,
     duration: 'Live',
-    isPremium: false,
+    isPremium: true,
     author: 'Sports Kenya',
     category: 'Live',
     tags: ['Sports']

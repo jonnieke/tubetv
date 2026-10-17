@@ -3,6 +3,25 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/oembed",
+      "destination": "/api/oembed"
+    },
+    {
+      "source": "/sitemap-video.xml",
+      "destination": "/api/sitemap-video"
+    },
+    {
+      "source": "/watch/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(whatsapp|facebook|twitter|telegram|slack|discord|applebot|google|bing|linkedin|pinterest|skype|embedly).*"
+        }
+      ],
+      "destination": "/api/watch?id=:id"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
