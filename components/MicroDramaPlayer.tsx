@@ -865,6 +865,9 @@ export default function MicroDramaPlayer({
                 })}
               </div>
             </div>
+          </div>
+        )}
+
         {/* PAYWALL OVERLAY FOR LOCKED EPISODES */}
         {!isUnlocked && (
           <MicroDramaPaywall
