@@ -41,6 +41,7 @@ const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 const UploadSection = lazy(() => import('./components/UploadSection'));
 const WatchLaterSection = lazy(() => import('./components/WatchLaterSection'));
 const AuthModal = lazy(() => import('./components/AuthModal'));
+const ViewerAuthModal = lazy(() => import('./components/ViewerAuthModal'));
 const SettingsSection = lazy(() => import('./components/SettingsSection'));
 const LiveSection = lazy(() => import('./components/LiveSection'));
 const CreatorStudio = lazy(() => import('./components/CreatorStudio').then(m => ({ default: m.CreatorStudio })));
@@ -63,6 +64,8 @@ const App: React.FC = () => {
     userPhone,
     showLogin,
     setShowLogin,
+    showViewerAuth,
+    setShowViewerAuth,
     handleLogout,
     setCurrentUser,
     setIsAuthenticated,
@@ -500,6 +503,21 @@ const App: React.FC = () => {
           </Suspense>
         )}
 
+        {/* Viewer Welcome Bonus / Authentication Modal */}
+        {showViewerAuth && (
+          <Suspense fallback={null}>
+            <ViewerAuthModal
+              isOpen={showViewerAuth}
+              onClose={() => setShowViewerAuth(false)}
+              onSuccess={(user) => {
+                setCurrentUser(user);
+                setIsAuthenticated(true);
+                setShowViewerAuth(false);
+              }}
+            />
+          </Suspense>
+        )}
+
         {/* Video Playback: Dedicated 9:16 Microdrama Player vs Standard Cinema Player */}
         {activeHeroVideo && (
           isMicroDrama(activeHeroVideo) ? (
@@ -512,7 +530,7 @@ const App: React.FC = () => {
                 onPlayEpisode={openVideo}
                 onClose={closeVideo}
                 isAuthenticated={isAuthenticated}
-                onRequireLogin={() => setShowLogin(true)}
+                onRequireLogin={() => setShowViewerAuth(true)}
               />
             </Suspense>
           ) : (

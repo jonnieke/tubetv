@@ -17,6 +17,8 @@ import {
   fetchWalletBalance,
   unlockEpisodeWithCoins,
   initializePayment,
+  MPESA_PACKAGES,
+  CARD_PACKAGES,
   COIN_PACKAGES,
   VIP_PASSES,
   type CoinWallet,
@@ -39,8 +41,8 @@ export default function MicroDramaPaywall({
   isAuthenticated,
 }: MicroDramaPaywallProps) {
   const [wallet, setWallet] = useState<CoinWallet | null>(null);
-  const [selectedPackage, setSelectedPackage] = useState<CoinPackage>(COIN_PACKAGES[1]);
   const [paymentMethod, setPaymentMethod] = useState<'mpesa' | 'card'>('mpesa');
+  const [selectedPackage, setSelectedPackage] = useState<CoinPackage>(MPESA_PACKAGES[0]);
   const [phone, setPhone] = useState('');
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
@@ -213,10 +215,10 @@ export default function MicroDramaPaywall({
             {/* Coin Package Grid */}
             <div>
               <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 block mb-2">
-                Choose a Coin Bundle
+                {paymentMethod === 'mpesa' ? 'Choose M-Pesa Package' : 'Choose Coin Bundle'}
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {COIN_PACKAGES.map((pkg) => {
+              <div className={`grid ${paymentMethod === 'mpesa' ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
+                {(paymentMethod === 'mpesa' ? MPESA_PACKAGES : CARD_PACKAGES).map((pkg) => {
                   const isSelected = selectedPackage.id === pkg.id;
                   return (
                     <button
@@ -228,21 +230,27 @@ export default function MicroDramaPaywall({
                           : 'bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:bg-zinc-900'
                       }`}
                     >
-                      {pkg.isPopular && (
+                      {pkg.id === 'coins-daily-10' && (
+                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-green-600 text-[9px] font-bold px-2 py-0.2 rounded-full uppercase text-white shadow">
+                          10 Bob
+                        </span>
+                      )}
+                      {pkg.isPopular && pkg.id !== 'coins-daily-10' && (
                         <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-red-600 text-[9px] font-bold px-2 py-0.2 rounded-full uppercase text-white shadow">
                           Best Value
                         </span>
                       )}
                       <div className="flex items-center justify-center gap-1 text-amber-400 font-extrabold text-sm mb-1 mt-1">
                         <Coins className="w-3.5 h-3.5 fill-amber-400" />
-                        <span>{pkg.coins}</span>
+                        <span>{pkg.coins} Coins</span>
                       </div>
                       {pkg.bonus > 0 && (
-                        <div className="text-[10px] text-green-400 font-semibold mb-1">+{pkg.bonus} Free</div>
+                        <div className="text-[10px] text-green-400 font-semibold mb-1">+{pkg.bonus} Bonus</div>
                       )}
-                      <div className="text-xs font-bold text-white">
+                      <div className="text-xs font-extrabold text-white">
                         {paymentMethod === 'mpesa' ? `KES ${pkg.priceKes}` : `$${pkg.priceUsd}`}
                       </div>
+                      <div className="text-[10px] text-zinc-400 mt-0.5">{pkg.name}</div>
                     </button>
                   );
                 })}
@@ -257,11 +265,14 @@ export default function MicroDramaPaywall({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('mpesa')}
+                  onClick={() => {
+                    setPaymentMethod('mpesa');
+                    setSelectedPackage(MPESA_PACKAGES[0]);
+                  }}
                   className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all ${
                     paymentMethod === 'mpesa'
-                      ? 'bg-zinc-900 border-green-500 text-white'
-                      : 'bg-zinc-900/40 border-zinc-800 text-zinc-400'
+                      ? 'bg-zinc-900 border-green-500 text-white shadow-sm'
+                      : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   <Smartphone className="w-4 h-4 text-green-500" />
@@ -269,11 +280,14 @@ export default function MicroDramaPaywall({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('card')}
+                  onClick={() => {
+                    setPaymentMethod('card');
+                    setSelectedPackage(CARD_PACKAGES[1]);
+                  }}
                   className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all ${
                     paymentMethod === 'card'
-                      ? 'bg-zinc-900 border-red-500 text-white'
-                      : 'bg-zinc-900/40 border-zinc-800 text-zinc-400'
+                      ? 'bg-zinc-900 border-red-500 text-white shadow-sm'
+                      : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   <CreditCard className="w-4 h-4 text-red-500" />

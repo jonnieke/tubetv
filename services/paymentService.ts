@@ -19,11 +19,20 @@ export interface CoinPackage {
   isPopular?: boolean;
 }
 
-export const COIN_PACKAGES: CoinPackage[] = [
-  { id: 'coins-100', name: 'Starter Pack', coins: 100, bonus: 0, priceKes: 100, priceUsd: 0.99 },
-  { id: 'coins-300', name: 'Binge Pack', coins: 300, bonus: 50, priceKes: 300, priceUsd: 2.99, isPopular: true },
+export const MPESA_PACKAGES: CoinPackage[] = [
+  { id: 'coins-daily-10', name: 'Daily 10 Bob', coins: 10, bonus: 0, priceKes: 10, priceUsd: 0.99, isPopular: true },
+  { id: 'coins-100', name: 'Starter Pack', coins: 100, bonus: 10, priceKes: 100, priceUsd: 0.99 },
+  { id: 'coins-300', name: 'Binge Pack', coins: 300, bonus: 50, priceKes: 300, priceUsd: 2.99 },
   { id: 'coins-600', name: 'Marathon Pack', coins: 600, bonus: 150, priceKes: 500, priceUsd: 4.99 },
 ];
+
+export const CARD_PACKAGES: CoinPackage[] = [
+  { id: 'coins-100', name: 'Starter Pack', coins: 100, bonus: 0, priceKes: 130, priceUsd: 0.99 },
+  { id: 'coins-300', name: 'Binge Pack', coins: 300, bonus: 50, priceKes: 390, priceUsd: 2.99, isPopular: true },
+  { id: 'coins-600', name: 'Marathon Pack', coins: 600, bonus: 150, priceKes: 650, priceUsd: 4.99 },
+];
+
+export const COIN_PACKAGES: CoinPackage[] = MPESA_PACKAGES;
 
 export const VIP_PASSES = [
   { id: 'pass-daily', name: '24h VIP Day Pass', priceKes: 50, priceUsd: 1.49, description: 'Unlimited drama streaming for 24 hours' },
@@ -52,6 +61,29 @@ export async function fetchWalletBalance(): Promise<CoinWallet | null> {
     bonusCoins: data.bonus_coins || 0,
     totalCoins: (data.coin_balance || 0) + (data.bonus_coins || 0),
   };
+}
+
+/**
+ * Claims or provisions 30 welcome bonus coins for a new viewer
+ */
+export async function claimWelcomeBonus(userId: string): Promise<CoinWallet> {
+  try {
+    const { data } = await supabase
+      .from('user_wallets')
+      .upsert({ user_id: userId, coin_balance: 20, bonus_coins: 10 }, { onConflict: 'user_id' })
+      .select('coin_balance, bonus_coins')
+      .maybeSingle();
+
+    if (data) {
+      return {
+        coinBalance: data.coin_balance || 20,
+        bonusCoins: data.bonus_coins || 10,
+        totalCoins: (data.coin_balance || 20) + (data.bonus_coins || 10),
+      };
+    }
+  } catch {}
+
+  return { coinBalance: 20, bonusCoins: 10, totalCoins: 30 };
 }
 
 /**

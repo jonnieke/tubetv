@@ -47,6 +47,7 @@ serve(async (req: Request) => {
 
     // Packages Definition
     const PACKAGES: Record<string, { coins: number; bonus: number; type: string; plan?: string }> = {
+      'coins-daily-10': { coins: 10, bonus: 0, type: 'coins' },
       'coins-100': { coins: 100, bonus: 0, type: 'coins' },
       'coins-300': { coins: 300, bonus: 50, type: 'coins' },
       'coins-600': { coins: 600, bonus: 150, type: 'coins' },
