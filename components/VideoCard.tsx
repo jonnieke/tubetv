@@ -31,7 +31,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   autoPlay = false,
   playerOnly = false,
 }) => {
-  const { preferences, getProgress, onProgress, onEnded } = usePlayback();
+  const { preferences, getProgress, onProgress, onEnded, isAuthenticated, onRequireLogin } = usePlayback();
   const contentRating = normalizeContentRating(video.contentRating);
   const isUnratedAllowedInTest = !CONTENT_RATING_ENFORCED && contentRating === 'UNRATED';
   const isRatingLocked = !isUnratedAllowedInTest && !canWatchContent(contentRating, preferences.maximumRating);
@@ -238,8 +238,27 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (track) track.mode = newState ? 'showing' : 'hidden';
   };
 
-  const togglePlay = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const promptLogin = () => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
+    setIsPlaying(false);
+    setIsHoverPlay(false);
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    if (onRequireLogin) {
+      onRequireLogin();
+    } else {
+      window.dispatchEvent(new CustomEvent('tubetv:require-auth', { detail: { video } }));
+    }
+  };
+
+  const togglePlay = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+
+    if (!isAuthenticated) {
+      promptLogin();
+      return;
+    }
 
     if (!isPlaying) {
       setPlaybackError(false);
@@ -336,6 +355,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   const handleCardDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isAuthenticated && hoverPreviewEnded) {
+      promptLogin();
+      return;
+    }
     toggleFullScreen();
   };
 
@@ -346,6 +369,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
     if (now - lastClickTimeRef.current < DOUBLE_CLICK_DELAY) {
       // Double click detected -> Fullscreen
+      if (!isAuthenticated && hoverPreviewEnded) {
+        promptLogin();
+        return;
+      }
       toggleFullScreen();
       lastClickTimeRef.current = 0;
     } else {
@@ -359,6 +386,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
           videoRef.current.pause();
         }
       } else {
+        if (!isAuthenticated) {
+          promptLogin();
+          return;
+        }
         setIsPlaying(true);
         if (videoRef.current) {
           videoRef.current.muted = isMuted;
@@ -605,20 +636,53 @@ const VideoCard: React.FC<VideoCardProps> = ({
             {/* 10-Second Hover Preview Ended Overlay */}
             {hoverPreviewEnded && !isPlaying && (
               <div 
-                onClick={togglePlay}
-                className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[2px] transition-all cursor-pointer group/preview"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isAuthenticated) {
+                    promptLogin();
+                  } else {
+                    togglePlay(e);
+                  }
+                }}
+                className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75 backdrop-blur-[2px] transition-all cursor-pointer group/preview px-4 text-center"
               >
-                <button
-                  type="button"
-                  onClick={togglePlay}
-                  aria-label={`Play full video ${video.title}`}
-                  className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 hover:scale-110 flex items-center justify-center text-white shadow-2xl transition-all duration-200"
-                >
-                  <Play fill="currentColor" className="w-7 h-7 ml-1" />
-                </button>
-                <span className="mt-3 text-xs font-bold text-white tracking-wide bg-black/85 px-3 py-1 rounded-full border border-zinc-700 shadow pointer-events-none">
-                  Preview ended · Click to Play
-                </span>
+                {!isAuthenticated ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        promptLogin();
+                      }}
+                      aria-label="Sign in to continue watching"
+                      className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 hover:scale-110 flex items-center justify-center text-white shadow-2xl transition-all duration-200 ring-4 ring-emerald-500/30"
+                    >
+                      <Play fill="currentColor" className="w-6 h-6 ml-0.5" />
+                    </button>
+                    <div className="mt-3 flex flex-col items-center gap-1 pointer-events-none">
+                      <span className="text-xs sm:text-sm font-bold text-white tracking-wide bg-emerald-600/90 px-3.5 py-1 rounded-full shadow border border-emerald-400/40">
+                        Sign In to Continue Watching
+                      </span>
+                      <span className="text-[11px] font-medium text-emerald-300">
+                        Preview ended · Claim 5 free coins to stream
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      aria-label={`Play full video ${video.title}`}
+                      className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 hover:scale-110 flex items-center justify-center text-white shadow-2xl transition-all duration-200"
+                    >
+                      <Play fill="currentColor" className="w-7 h-7 ml-1" />
+                    </button>
+                    <span className="mt-3 text-xs font-bold text-white tracking-wide bg-black/85 px-3 py-1 rounded-full border border-zinc-700 shadow pointer-events-none">
+                      Preview ended · Click to Play
+                    </span>
+                  </>
+                )}
               </div>
             )}
 

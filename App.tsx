@@ -130,6 +130,12 @@ const App: React.FC = () => {
     };
   }, [currentUser?.id]);
 
+  useEffect(() => {
+    const handleAuthReq = () => setShowViewerAuth(true);
+    window.addEventListener('tubetv:require-auth', handleAuthReq);
+    return () => window.removeEventListener('tubetv:require-auth', handleAuthReq);
+  }, [setShowViewerAuth]);
+
   const handlePreferencesChange = useCallback((nextPreferences: PlaybackPreferences) => {
     setPreferences(nextPreferences);
     void savePreferences(currentUser?.id, nextPreferences);
@@ -487,6 +493,8 @@ const App: React.FC = () => {
         getProgress: (videoId) => watchProgress[videoId],
         onEnded: handleVideoEnded,
         onProgress: handleWatchProgress,
+        isAuthenticated,
+        onRequireLogin: () => setShowViewerAuth(true),
       }}
     >
       <div className="flex h-screen bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">

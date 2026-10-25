@@ -7,6 +7,8 @@ interface PlaybackContextValue {
   getProgress: (videoId: string) => WatchProgress | undefined;
   onProgress: (videoId: string, progress: WatchProgress) => void;
   onEnded: (videoId: string) => void;
+  isAuthenticated?: boolean;
+  onRequireLogin?: () => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue>({
@@ -14,6 +16,8 @@ const PlaybackContext = createContext<PlaybackContextValue>({
   getProgress: () => undefined,
   onProgress: () => undefined,
   onEnded: () => undefined,
+  isAuthenticated: false,
+  onRequireLogin: () => {},
 });
 
 export const PlaybackProvider = PlaybackContext.Provider;
