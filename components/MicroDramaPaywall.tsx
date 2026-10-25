@@ -217,10 +217,10 @@ export default function MicroDramaPaywall({
                 <p className="text-xs text-zinc-300 mb-2.5">Sign in to claim your 5 free welcome bonus coins!</p>
                 <button
                   onClick={onRequireLogin}
-                  className="w-full py-2.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow transition-all active:scale-95"
+                  className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow transition-all active:scale-95"
                 >
-                  <WhatsAppIcon className="w-4 h-4" />
-                  <span>Sign in with WhatsApp / Phone to Claim</span>
+                  <Coins className="w-4 h-4 text-black" />
+                  <span>Sign in with Phone to Claim 5 Coins</span>
                 </button>
               </div>
             )}
