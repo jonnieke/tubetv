@@ -31,7 +31,8 @@ export const isValidKenyanPhone = (phone: string): boolean => Boolean(phoneToE16
 export async function requestPhoneOtp(
   phone: string,
   shouldCreateUser: boolean,
-  displayName?: string
+  displayName?: string,
+  channel: 'whatsapp' | 'sms' = 'whatsapp'
 ) {
   const phoneE164 = phoneToE164(phone);
   if (!phoneE164) return { error: new Error('Enter a valid Kenyan phone number.') };
@@ -39,6 +40,7 @@ export async function requestPhoneOtp(
   const { error } = await supabase.auth.signInWithOtp({
     phone: phoneE164,
     options: {
+      channel,
       shouldCreateUser,
       data: shouldCreateUser ? { display_name: displayName?.trim() || phoneE164 } : undefined,
     },

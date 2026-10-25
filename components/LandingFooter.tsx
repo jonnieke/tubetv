@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Clapperboard, Monitor, Radio, Smartphone, SquarePlay } from 'lucide-react';
+import { BookOpen, Clapperboard, Monitor, Radio, Smartphone, SquarePlay, Music } from 'lucide-react';
 import { ViewState, ViewStateOrString } from '../types';
 
 const destinations = [
@@ -7,6 +7,9 @@ const destinations = [
   { label: 'Series', caption: 'Deeper journeys.', icon: Monitor, view: ViewState.ORIGINALS, category: 'Series' },
   { label: 'Micro Dramas', caption: 'Shorter. Bolder. Closer.', icon: Smartphone, view: ViewState.MICRO_DRAMAS },
   { label: 'Shorts', caption: 'Real life. Right now.', icon: SquarePlay, view: ViewState.SHORTS },
+  { label: 'School Flix', caption: 'Next gen talent.', icon: BookOpen, view: ViewState.SCHOOL_FLIX },
+  { label: 'Music', caption: 'Rhythms of Africa.', icon: Music, view: ViewState.MUSIC },
+  { label: 'Documentary', caption: 'Real truth. Deeper stories.', icon: Clapperboard, view: ViewState.DOCUMENTARY },
   { label: 'Education', caption: 'Knowledge for tomorrow.', icon: BookOpen, view: ViewState.EDUCATION },
   { label: 'Live', caption: 'In the moment.', icon: Radio, view: ViewState.LIVE },
 ];

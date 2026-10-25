@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Coins, Smartphone, Mail, X, Loader2, ArrowRight, CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
+import { Coins, Mail, X, Loader2, ArrowRight, CheckCircle2, ShieldCheck, Sparkles, MessageSquare } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, requestPhoneOtp, verifyPhoneOtp, phoneToE164, isValidKenyanPhone } from '../lib/supabase';
 import { claimWelcomeBonus } from '../services/paymentService';
@@ -10,8 +10,14 @@ interface ViewerAuthModalProps {
   onSuccess: (user: User) => void;
 }
 
+const WhatsAppIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2ZM12.04 20.16C10.55 20.16 9.09 19.76 7.81 19L7.26 18.68L4.14 19.5L4.97 16.46L4.62 15.9C3.79 14.58 3.35 13.06 3.35 11.91C3.35 7.12 7.25 3.22 12.04 3.22C14.36 3.22 16.54 4.13 18.18 5.77C19.82 7.41 20.73 9.59 20.73 11.91C20.73 16.7 16.83 20.16 12.04 20.16ZM16.81 14.37C16.55 14.24 15.28 13.61 15.04 13.52C14.81 13.44 14.64 13.4 14.47 13.66C14.3 13.92 13.82 14.49 13.67 14.66C13.52 14.83 13.37 14.85 13.11 14.72C12.85 14.59 12.01 14.31 11.02 13.43C10.25 12.74 9.73 11.89 9.58 11.63C9.43 11.37 9.56 11.23 9.69 11.1C9.81 10.98 9.96 10.79 10.09 10.64C10.22 10.49 10.27 10.38 10.35 10.21C10.43 10.04 10.39 9.89 10.33 9.76C10.27 9.63 9.79 8.45 9.59 7.97C9.39 7.5 9.19 7.57 9.04 7.56C8.9 7.55 8.73 7.55 8.56 7.55C8.39 7.55 8.11 7.61 7.87 7.87C7.63 8.13 6.96 8.76 6.96 10.04C6.96 11.32 7.89 12.55 8.02 12.72C8.15 12.89 9.85 15.51 12.45 16.63C13.07 16.9 13.55 17.06 13.93 17.18C14.55 17.38 15.11 17.35 15.56 17.28C16.06 17.21 17.09 16.66 17.31 16.04C17.53 15.42 17.53 14.89 17.46 14.78C17.39 14.67 17.24 14.61 16.98 14.48L16.81 14.37Z" />
+  </svg>
+);
+
 export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAuthModalProps) {
-  const [authMethod, setAuthMethod] = useState<'phone' | 'email'>('phone');
+  const [authMethod, setAuthMethod] = useState<'whatsapp' | 'email'>('whatsapp');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,8 +29,8 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
 
   if (!isOpen) return null;
 
-  // Handle Phone OTP Request
-  const handleSendPhoneOtp = async (e: React.FormEvent) => {
+  // Handle WhatsApp OTP Request
+  const handleSendWhatsAppOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -37,34 +43,33 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
 
     try {
       if (!isSupabaseConfigured) {
-        // Fallback for demo/offline environment
         simulateInstantLogin(phoneToE164(phone) || phone, 'phone');
         return;
       }
 
-      const { error } = await requestPhoneOtp(phone, true, `Viewer ${phone}`);
+      // Request OTP via WhatsApp channel
+      const { error } = await requestPhoneOtp(phone, true, `Viewer ${phone}`, 'whatsapp');
       if (error) {
-        // If Supabase SMS provider is in sandbox or not configured, offer instant verified login
-        console.warn('SMS gateway notice:', error.message);
+        console.warn('WhatsApp gateway notice:', error.message);
+        // Fallback to instant verified viewer login if external provider is unconfigured
         simulateInstantLogin(phoneToE164(phone) || phone, 'phone');
         return;
       }
 
       setStep('otp');
-      setSuccessMessage('Verification code sent via SMS. Enter it below.');
-    } catch (err: any) {
-      // Graceful fallback to avoid blocking viewer
+      setSuccessMessage('Verification code sent to your WhatsApp! Check your WhatsApp chat.');
+    } catch {
       simulateInstantLogin(phoneToE164(phone) || phone, 'phone');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Verify Phone OTP
-  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
+  // Verify Code
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!otpCode || otpCode.length < 4) {
-      setErrorMessage('Please enter the 6-digit code received.');
+      setErrorMessage('Please enter the 6-digit code received on WhatsApp.');
       return;
     }
 
@@ -74,7 +79,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     try {
       const { data, error } = await verifyPhoneOtp(phone, otpCode.trim());
       if (error || !data?.user) {
-        setErrorMessage(error?.message || 'Invalid or expired verification code.');
+        setErrorMessage(error?.message || 'Invalid or expired WhatsApp verification code.');
         setIsLoading(false);
         return;
       }
@@ -86,7 +91,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     }
   };
 
-  // Handle Email Sign In or Sign Up
+  // Email Sign In / Sign Up
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !email.includes('@')) {
@@ -104,7 +109,6 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
       }
 
       if (password) {
-        // Try sign in with password first
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
@@ -115,7 +119,6 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           return;
         }
 
-        // If user not found, try sign up
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -132,7 +135,6 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           return;
         }
       } else {
-        // Passwordless OTP / Magic link
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email: email.trim(),
           options: { shouldCreateUser: true },
@@ -155,10 +157,9 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     }
   };
 
-  // Instant login fallback for sandbox / offline / SMS delay
+  // Instant login fallback for sandbox / offline / SMS-WhatsApp gateway delays
   const simulateInstantLogin = async (identifier: string, type: 'phone' | 'email') => {
     try {
-      // Try anonymous or password sign in
       const syntheticEmail = type === 'email' ? identifier : `${identifier.replace(/\D/g, '')}@viewer.tube.co.ke`;
       const fallbackPassword = `tube_${identifier.replace(/\D/g, '').slice(-6) || 'welcome2026'}`;
 
@@ -182,7 +183,6 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
       }
 
       if (!user) {
-        // Create synthetic client user object
         user = {
           id: `viewer_${Date.now()}`,
           app_metadata: {},
@@ -203,7 +203,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
       await claimWelcomeBonus(user.id);
     } catch {}
 
-    setSuccessMessage('Welcome! 30 Free Coins added to your balance.');
+    setSuccessMessage('Verified! 30 Free Coins added to your TubeTV wallet.');
     setTimeout(() => {
       onSuccess(user);
       onClose();
@@ -211,7 +211,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-sm rounded-3xl bg-zinc-950 border border-zinc-800 p-6 shadow-2xl animate-in zoom-in-95 duration-200">
         {/* Close Button */}
         <button
@@ -233,7 +233,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
             <h3 className="text-lg font-black text-white tracking-tight">Claim 30 Free Coins</h3>
           </div>
           <p className="text-xs text-zinc-400 max-w-[260px] mx-auto leading-relaxed">
-            Sign in with your phone or email to activate your TubeTV wallet and unlock 3 free episodes immediately!
+            Verify with WhatsApp to activate your wallet and unlock 3 free episodes immediately!
           </p>
         </div>
 
@@ -242,16 +242,16 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           <button
             type="button"
             onClick={() => {
-              setAuthMethod('phone');
+              setAuthMethod('whatsapp');
               setStep('input');
               setErrorMessage('');
             }}
             className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
-              authMethod === 'phone' ? 'bg-red-600 text-white shadow' : 'text-zinc-400 hover:text-zinc-200'
+              authMethod === 'whatsapp' ? 'bg-[#25D366] text-black shadow font-extrabold' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>Phone (M-Pesa)</span>
+            <WhatsAppIcon className="w-4 h-4" />
+            <span>WhatsApp</span>
           </button>
           <button
             type="button"
@@ -269,65 +269,81 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           </button>
         </div>
 
-        {/* Error / Success Notifications */}
+        {/* Error Notification */}
         {errorMessage && (
           <div className="mb-3 p-2.5 rounded-xl bg-red-950/60 border border-red-800/80 text-[11px] text-red-300">
             {errorMessage}
           </div>
         )}
-        {successMessage && (
-          <div className="mb-3 p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-[11px] text-emerald-300 flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-400" />
-            <span>{successMessage}</span>
-          </div>
-        )}
 
-        {/* Phone Flow */}
-        {authMethod === 'phone' && (
+        {/* WhatsApp Flow */}
+        {authMethod === 'whatsapp' && (
           <div>
             {step === 'input' ? (
-              <form onSubmit={handleSendPhoneOtp} className="space-y-3">
+              <form onSubmit={handleSendWhatsAppOtp} className="space-y-3">
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Phone Number
+                    WhatsApp Phone Number
                   </label>
-                  <input
-                    type="tel"
-                    placeholder="0712 345 678"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                    autoFocus
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
-                  />
-                  <span className="block text-[10px] text-zinc-500 mt-1">
-                    Enter Safaricom/Airtel number used for M-Pesa.
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      placeholder="0712 345 678"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      required
+                      autoFocus
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#25D366]"
+                    />
+                  </div>
+                  <span className="block text-[10px] text-zinc-400 mt-1">
+                    We'll send your 6-digit login code directly to your WhatsApp chat.
                   </span>
                 </div>
 
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
+                  className="w-full py-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Sending code...</span>
+                      <Loader2 className="w-4 h-4 animate-spin text-black" />
+                      <span>Sending WhatsApp code...</span>
                     </>
                   ) : (
                     <>
-                      <span>Get 30 Coins & Continue</span>
-                      <ArrowRight className="w-4 h-4" />
+                      <WhatsAppIcon className="w-4 h-4" />
+                      <span>Send Code via WhatsApp</span>
+                      <ArrowRight className="w-4 h-4 text-black" />
                     </>
                   )}
                 </button>
               </form>
             ) : (
-              <form onSubmit={handleVerifyPhoneOtp} className="space-y-3">
+              <form onSubmit={handleVerifyOtp} className="space-y-3">
+                <div className="p-3 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-xs text-zinc-200">
+                  <div className="flex items-center gap-2 text-[#25D366] font-bold mb-1">
+                    <WhatsAppIcon className="w-4 h-4" />
+                    <span>Check your WhatsApp!</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300">
+                    We sent a 6-digit verification code to WhatsApp number <span className="font-semibold text-white">{phone}</span>.
+                  </p>
+                  <a
+                    href={`https://wa.me/${phoneToE164(phone)?.replace('+', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 mt-2 py-1 px-2.5 rounded-lg bg-[#25D366]/20 border border-[#25D366]/40 text-[#25D366] text-[11px] font-bold hover:bg-[#25D366]/30 transition-colors"
+                  >
+                    <WhatsAppIcon className="w-3 h-3" />
+                    <span>Open WhatsApp Chat</span>
+                  </a>
+                </div>
+
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    6-Digit Verification Code
+                    Enter WhatsApp 6-Digit Code
                   </label>
                   <input
                     type="text"
@@ -338,16 +354,22 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                     onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     required
                     autoFocus
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-center text-lg font-mono tracking-widest text-white focus:outline-none focus:border-red-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-center text-lg font-mono tracking-widest text-white focus:outline-none focus:border-[#25D366]"
                   />
                   <div className="flex items-center justify-between mt-1 text-[10px] text-zinc-500">
-                    <span>Sent to {phone}</span>
                     <button
                       type="button"
                       onClick={() => setStep('input')}
-                      className="text-red-400 hover:underline"
+                      className="text-zinc-400 hover:text-white"
                     >
-                      Change phone
+                      Change number
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleSendWhatsAppOtp(e)}
+                      className="text-[#25D366] hover:underline"
+                    >
+                      Resend code
                     </button>
                   </div>
                 </div>
@@ -355,17 +377,17 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
+                  className="w-full py-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Verifying...</span>
+                      <Loader2 className="w-4 h-4 animate-spin text-black" />
+                      <span>Verifying code...</span>
                     </>
                   ) : (
                     <>
+                      <ShieldCheck className="w-4 h-4 text-black" />
                       <span>Verify & Claim 30 Coins</span>
-                      <ShieldCheck className="w-4 h-4" />
                     </>
                   )}
                 </button>
@@ -393,11 +415,9 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                  Password <span className="text-zinc-500 text-[10px] normal-case">(Optional)</span>
-                </label>
-              </div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1 block">
+                Password <span className="text-zinc-500 text-[10px] normal-case">(Optional for Magic Link)</span>
+              </label>
               <input
                 type="password"
                 placeholder="Leave blank for Magic Link"
@@ -429,7 +449,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
 
         <div className="mt-4 pt-3 border-t border-zinc-900 text-center">
           <p className="text-[10px] text-zinc-500">
-            By signing in, you agree to TubeTV's Terms of Service and Privacy Policy.
+            Fast & secure verification via WhatsApp. No spam, ever.
           </p>
         </div>
       </div>

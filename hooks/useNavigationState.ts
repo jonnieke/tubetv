@@ -22,6 +22,7 @@ import {
   Anchor,
   Zap,
   Film,
+  Music,
 } from 'lucide-react';
 
 const ICON_MAP: Record<string, any> = {
@@ -45,6 +46,10 @@ const ICON_MAP: Record<string, any> = {
   Travel: Anchor,
   Trending: Zap,
   Movie: Film,
+  Film,
+  Music,
+  SchoolFlix: GraduationCap,
+  Documentary: Film,
 };
 
 const INITIAL_NAV_ITEMS: NavItem[] = [
@@ -52,6 +57,9 @@ const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.MICRO_DRAMAS, label: 'Micro Dramas', iconName: 'Smartphone', icon: Smartphone },
   { id: ViewState.ORIGINALS, label: 'Originals', labelKey: 'nav.originals', iconName: 'Clapperboard', icon: Clapperboard },
   { id: ViewState.SHORTS, label: 'Shorts', labelKey: 'nav.shorts', iconName: 'Smartphone', icon: Smartphone },
+  { id: ViewState.SCHOOL_FLIX, label: 'School Flix', labelKey: 'nav.schoolflix', iconName: 'GraduationCap', icon: GraduationCap },
+  { id: ViewState.MUSIC, label: 'Music', labelKey: 'nav.music', iconName: 'Music', icon: Music },
+  { id: ViewState.DOCUMENTARY, label: 'Documentary', labelKey: 'nav.documentary', iconName: 'Film', icon: Film },
   { id: ViewState.EDUCATION, label: 'Education', labelKey: 'nav.education', iconName: 'GraduationCap', icon: GraduationCap },
   { id: ViewState.FARMERS, label: 'Farmers', labelKey: 'nav.farmers', iconName: 'Sprout', icon: Sprout },
   { id: ViewState.FAITH, label: 'Faith', labelKey: 'nav.faith', iconName: 'Heart', icon: Heart },
@@ -80,6 +88,17 @@ export function useNavigationState() {
         if (!parsed.some((item: NavItem) => item.id === ViewState.MICRO_DRAMAS)) {
           parsed.splice(1, 0, INITIAL_NAV_ITEMS[1]);
         }
+        // Ensure new core categories exist in cached nav
+        [INITIAL_NAV_ITEMS[4], INITIAL_NAV_ITEMS[5], INITIAL_NAV_ITEMS[6]].forEach((cat) => {
+          if (!parsed.some((item: NavItem) => item.id === cat.id)) {
+            const eduIdx = parsed.findIndex((item: NavItem) => item.id === ViewState.EDUCATION);
+            if (eduIdx !== -1) {
+              parsed.splice(eduIdx, 0, cat);
+            } else {
+              parsed.push(cat);
+            }
+          }
+        });
         return parsed.map((item: NavItem) => ({
           ...item,
           icon: ICON_MAP[item.iconName || 'PlayCircle'] || PlayCircle,
@@ -105,6 +124,12 @@ export function useNavigationState() {
 
   const getSubCategories = (view: ViewStateOrString) => {
     switch (view) {
+      case ViewState.SCHOOL_FLIX:
+        return ['All', 'National Drama', 'Music Festivals', 'High School', 'Primary', 'Comedy', 'Dance'];
+      case ViewState.MUSIC:
+        return ['All', 'Afrobeats', 'Gospel', 'Gengetone', 'Benga', 'Live Sessions', 'Hip Hop'];
+      case ViewState.DOCUMENTARY:
+        return ['All', 'Culture', 'Wildlife', 'History', 'Biographies', 'Investigative'];
       case ViewState.EDUCATION:
         return ['All', 'CBC', 'High School', 'Revision', 'AI Learning', 'Teachers'];
       case ViewState.FARMERS:

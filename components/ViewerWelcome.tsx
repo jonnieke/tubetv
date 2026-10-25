@@ -5,7 +5,8 @@ import { ViewState, ViewStateOrString } from '../types';
 const interests = [
   ['Micro Dramas · Coming soon', ViewState.MICRO_DRAMAS, undefined],
   ['Movies', ViewState.ORIGINALS, 'Movies'], ['Series', ViewState.ORIGINALS, 'Series'],
-  ['Shorts', ViewState.SHORTS, undefined], ['Education', ViewState.EDUCATION, undefined],
+  ['Shorts', ViewState.SHORTS, undefined],
+  ['School Flix', ViewState.SCHOOL_FLIX, undefined], ['Music', ViewState.MUSIC, undefined], ['Documentary', ViewState.DOCUMENTARY, undefined], ['Education', ViewState.EDUCATION, undefined],
   ['Farmers', ViewState.FARMERS, undefined], ['Faith', ViewState.FAITH, undefined],
   ['Kids', ViewState.KIDS, undefined], ['Diaspora', ViewState.DIASPORA, undefined], ['Live', ViewState.LIVE, undefined],
 ] as const;

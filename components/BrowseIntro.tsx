@@ -3,6 +3,9 @@ import { ViewState, type ViewStateOrString } from '../types';
 
 const sections: Partial<Record<ViewState, { label: string; description: string }>> = {
   [ViewState.MICRO_DRAMAS]: { label: 'Micro Dramas', description: 'Short-form stories made for a closer look. Our first vertical series are on the way.' },
+  [ViewState.SCHOOL_FLIX]: { label: 'School Flix', description: 'Talent, drama, music and creative performances from schools across Kenya.' },
+  [ViewState.MUSIC]: { label: 'Music', description: 'Experience the sounds, rhythms, gospel and music videos from across Kenya and Africa.' },
+  [ViewState.DOCUMENTARY]: { label: 'Documentary', description: 'Real stories, investigative journeys, history and Kenyan heritage.' },
   [ViewState.EDUCATION]: { label: 'Education', description: 'Discover lessons, ideas and practical knowledge.' },
   [ViewState.FARMERS]: { label: 'Farmers', description: 'Stories and knowledge from the people who grow our future.' },
   [ViewState.FAITH]: { label: 'Faith', description: 'Explore voices and stories of faith.' },

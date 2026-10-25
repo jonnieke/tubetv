@@ -146,6 +146,84 @@ export const MOCK_VIDEOS: Video[] = [
     tags: ['Drama', 'Youth']
   },
 
+  // School Flix
+  {
+    id: 'sf1',
+    title: 'National Drama Festivals: Echoes of the Mau',
+    thumbnail: 'https://picsum.photos/800/450?random=17',
+    views: 185000,
+    duration: '38m',
+    isPremium: false,
+    author: 'Kenya National Drama Festivals',
+    category: 'School Flix',
+    genre: 'Drama',
+    tags: ['High School', 'National Drama', 'Performances']
+  },
+  {
+    id: 'sf2',
+    title: 'Kakamega High Choral Verse: Mwamba Imara',
+    thumbnail: 'https://picsum.photos/800/450?random=18',
+    views: 142000,
+    duration: '15m',
+    isPremium: false,
+    author: 'Schools Arts Kenya',
+    category: 'School Flix',
+    genre: 'Music Festival',
+    tags: ['Music Festivals', 'Choral', 'High School']
+  },
+
+  // Music
+  {
+    id: 'mus1',
+    title: 'Live Session: Nairobi Afro-Soul & Gengetone Beats',
+    thumbnail: 'https://picsum.photos/800/450?random=19',
+    views: 320000,
+    duration: '45m',
+    isPremium: false,
+    author: 'TubeTV Music',
+    category: 'Music',
+    genre: 'Music',
+    tags: ['Afrobeats', 'Live Sessions', 'Gengetone']
+  },
+  {
+    id: 'mus2',
+    title: 'Benga Legends: Roots of Kenyan Sound',
+    thumbnail: 'https://picsum.photos/800/450?random=20',
+    views: 198000,
+    duration: '52m',
+    isPremium: false,
+    author: 'Sound of Kenya',
+    category: 'Music',
+    genre: 'Music',
+    tags: ['Benga', 'Afrobeats', 'Live Sessions']
+  },
+
+  // Documentary
+  {
+    id: 'doc1',
+    title: 'The Great Rift: Heartbeat of the Savannah',
+    thumbnail: 'https://picsum.photos/800/450?random=21',
+    views: 260000,
+    duration: '58m',
+    isPremium: false,
+    author: 'Wild Kenya Media',
+    category: 'Documentary',
+    genre: 'Documentary',
+    tags: ['Wildlife', 'Culture', 'History']
+  },
+  {
+    id: 'doc2',
+    title: 'Untold History: Freedom Fighters of Mount Kenya',
+    thumbnail: 'https://picsum.photos/800/450?random=22',
+    views: 310000,
+    duration: '1h 12m',
+    isPremium: false,
+    author: 'Heritage Kenya Films',
+    category: 'Documentary',
+    genre: 'Documentary',
+    tags: ['History', 'Investigative', 'Biographies']
+  },
+
   // Education
   {
     id: 'edu1',

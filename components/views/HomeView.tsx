@@ -133,7 +133,7 @@ export default function HomeView({
       )}
 
       {/* Curated Category Carousels */}
-      {['Movies', 'Farmers', 'Education', 'Faith', 'Kids', 'Diaspora'].map((cat) => {
+      {['Movies', 'School Flix', 'Music', 'Documentary', 'Farmers', 'Education', 'Faith', 'Kids', 'Diaspora'].map((cat) => {
         const catVideos = videos.filter((v) => v.category === cat || (cat === 'Movies' && v.category === 'Originals'));
         const label = cat === 'Movies' ? 'Kenyan Movies' : cat;
         return (

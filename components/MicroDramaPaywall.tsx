@@ -25,6 +25,12 @@ import {
   type CoinPackage,
 } from '../services/paymentService';
 
+const WhatsAppIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2ZM12.04 20.16C10.55 20.16 9.09 19.76 7.81 19L7.26 18.68L4.14 19.5L4.97 16.46L4.62 15.9C3.79 14.58 3.35 13.06 3.35 11.91C3.35 7.12 7.25 3.22 12.04 3.22C14.36 3.22 16.54 4.13 18.18 5.77C19.82 7.41 20.73 9.59 20.73 11.91C20.73 16.7 16.83 20.16 12.04 20.16ZM16.81 14.37C16.55 14.24 15.28 13.61 15.04 13.52C14.81 13.44 14.64 13.4 14.47 13.66C14.3 13.92 13.82 14.49 13.67 14.66C13.52 14.83 13.37 14.85 13.11 14.72C12.85 14.59 12.01 14.31 11.02 13.43C10.25 12.74 9.73 11.89 9.58 11.63C9.43 11.37 9.56 11.23 9.69 11.1C9.81 10.98 9.96 10.79 10.09 10.64C10.22 10.49 10.27 10.38 10.35 10.21C10.43 10.04 10.39 9.89 10.33 9.76C10.27 9.63 9.79 8.45 9.59 7.97C9.39 7.5 9.19 7.57 9.04 7.56C8.9 7.55 8.73 7.55 8.56 7.55C8.39 7.55 8.11 7.61 7.87 7.87C7.63 8.13 6.96 8.76 6.96 10.04C6.96 11.32 7.89 12.55 8.02 12.72C8.15 12.89 9.85 15.51 12.45 16.63C13.07 16.9 13.55 17.06 13.93 17.18C14.55 17.38 15.11 17.35 15.56 17.28C16.06 17.21 17.09 16.66 17.31 16.04C17.53 15.42 17.53 14.89 17.46 14.78C17.39 14.67 17.24 14.61 16.98 14.48L16.81 14.37Z" />
+  </svg>
+);
+
 interface MicroDramaPaywallProps {
   video: Video;
   onUnlocked: () => void;
@@ -205,9 +211,10 @@ export default function MicroDramaPaywall({
                 <p className="text-xs text-zinc-300 mb-2.5">Sign in to claim your 30 free welcome bonus coins!</p>
                 <button
                   onClick={onRequireLogin}
-                  className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs"
+                  className="w-full py-2.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow transition-all active:scale-95"
                 >
-                  Sign in with Phone / Email
+                  <WhatsAppIcon className="w-4 h-4" />
+                  <span>Sign in with WhatsApp / Phone to Claim</span>
                 </button>
               </div>
             )}

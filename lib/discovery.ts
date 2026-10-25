@@ -4,6 +4,9 @@ import { isMicroDrama } from './series';
 
 const categoryForView: Partial<Record<ViewState, string>> = {
   [ViewState.MICRO_DRAMAS]: 'Micro Dramas',
+  [ViewState.SCHOOL_FLIX]: 'School Flix',
+  [ViewState.MUSIC]: 'Music',
+  [ViewState.DOCUMENTARY]: 'Documentary',
   [ViewState.EDUCATION]: 'Education',
   [ViewState.FARMERS]: 'Farmers',
   [ViewState.FAITH]: 'Faith',
@@ -21,8 +24,17 @@ export function filterDiscoveryVideos(videos: Video[], view: ViewStateOrString, 
   if (view === ViewState.ORIGINALS) result = result.filter(video => ['Movies', 'Series', 'Originals'].includes(video.category) || isMicroDrama(video));
   else {
     const category = categoryForView[view as ViewState];
-    if (category) result = result.filter(video => video.category === category || (view === ViewState.MICRO_DRAMAS && isMicroDrama(video)));
-    else if (customCategory) result = result.filter(video => video.category.toLocaleLowerCase().includes(customCategory.toLocaleLowerCase()) || video.tags?.some(tag => tag.toLocaleLowerCase().includes(customCategory.toLocaleLowerCase())));
+    if (category) {
+      result = result.filter(video => 
+        video.category?.toLowerCase() === category.toLowerCase() ||
+        (view === ViewState.MICRO_DRAMAS && isMicroDrama(video)) ||
+        (view === ViewState.MUSIC && (video.genre?.toLowerCase() === 'music' || video.tags?.some(t => t.toLowerCase() === 'music'))) ||
+        (view === ViewState.DOCUMENTARY && (video.genre?.toLowerCase() === 'documentary' || video.tags?.some(t => t.toLowerCase() === 'documentary'))) ||
+        (view === ViewState.SCHOOL_FLIX && (video.category?.toLowerCase().replace(/\s+/g, '') === 'schoolflix' || video.tags?.some(t => t.toLowerCase().includes('school'))))
+      );
+    } else if (customCategory) {
+      result = result.filter(video => video.category.toLocaleLowerCase().includes(customCategory.toLocaleLowerCase()) || video.tags?.some(tag => tag.toLocaleLowerCase().includes(customCategory.toLocaleLowerCase())));
+    }
   }
 
   if (!subcategory || subcategory === 'All') return result;
