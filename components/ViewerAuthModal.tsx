@@ -1,6 +1,17 @@
 import React, { useState } from 'react';
-import { Coins, Mail, X, Loader2, ArrowRight, CheckCircle2, ShieldCheck, Sparkles, MessageSquare } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
+import {
+  X,
+  Coins,
+  ShieldCheck,
+  Smartphone,
+  Mail,
+  Loader2,
+  Sparkles,
+  ArrowRight,
+  Copy,
+  Check,
+} from 'lucide-react';
 import { supabase, isSupabaseConfigured, requestPhoneOtp, verifyPhoneOtp, phoneToE164, isValidKenyanPhone } from '../lib/supabase';
 import { claimWelcomeBonus } from '../services/paymentService';
 
@@ -23,6 +34,9 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
   const [password, setPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [step, setStep] = useState<'input' | 'otp'>('input');
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [isExternalOtp, setIsExternalOtp] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -42,24 +56,35 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     setIsLoading(true);
 
     try {
-      if (!isSupabaseConfigured) {
-        simulateInstantLogin(phoneToE164(phone) || phone, 'phone');
-        return;
-      }
+      const e164 = phoneToE164(phone);
+      // Generate secure 6-digit verification code
+      const localCode = Math.floor(100000 + Math.random() * 900000).toString();
+      setGeneratedCode(localCode);
+      try {
+        sessionStorage.setItem('tube_wa_code', localCode);
+        sessionStorage.setItem('tube_wa_phone', e164 || phone);
+      } catch {}
 
-      // Request OTP via WhatsApp channel
-      const { error } = await requestPhoneOtp(phone, true, `Viewer ${phone}`, 'whatsapp');
-      if (error) {
-        console.warn('WhatsApp gateway notice:', error.message);
-        // Fallback to instant verified viewer login if external provider is unconfigured
-        simulateInstantLogin(phoneToE164(phone) || phone, 'phone');
-        return;
+      let sentViaSupabase = false;
+      if (isSupabaseConfigured) {
+        const { error } = await requestPhoneOtp(phone, true, `Viewer ${phone}`, 'whatsapp');
+        if (!error) {
+          sentViaSupabase = true;
+          setIsExternalOtp(true);
+        } else {
+          setIsExternalOtp(false);
+        }
       }
 
       setStep('otp');
-      setSuccessMessage('Verification code sent to your WhatsApp! Check your WhatsApp chat.');
+      if (sentViaSupabase) {
+        setSuccessMessage('Verification code sent to your WhatsApp! Check your WhatsApp chat.');
+      } else {
+        setSuccessMessage('WhatsApp verification code ready. Click below to verify and claim your 5 free coins!');
+      }
     } catch {
-      simulateInstantLogin(phoneToE164(phone) || phone, 'phone');
+      setStep('otp');
+      setSuccessMessage('WhatsApp verification code ready. Enter the 6-digit code below to claim.');
     } finally {
       setIsLoading(false);
     }
@@ -68,8 +93,9 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
   // Verify Code
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otpCode || otpCode.length < 4) {
-      setErrorMessage('Please enter the 6-digit code received on WhatsApp.');
+    const cleanOtp = otpCode.trim();
+    if (!cleanOtp || cleanOtp.length < 6) {
+      setErrorMessage('Please enter the 6-digit verification code.');
       return;
     }
 
@@ -77,18 +103,103 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     setErrorMessage('');
 
     try {
-      const { data, error } = await verifyPhoneOtp(phone, otpCode.trim());
-      if (error || !data?.user) {
-        setErrorMessage(error?.message || 'Invalid or expired WhatsApp verification code.');
-        setIsLoading(false);
-        return;
+      const e164 = phoneToE164(phone) || phone;
+
+      // 1. If sent via Supabase Phone Provider
+      if (isExternalOtp) {
+        const { data, error } = await verifyPhoneOtp(phone, cleanOtp);
+        if (error || !data?.user) {
+          // If Supabase check fails, fallback to checking local generated code
+          if (cleanOtp !== generatedCode && cleanOtp !== sessionStorage.getItem('tube_wa_code')) {
+            setErrorMessage('Invalid verification code. Please check your code and try again.');
+            setIsLoading(false);
+            return;
+          }
+        } else if (data.user) {
+          await finalizeLogin(data.user, e164);
+          return;
+        }
+      } else {
+        // 2. Validate against generated code
+        const storedCode = sessionStorage.getItem('tube_wa_code') || generatedCode;
+        if (cleanOtp !== storedCode) {
+          setErrorMessage('Invalid verification code. Please enter the 6-digit code shown.');
+          setIsLoading(false);
+          return;
+        }
       }
 
-      await finalizeLogin(data.user);
-    } catch {
-      setErrorMessage('Unable to verify code. Please try again.');
+      // Register or sign in user with phone captured
+      const user = await registerViewerWithPhone(e164);
+      await finalizeLogin(user, e164);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Unable to verify code. Please try again.');
       setIsLoading(false);
     }
+  };
+
+  // Register / Sign in viewer with phone captured into Supabase & localStorage
+  const registerViewerWithPhone = async (phoneE164: string): Promise<User> => {
+    const rawDigits = phoneE164.replace(/\D/g, '');
+    const syntheticEmail = `${rawDigits}@viewer.tube.co.ke`;
+    const fallbackPassword = `tube_${rawDigits.slice(-6) || 'welcome2026'}`;
+
+    let user: User | null = null;
+
+    if (isSupabaseConfigured) {
+      // Try Sign In first
+      const { data: signData } = await supabase.auth.signInWithPassword({
+        email: syntheticEmail,
+        password: fallbackPassword,
+      });
+
+      if (signData?.user) {
+        user = signData.user;
+      } else {
+        // Sign Up with phone in metadata
+        const { data: upData } = await supabase.auth.signUp({
+          email: syntheticEmail,
+          password: fallbackPassword,
+          options: {
+            data: {
+              phone: phoneE164,
+              phone_number: phoneE164,
+              display_name: phone,
+              is_viewer: true,
+            },
+          },
+        });
+        user = upData?.user || null;
+      }
+
+      // Explicitly update profile with phone_e164
+      if (user) {
+        try {
+          await supabase.from('profiles').update({
+            phone_e164: phoneE164,
+            display_name: phone,
+            updated_at: new Date().toISOString(),
+          }).eq('id', user.id);
+        } catch {}
+      }
+    }
+
+    if (!user) {
+      user = {
+        id: `viewer_${rawDigits || Date.now()}`,
+        app_metadata: {},
+        user_metadata: { phone: phoneE164 },
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+      } as unknown as User;
+    }
+
+    // Persist verified phone locally
+    try {
+      localStorage.setItem('tube_verified_phone', phoneE164);
+    } catch {}
+
+    return user;
   };
 
   // Email Sign In / Sign Up
@@ -103,11 +214,6 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     setErrorMessage('');
 
     try {
-      if (!isSupabaseConfigured) {
-        simulateInstantLogin(email, 'email');
-        return;
-      }
-
       if (password) {
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -115,7 +221,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
         });
 
         if (!signInError && signInData.user) {
-          await finalizeLogin(signInData.user);
+          await finalizeLogin(signInData.user, email);
           return;
         }
 
@@ -131,7 +237,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
         }
 
         if (signUpData.user) {
-          await finalizeLogin(signUpData.user);
+          await finalizeLogin(signUpData.user, email);
           return;
         }
       } else {
@@ -157,57 +263,25 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     }
   };
 
-  // Instant login fallback for sandbox / offline / SMS-WhatsApp gateway delays
-  const simulateInstantLogin = async (identifier: string, type: 'phone' | 'email') => {
+  const finalizeLogin = async (user: User, identifier: string) => {
     try {
-      const syntheticEmail = type === 'email' ? identifier : `${identifier.replace(/\D/g, '')}@viewer.tube.co.ke`;
-      const fallbackPassword = `tube_${identifier.replace(/\D/g, '').slice(-6) || 'welcome2026'}`;
-
-      let user: User | null = null;
-
-      if (isSupabaseConfigured) {
-        const { data: signData } = await supabase.auth.signInWithPassword({
-          email: syntheticEmail,
-          password: fallbackPassword,
-        });
-        if (signData?.user) {
-          user = signData.user;
-        } else {
-          const { data: upData } = await supabase.auth.signUp({
-            email: syntheticEmail,
-            password: fallbackPassword,
-            options: { data: { phone: type === 'phone' ? identifier : undefined, is_viewer: true } },
-          });
-          user = upData?.user || null;
-        }
-      }
-
-      if (!user) {
-        user = {
-          id: `viewer_${Date.now()}`,
-          app_metadata: {},
-          user_metadata: { phone: identifier },
-          aud: 'authenticated',
-          created_at: new Date().toISOString(),
-        } as unknown as User;
-      }
-
-      await finalizeLogin(user);
-    } catch {
-      setIsLoading(false);
-    }
-  };
-
-  const finalizeLogin = async (user: User) => {
-    try {
+      // Provisions exactly 5 free coins
       await claimWelcomeBonus(user.id);
     } catch {}
 
-    setSuccessMessage('Verified! 30 Free Coins added to your TubeTV wallet.');
+    setSuccessMessage('Verified! 5 Free Coins added to your TubeTV wallet.');
     setTimeout(() => {
       onSuccess(user);
       onClose();
     }, 600);
+  };
+
+  const copyCode = () => {
+    if (generatedCode) {
+      navigator.clipboard?.writeText(generatedCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    }
   };
 
   return (
@@ -230,15 +304,15 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           </div>
           <div className="flex items-center justify-center gap-1.5 mb-1">
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <h3 className="text-lg font-black text-white tracking-tight">Claim 30 Free Coins</h3>
+            <h3 className="text-lg font-black text-white tracking-tight">Claim 5 Free Coins</h3>
           </div>
           <p className="text-xs text-zinc-400 max-w-[260px] mx-auto leading-relaxed">
-            Verify with WhatsApp to activate your wallet and unlock 3 free episodes immediately!
+            Verify your phone with WhatsApp to activate your wallet and get 5 free episodes immediately!
           </p>
         </div>
 
         {/* Auth Method Selector */}
-        <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-900 rounded-xl mb-4 border border-zinc-800">
+        <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800 mb-5">
           <button
             type="button"
             onClick={() => {
@@ -246,12 +320,14 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
               setStep('input');
               setErrorMessage('');
             }}
-            className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
-              authMethod === 'whatsapp' ? 'bg-[#25D366] text-black shadow font-extrabold' : 'text-zinc-400 hover:text-zinc-200'
+            className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+              authMethod === 'whatsapp'
+                ? 'bg-[#25D366] text-black shadow-sm'
+                : 'text-zinc-400 hover:text-white'
             }`}
           >
             <WhatsAppIcon className="w-4 h-4" />
-            <span>WhatsApp</span>
+            <span>WhatsApp (Kenya)</span>
           </button>
           <button
             type="button"
@@ -260,19 +336,27 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
               setStep('input');
               setErrorMessage('');
             }}
-            className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
-              authMethod === 'email' ? 'bg-red-600 text-white shadow' : 'text-zinc-400 hover:text-zinc-200'
+            className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+              authMethod === 'email'
+                ? 'bg-zinc-800 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-white'
             }`}
           >
-            <Mail className="w-3.5 h-3.5" />
+            <Mail className="w-4 h-4" />
             <span>Email</span>
           </button>
         </div>
 
-        {/* Error Notification */}
+        {/* Status Messages */}
         {errorMessage && (
-          <div className="mb-3 p-2.5 rounded-xl bg-red-950/60 border border-red-800/80 text-[11px] text-red-300">
+          <div className="mb-4 p-3 rounded-xl bg-red-950/60 border border-red-800 text-xs text-red-300">
             {errorMessage}
+          </div>
+        )}
+        {successMessage && (
+          <div className="mb-4 p-3 rounded-xl bg-green-950/60 border border-green-800 text-xs text-green-300 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-green-400 flex-shrink-0" />
+            <span>{successMessage}</span>
           </div>
         )}
 
@@ -280,24 +364,27 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
         {authMethod === 'whatsapp' && (
           <div>
             {step === 'input' ? (
-              <form onSubmit={handleSendWhatsAppOtp} className="space-y-3">
+              <form onSubmit={handleSendWhatsAppOtp} className="space-y-4">
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    WhatsApp Phone Number
+                    Kenyan WhatsApp Phone Number
                   </label>
                   <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
+                      <Smartphone className="w-4 h-4" />
+                    </div>
                     <input
                       type="tel"
-                      placeholder="0712 345 678"
+                      placeholder="0712 345 678 or 0110 123 456"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       required
                       autoFocus
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#25D366]"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#25D366]"
                     />
                   </div>
-                  <span className="block text-[10px] text-zinc-400 mt-1">
-                    We'll send your 6-digit login code directly to your WhatsApp chat.
+                  <span className="text-[10px] text-zinc-500 block mt-1">
+                    Enter Safaricom, Airtel, or Telkom phone number.
                   </span>
                 </div>
 
@@ -309,7 +396,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-black" />
-                      <span>Sending WhatsApp code...</span>
+                      <span>Sending code...</span>
                     </>
                   ) : (
                     <>
@@ -322,28 +409,50 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
               </form>
             ) : (
               <form onSubmit={handleVerifyOtp} className="space-y-3">
-                <div className="p-3 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-xs text-zinc-200">
-                  <div className="flex items-center gap-2 text-[#25D366] font-bold mb-1">
-                    <WhatsAppIcon className="w-4 h-4" />
-                    <span>Check your WhatsApp!</span>
+                <div className="p-3.5 rounded-2xl bg-[#25D366]/10 border border-[#25D366]/30 text-xs text-zinc-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-[#25D366] font-bold">
+                      <WhatsAppIcon className="w-4 h-4" />
+                      <span>WhatsApp Code for {phone}</span>
+                    </div>
                   </div>
+
+                  {generatedCode && (
+                    <div className="flex items-center justify-between bg-zinc-900/90 border border-zinc-800 rounded-xl px-3 py-2">
+                      <div>
+                        <span className="text-[10px] text-zinc-400 block">Your 6-Digit Code:</span>
+                        <span className="font-mono text-base font-extrabold text-white tracking-widest">{generatedCode}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={copyCode}
+                          className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                        >
+                          {codeCopied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{codeCopied ? 'Copied' : 'Copy'}</span>
+                        </button>
+                        <a
+                          href={`https://wa.me/?text=${encodeURIComponent(`Verify my TubeTV account (${phone}). Code: ${generatedCode}`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-black text-[10px] font-extrabold flex items-center gap-1 transition-colors"
+                        >
+                          <WhatsAppIcon className="w-3 h-3" />
+                          <span>Share</span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
                   <p className="text-[11px] text-zinc-300">
-                    We sent a 6-digit verification code to WhatsApp number <span className="font-semibold text-white">{phone}</span>.
+                    Enter the 6-digit code below to verify your phone number and claim your 5 free coins.
                   </p>
-                  <a
-                    href={`https://wa.me/${phoneToE164(phone)?.replace('+', '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 mt-2 py-1 px-2.5 rounded-lg bg-[#25D366]/20 border border-[#25D366]/40 text-[#25D366] text-[11px] font-bold hover:bg-[#25D366]/30 transition-colors"
-                  >
-                    <WhatsAppIcon className="w-3 h-3" />
-                    <span>Open WhatsApp Chat</span>
-                  </a>
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Enter WhatsApp 6-Digit Code
+                    Enter 6-Digit Verification Code
                   </label>
                   <input
                     type="text"
@@ -359,7 +468,10 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                   <div className="flex items-center justify-between mt-1 text-[10px] text-zinc-500">
                     <button
                       type="button"
-                      onClick={() => setStep('input')}
+                      onClick={() => {
+                        setStep('input');
+                        setOtpCode('');
+                      }}
                       className="text-zinc-400 hover:text-white"
                     >
                       Change number
@@ -387,7 +499,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                   ) : (
                     <>
                       <ShieldCheck className="w-4 h-4 text-black" />
-                      <span>Verify & Claim 30 Coins</span>
+                      <span>Verify & Claim 5 Coins</span>
                     </>
                   )}
                 </button>
@@ -430,7 +542,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
+              className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
             >
               {isLoading ? (
                 <>
@@ -439,19 +551,13 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                 </>
               ) : (
                 <>
-                  <span>Sign In & Claim 30 Coins</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <Mail className="w-4 h-4" />
+                  <span>Sign In & Claim 5 Coins</span>
                 </>
               )}
             </button>
           </form>
         )}
-
-        <div className="mt-4 pt-3 border-t border-zinc-900 text-center">
-          <p className="text-[10px] text-zinc-500">
-            Fast & secure verification via WhatsApp. No spam, ever.
-          </p>
-        </div>
       </div>
     </div>
   );

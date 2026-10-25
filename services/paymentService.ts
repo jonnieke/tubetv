@@ -66,37 +66,43 @@ export async function fetchWalletBalance(): Promise<CoinWallet | null> {
     .maybeSingle();
 
   if (error || !data) {
-    return { coinBalance: 20, bonusCoins: 10, totalCoins: 30 }; // Local/Welcome fallback
+    return { coinBalance: 5, bonusCoins: 0, totalCoins: 5 }; // 5 Free Welcome Coins
   }
 
+  // Normalize initial welcome bonus to 5 coins if no payments made
+  let bonus = data.bonus_coins || 0;
+  let balance = data.coin_balance || 0;
+  if (balance === 0 && bonus >= 30) {
+    bonus = 5; // Normalize legacy 30 bonus to 5 coins
+  }
   return {
-    coinBalance: data.coin_balance || 0,
-    bonusCoins: data.bonus_coins || 0,
-    totalCoins: (data.coin_balance || 0) + (data.bonus_coins || 0),
+    coinBalance: balance,
+    bonusCoins: bonus,
+    totalCoins: balance + bonus,
   };
 }
 
 /**
- * Claims or provisions 30 welcome bonus coins for a new viewer
+ * Claims or provisions 5 welcome bonus coins for a new viewer (1 coin = 1 episode)
  */
 export async function claimWelcomeBonus(userId: string): Promise<CoinWallet> {
   try {
     const { data } = await supabase
       .from('user_wallets')
-      .upsert({ user_id: userId, coin_balance: 20, bonus_coins: 10 }, { onConflict: 'user_id' })
+      .upsert({ user_id: userId, coin_balance: 5, bonus_coins: 0 }, { onConflict: 'user_id' })
       .select('coin_balance, bonus_coins')
       .maybeSingle();
 
     if (data) {
       return {
-        coinBalance: data.coin_balance || 20,
-        bonusCoins: data.bonus_coins || 10,
-        totalCoins: (data.coin_balance || 20) + (data.bonus_coins || 10),
+        coinBalance: data.coin_balance || 5,
+        bonusCoins: data.bonus_coins || 0,
+        totalCoins: (data.coin_balance || 5) + (data.bonus_coins || 0),
       };
     }
   } catch {}
 
-  return { coinBalance: 20, bonusCoins: 10, totalCoins: 30 };
+  return { coinBalance: 5, bonusCoins: 0, totalCoins: 5 };
 }
 
 /**

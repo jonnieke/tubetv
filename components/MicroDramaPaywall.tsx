@@ -214,7 +214,7 @@ export default function MicroDramaPaywall({
 
             {!isAuthenticated && (
               <div className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-center">
-                <p className="text-xs text-zinc-300 mb-2.5">Sign in to claim your 30 free welcome bonus coins!</p>
+                <p className="text-xs text-zinc-300 mb-2.5">Sign in to claim your 5 free welcome bonus coins!</p>
                 <button
                   onClick={onRequireLogin}
                   className="w-full py-2.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow transition-all active:scale-95"
