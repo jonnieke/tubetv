@@ -21,6 +21,6 @@ describe('MicroDrama Monetization Engine', () => {
   it('validates VIP pass definitions', () => {
     const dailyPass = VIP_PASSES.find(p => p.id === 'pass-daily');
     expect(dailyPass).toBeDefined();
-    expect(dailyPass?.priceKes).toBe(50);
+    expect(dailyPass?.priceKes).toBe(20);
   });
 });

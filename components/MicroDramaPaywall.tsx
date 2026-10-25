@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Lock,
   Coins,
-  Zap,
-  Check,
+  Crown,
   CreditCard,
   Smartphone,
   Sparkles,
@@ -11,6 +10,7 @@ import {
   X,
   ShieldCheck,
   ArrowRight,
+  CheckCircle2,
 } from 'lucide-react';
 import type { Video } from '../types';
 import {
@@ -19,10 +19,10 @@ import {
   initializePayment,
   MPESA_PACKAGES,
   CARD_PACKAGES,
-  COIN_PACKAGES,
   VIP_PASSES,
   type CoinWallet,
   type CoinPackage,
+  type VipPass,
 } from '../services/paymentService';
 
 const WhatsAppIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
@@ -48,7 +48,9 @@ export default function MicroDramaPaywall({
 }: MicroDramaPaywallProps) {
   const [wallet, setWallet] = useState<CoinWallet | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'mpesa' | 'card'>('mpesa');
+  const [purchaseTab, setPurchaseTab] = useState<'coins' | 'vip'>('coins');
   const [selectedPackage, setSelectedPackage] = useState<CoinPackage>(MPESA_PACKAGES[0]);
+  const [selectedVipPass, setSelectedVipPass] = useState<VipPass>(VIP_PASSES[0]);
   const [phone, setPhone] = useState('');
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
@@ -61,7 +63,8 @@ export default function MicroDramaPaywall({
     }
   }, [isAuthenticated]);
 
-  const coinCost = 10;
+  // 1 Coin = 1 Episode = 1 Shilling (KES 1)
+  const coinCost = 1;
   const hasEnoughCoins = (wallet?.totalCoins ?? 0) >= coinCost;
 
   const handle1TapUnlock = async () => {
@@ -104,9 +107,13 @@ export default function MicroDramaPaywall({
 
     try {
       const isMpesa = paymentMethod === 'mpesa';
+      const isVip = purchaseTab === 'vip';
+      const targetItem = isVip ? selectedVipPass : selectedPackage;
+      const amount = isMpesa ? targetItem.priceKes : targetItem.priceUsd;
+
       const result = await initializePayment({
-        packageId: selectedPackage.id,
-        amount: isMpesa ? selectedPackage.priceKes : selectedPackage.priceUsd,
+        packageId: targetItem.id,
+        amount,
         currency: isMpesa ? 'KES' : 'USD',
         paymentMethod,
         phone: isMpesa ? phone : undefined,
@@ -120,7 +127,6 @@ export default function MicroDramaPaywall({
 
       if (isMpesa) {
         setStkSent(true);
-        // Poll for coin update or allow dismissal
       } else if (result.authorizationUrl) {
         window.location.href = result.authorizationUrl;
       }
@@ -163,11 +169,11 @@ export default function MicroDramaPaywall({
           </div>
         )}
 
-        {/* Balance & 1-Tap Unlock Section */}
+        {/* Balance & 1-Tap Unlock Section (When viewer has at least 1 coin) */}
         {isAuthenticated && hasEnoughCoins ? (
           <div className="bg-gradient-to-br from-zinc-900 to-zinc-900/60 border border-zinc-800 rounded-2xl p-4 mb-4">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-zinc-400">Available Coins</span>
+              <span className="text-xs text-zinc-400">Available Balance</span>
               <div className="flex items-center gap-1.5 text-amber-400 font-bold text-sm">
                 <Coins className="w-4 h-4 fill-amber-400" />
                 <span>{wallet?.totalCoins ?? 0} Coins</span>
@@ -186,8 +192,8 @@ export default function MicroDramaPaywall({
                 </>
               ) : (
                 <>
-                  <Zap className="w-4 h-4 fill-white" />
-                  <span>Unlock Episode (10 Coins)</span>
+                  <Coins className="w-4 h-4" />
+                  <span>Unlock Episode (1 Coin)</span>
                 </>
               )}
             </button>
@@ -201,7 +207,7 @@ export default function MicroDramaPaywall({
                 <span className="text-xs text-zinc-400">Your Coin Balance</span>
                 <span className="text-xs font-semibold text-amber-400 flex items-center gap-1">
                   <Coins className="w-3.5 h-3.5 fill-amber-400" />
-                  {wallet?.totalCoins ?? 0} Coins (Need {coinCost})
+                  {wallet?.totalCoins ?? 0} Coins (Need {coinCost} Coin)
                 </span>
               </div>
             )}
@@ -219,63 +225,147 @@ export default function MicroDramaPaywall({
               </div>
             )}
 
-            {/* Coin Package Grid */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 block mb-2">
-                {paymentMethod === 'mpesa' ? 'Choose M-Pesa Package' : 'Choose Coin Bundle'}
-              </label>
-              <div className={`grid ${paymentMethod === 'mpesa' ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
-                {(paymentMethod === 'mpesa' ? MPESA_PACKAGES : CARD_PACKAGES).map((pkg) => {
-                  const isSelected = selectedPackage.id === pkg.id;
-                  return (
-                    <button
-                      key={pkg.id}
-                      onClick={() => setSelectedPackage(pkg)}
-                      className={`relative p-3 rounded-2xl border text-center transition-all ${
-                        isSelected
-                          ? 'bg-red-950/40 border-red-600 text-white shadow-md'
-                          : 'bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:bg-zinc-900'
-                      }`}
-                    >
-                      {pkg.id === 'coins-daily-10' && (
-                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-green-600 text-[9px] font-bold px-2 py-0.2 rounded-full uppercase text-white shadow">
-                          10 Bob
-                        </span>
-                      )}
-                      {pkg.isPopular && pkg.id !== 'coins-daily-10' && (
-                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-red-600 text-[9px] font-bold px-2 py-0.2 rounded-full uppercase text-white shadow">
-                          Best Value
-                        </span>
-                      )}
-                      <div className="flex items-center justify-center gap-1 text-amber-400 font-extrabold text-sm mb-0.5 mt-1">
-                        <Coins className="w-3.5 h-3.5 fill-amber-400" />
-                        <span>{pkg.coins + (pkg.bonus || 0)} Coins</span>
-                      </div>
-                      <div className="text-[11px] font-bold text-emerald-400 mb-0.5">
-                        {pkg.id === 'coins-daily-10' ? '1 Episode' : `~${Math.floor((pkg.coins + pkg.bonus) / 10)} Episodes`}
-                      </div>
-                      <div className="text-xs font-extrabold text-white">
-                        {paymentMethod === 'mpesa' ? `KES ${pkg.priceKes}` : `$${pkg.priceUsd}`}
-                      </div>
-                      <div className="text-[9px] text-zinc-400 mt-0.5">Coins never expire</div>
-                    </button>
-                  );
-                })}
-              </div>
+            {/* Purchase Mode Toggle: Coins vs VIP Unlimited */}
+            <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setPurchaseTab('coins')}
+                className={`flex-1 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${
+                  purchaseTab === 'coins'
+                    ? 'bg-amber-500 text-black shadow'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5" />
+                <span>Coins (1 Coin = 1 Ep)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPurchaseTab('vip')}
+                className={`flex-1 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${
+                  purchaseTab === 'vip'
+                    ? 'bg-red-600 text-white shadow'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Crown className="w-3.5 h-3.5" />
+                <span>Unlimited VIP Pass</span>
+              </button>
+            </div>
 
-              {/* Pricing Clarity Helper */}
-              <div className="mt-3 p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 text-[11px] space-y-1">
-                <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>How Coin Pricing Works:</span>
+            {/* Coins Grid View */}
+            {purchaseTab === 'coins' && (
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 block mb-2">
+                  {paymentMethod === 'mpesa' ? 'Choose M-Pesa Coin Pack (Min 10 Bob)' : 'Choose Coin Bundle'}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(paymentMethod === 'mpesa' ? MPESA_PACKAGES : CARD_PACKAGES).map((pkg) => {
+                    const isSelected = selectedPackage.id === pkg.id;
+                    const totalCoins = pkg.coins + (pkg.bonus || 0);
+                    return (
+                      <button
+                        key={pkg.id}
+                        onClick={() => setSelectedPackage(pkg)}
+                        className={`relative p-3 rounded-2xl border text-center transition-all ${
+                          isSelected
+                            ? 'bg-amber-950/40 border-amber-500 text-white shadow-md ring-1 ring-amber-500/50'
+                            : 'bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:bg-zinc-900'
+                        }`}
+                      >
+                        {pkg.id === 'coins-10' && (
+                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-green-600 text-[9px] font-bold px-2 py-0.2 rounded-full uppercase text-white shadow">
+                            Min 10 Bob
+                          </span>
+                        )}
+                        {pkg.isPopular && pkg.id !== 'coins-10' && (
+                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-red-600 text-[9px] font-bold px-2 py-0.2 rounded-full uppercase text-white shadow">
+                            Best Value
+                          </span>
+                        )}
+                        <div className="flex items-center justify-center gap-1 text-amber-400 font-extrabold text-sm mb-0.5 mt-1">
+                          <Coins className="w-3.5 h-3.5 fill-amber-400" />
+                          <span>{totalCoins} Coins</span>
+                        </div>
+                        <div className="text-[11px] font-bold text-emerald-400 mb-0.5">
+                          {totalCoins} Episodes
+                        </div>
+                        <div className="text-xs font-extrabold text-white">
+                          {paymentMethod === 'mpesa' ? `KES ${pkg.priceKes}` : `$${pkg.priceUsd}`}
+                        </div>
+                        <div className="text-[9px] text-zinc-400 mt-0.5">Never expires</div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <p className="text-[11px] text-zinc-300 leading-relaxed">
-                  • <strong className="text-white">1 Episode = 10 Coins</strong>.<br />
-                  • <strong className="text-white">KES 10 = 1 Episode</strong> (Daily 10 Bob micro-unlock).<br />
-                  • <strong className="text-white">KES 100 = 11 Episodes</strong> (100 coins + 10 bonus coins).<br />
-                  • <strong className="text-emerald-400 font-semibold">Never Expires:</strong> Purchased coins stay in your wallet forever. Unlocked episodes remain unlocked forever.
-                </p>
               </div>
+            )}
+
+            {/* VIP Pass Grid View */}
+            {purchaseTab === 'vip' && (
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 block mb-2">
+                  Unlimited VIP All-Access Pass
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {VIP_PASSES.map((pass) => {
+                    const isSelected = selectedVipPass.id === pass.id;
+                    return (
+                      <button
+                        key={pass.id}
+                        onClick={() => setSelectedVipPass(pass)}
+                        className={`relative p-3 rounded-2xl border text-center transition-all ${
+                          isSelected
+                            ? 'bg-red-950/40 border-red-600 text-white shadow-md ring-1 ring-red-500/50'
+                            : 'bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:bg-zinc-900'
+                        }`}
+                      >
+                        {pass.id === 'pass-daily' && (
+                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-green-600 text-[9px] font-bold px-2 py-0.2 rounded-full uppercase text-white shadow">
+                            20 Bob
+                          </span>
+                        )}
+                        {pass.id === 'pass-weekly' && (
+                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-amber-500 text-[9px] font-bold px-2 py-0.2 rounded-full uppercase text-black shadow">
+                            100/=
+                          </span>
+                        )}
+                        {pass.id === 'pass-monthly' && (
+                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-red-600 text-[9px] font-bold px-2 py-0.2 rounded-full uppercase text-white shadow">
+                            300/=
+                          </span>
+                        )}
+                        <div className="flex items-center justify-center gap-1 text-red-400 font-extrabold text-xs mb-0.5 mt-1">
+                          <Crown className="w-3.5 h-3.5" />
+                          <span>{pass.durationLabel}</span>
+                        </div>
+                        <div className="text-[11px] font-bold text-emerald-400 mb-0.5">
+                          Unlimited
+                        </div>
+                        <div className="text-xs font-extrabold text-white">
+                          {paymentMethod === 'mpesa' ? `KES ${pass.priceKes}` : `$${pass.priceUsd}`}
+                        </div>
+                        <div className="text-[9px] text-zinc-400 mt-0.5">{pass.durationLabel} access</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Pricing Clarity Helper */}
+            <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 text-[11px] space-y-1">
+              <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Transparent Kenyan Pricing:</span>
+              </div>
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
+                • <strong className="text-white">1 Coin = 1 Episode = 1 Shilling (KES 1)</strong>.<br />
+                • <strong className="text-white">Minimum Payment: KES 10</strong> (10 Coins = 10 Episodes).<br />
+                • <strong className="text-white">KES 100 = 115 Episodes</strong> (100 coins + 15 bonus coins).<br />
+                • <strong className="text-amber-400 font-semibold">VIP Unlimited:</strong> 24h for 20 bob · 7 Days for 100/= · 30 Days for 300/=.<br />
+                • <strong className="text-emerald-400 font-semibold">Never Expires:</strong> Purchased coins stay in your wallet forever. Unlocked episodes remain unlocked forever.
+              </p>
             </div>
 
             {/* Payment Method Selector (M-Pesa vs Diaspora Cards/Apple Pay) */}
@@ -303,7 +393,7 @@ export default function MicroDramaPaywall({
                   type="button"
                   onClick={() => {
                     setPaymentMethod('card');
-                    setSelectedPackage(CARD_PACKAGES[1]);
+                    setSelectedPackage(CARD_PACKAGES[0]);
                   }}
                   className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all ${
                     paymentMethod === 'card'
@@ -354,7 +444,12 @@ export default function MicroDramaPaywall({
                   </>
                 ) : (
                   <>
-                    <span>Pay {paymentMethod === 'mpesa' ? `KES ${selectedPackage.priceKes}` : `$${selectedPackage.priceUsd}`}</span>
+                    <span>
+                      Pay {paymentMethod === 'mpesa' 
+                        ? `KES ${purchaseTab === 'vip' ? selectedVipPass.priceKes : selectedPackage.priceKes}` 
+                        : `$${purchaseTab === 'vip' ? selectedVipPass.priceUsd : selectedPackage.priceUsd}`}
+                      {purchaseTab === 'vip' && ` (${selectedVipPass.durationLabel} VIP)`}
+                    </span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
