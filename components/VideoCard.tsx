@@ -51,6 +51,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const [isBuffering, setIsBuffering] = useState(false);
   const [playbackError, setPlaybackError] = useState(false);
   const [isHoverPlay, setIsHoverPlay] = useState(false);
+  const [hoverPreviewEnded, setHoverPreviewEnded] = useState(false);
   const hoverTimerRef = useRef<any>(null);
   const lastClickTimeRef = useRef<number>(0);
   const lastProgressSaveRef = useRef(0);
@@ -192,21 +193,25 @@ const VideoCard: React.FC<VideoCardProps> = ({
     };
   }, []);
 
-  // Netflix-style Hover Play logic
+  // 10-Second Hover Play preview for guests / homepage browsing
   useEffect(() => {
-    if (isHovering && !isPlaying && !isRatingLocked && !effectiveDataSaver) {
+    if (isHovering && !isPlaying && !isRatingLocked && !effectiveDataSaver && !hoverPreviewEnded) {
       hoverTimerRef.current = setTimeout(() => {
         setIsHoverPlay(true);
-      }, 600); // Delay to avoid accidental plays while scrolling
+      }, 500); // Delay to avoid accidental plays while scrolling
     } else if (!isHovering) {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       setIsHoverPlay(false);
+      setHoverPreviewEnded(false);
+      if (videoRef.current && !isPlaying) {
+        videoRef.current.currentTime = 0;
+      }
     }
 
     return () => {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     };
-  }, [isHovering, isPlaying, isRatingLocked, effectiveDataSaver]);
+  }, [isHovering, isPlaying, isRatingLocked, effectiveDataSaver, hoverPreviewEnded]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -370,6 +375,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
       setCurrentTime(current);
       setDuration(total || 0);
       setProgress((current / total) * 100);
+
+      // Stop hover play after the first 10 seconds for guests and display the Play Button
+      if (isHoverPlay && !isPlaying && current >= 10) {
+        videoRef.current.pause();
+        setIsHoverPlay(false);
+        setHoverPreviewEnded(true);
+        return;
+      }
+
       if (!isHoverPlay && total > 0 && current - lastProgressSaveRef.current >= 10) {
         lastProgressSaveRef.current = current;
         onProgress(video.id, {
@@ -457,7 +471,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       }}
     >
       <div className={`relative ${video.seriesFormat === "micro-drama" || video.category === "Micro Dramas" ? "aspect-[9/16]" : "aspect-video"} bg-black overflow-hidden`}>
-        {!isPlaying && !isHoverPlay && !isBuffering ? (
+        {!isPlaying && !isHoverPlay && !isBuffering && !hoverPreviewEnded ? (
           <>
             <CatalogueArtwork src={video.thumbnail} className="catalogue-video-art w-full h-full object-cover" />
             
@@ -573,7 +587,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               onClick={handleVideoClick}
               muted={isHoverPlay && !isPlaying}
               autoPlay
-              loop={isHoverPlay && !isPlaying}
+              loop={false}
               playsInline
               preload={effectiveDataSaver ? 'none' : 'metadata'}
               onError={() => {
@@ -587,6 +601,26 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 <track kind="captions" src={video.captionsUrl} srcLang="en" label="English" />
               )}
             </video>
+
+            {/* 10-Second Hover Preview Ended Overlay */}
+            {hoverPreviewEnded && !isPlaying && (
+              <div 
+                onClick={togglePlay}
+                className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[2px] transition-all cursor-pointer group/preview"
+              >
+                <button
+                  type="button"
+                  onClick={togglePlay}
+                  aria-label={`Play full video ${video.title}`}
+                  className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 hover:scale-110 flex items-center justify-center text-white shadow-2xl transition-all duration-200"
+                >
+                  <Play fill="currentColor" className="w-7 h-7 ml-1" />
+                </button>
+                <span className="mt-3 text-xs font-bold text-white tracking-wide bg-black/85 px-3 py-1 rounded-full border border-zinc-700 shadow pointer-events-none">
+                  Preview ended · Click to Play
+                </span>
+              </div>
+            )}
 
             {/* Buffering Indicator */}
             {isBuffering && (
