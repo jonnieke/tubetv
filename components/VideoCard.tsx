@@ -329,6 +329,11 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
   };
 
+  const handleCardDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleFullScreen();
+  };
+
   const handleVideoClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     const now = Date.now();
