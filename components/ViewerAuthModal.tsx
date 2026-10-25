@@ -11,9 +11,11 @@ import {
   ArrowRight,
   Copy,
   Check,
+  AlertTriangle,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured, requestPhoneOtp, verifyPhoneOtp, phoneToE164, isValidKenyanPhone } from '../lib/supabase';
 import { claimWelcomeBonus } from '../services/paymentService';
+import { isAnotherDeviceActive, claimActiveDevice } from '../lib/deviceSession';
 
 interface ViewerAuthModalProps {
   isOpen: boolean;
@@ -33,10 +35,12 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
-  const [step, setStep] = useState<'input' | 'otp'>('input');
+  const [step, setStep] = useState<'input' | 'otp' | 'conflict'>('input');
   const [generatedCode, setGeneratedCode] = useState('');
   const [isExternalOtp, setIsExternalOtp] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [conflictDeviceName, setConflictDeviceName] = useState('Another Device');
+  const [pendingUser, setPendingUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -116,7 +120,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
             return;
           }
         } else if (data.user) {
-          await finalizeLogin(data.user, e164);
+          await checkDeviceAndComplete(data.user, e164);
           return;
         }
       } else {
@@ -131,9 +135,39 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
 
       // Register or sign in user with phone captured
       const user = await registerViewerWithPhone(e164);
-      await finalizeLogin(user, e164);
+      await checkDeviceAndComplete(user, e164);
     } catch (err: any) {
       setErrorMessage(err.message || 'Unable to verify code. Please try again.');
+      setIsLoading(false);
+    }
+  };
+
+  // Checks for concurrent active device; shows 1-device modal if another device is active
+  const checkDeviceAndComplete = async (user: User, identifier: string) => {
+    const conflict = isAnotherDeviceActive(user);
+    if (conflict.isAnotherActive) {
+      setPendingUser(user);
+      setConflictDeviceName(conflict.activeDeviceName);
+      setStep('conflict');
+      setIsLoading(false);
+      return;
+    }
+
+    // Single device claimed
+    await claimActiveDevice(user);
+    await finalizeLogin(user, identifier);
+  };
+
+  // Force log out the other device and take over on this device
+  const handleLogoutOtherDevice = async () => {
+    if (!pendingUser) return;
+    setIsLoading(true);
+    try {
+      await claimActiveDevice(pendingUser);
+      await finalizeLogin(pendingUser, phoneToE164(phone) || phone);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to switch device. Please try again.');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -227,7 +261,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
         });
 
         if (!signInError && signInData.user) {
-          await finalizeLogin(signInData.user, email);
+          await checkDeviceAndComplete(signInData.user, email);
           return;
         }
 
@@ -243,7 +277,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
         }
 
         if (signUpData.user) {
-          await finalizeLogin(signUpData.user, email);
+          await checkDeviceAndComplete(signUpData.user, email);
           return;
         }
       } else {
@@ -271,7 +305,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
 
   const finalizeLogin = async (user: User, identifier: string) => {
     try {
-      // Provisions exactly 5 free coins
+      // Provisions strictly 5 free coins
       await claimWelcomeBonus(user.id);
     } catch {}
 
@@ -317,252 +351,304 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           </p>
         </div>
 
-        {/* Auth Method Selector */}
-        <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800 mb-5">
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMethod('whatsapp');
-              setStep('input');
-              setErrorMessage('');
-            }}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-              authMethod === 'whatsapp'
-                ? 'bg-[#25D366] text-black shadow-sm'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <WhatsAppIcon className="w-4 h-4" />
-            <span>WhatsApp (Kenya)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMethod('email');
-              setStep('input');
-              setErrorMessage('');
-            }}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-              authMethod === 'email'
-                ? 'bg-zinc-800 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Mail className="w-4 h-4" />
-            <span>Email</span>
-          </button>
-        </div>
-
         {/* Status Messages */}
         {errorMessage && (
           <div className="mb-4 p-3 rounded-xl bg-red-950/60 border border-red-800 text-xs text-red-300">
             {errorMessage}
           </div>
         )}
-        {successMessage && (
+        {successMessage && step !== 'conflict' && (
           <div className="mb-4 p-3 rounded-xl bg-green-950/60 border border-green-800 text-xs text-green-300 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-green-400 flex-shrink-0" />
             <span>{successMessage}</span>
           </div>
         )}
 
-        {/* WhatsApp Flow */}
-        {authMethod === 'whatsapp' && (
-          <div>
-            {step === 'input' ? (
-              <form onSubmit={handleSendWhatsAppOtp} className="space-y-4">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Kenyan WhatsApp Phone Number
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
-                      <Smartphone className="w-4 h-4" />
-                    </div>
-                    <input
-                      type="tel"
-                      placeholder="0712 345 678 or 0110 123 456"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      required
-                      autoFocus
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#25D366]"
-                    />
-                  </div>
-                  <span className="text-[10px] text-zinc-500 block mt-1">
-                    Enter Safaricom, Airtel, or Telkom phone number.
-                  </span>
-                </div>
+        {/* Step: Single Device Conflict Resolution */}
+        {step === 'conflict' ? (
+          <div className="space-y-4 text-center animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-white mb-1">Active on Another Device</h4>
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                This number (<strong className="text-white">{phone}</strong>) is currently active on:
+                <span className="block font-semibold text-amber-400 mt-1">📱 {conflictDeviceName}</span>
+              </p>
+              <p className="text-[11px] text-zinc-400 mt-2">
+                TubeTV permits a <strong>maximum of 1 active device</strong> at a time.
+              </p>
+            </div>
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-black" />
-                      <span>Sending code...</span>
-                    </>
-                  ) : (
-                    <>
-                      <WhatsAppIcon className="w-4 h-4" />
-                      <span>Send Code via WhatsApp</span>
-                      <ArrowRight className="w-4 h-4 text-black" />
-                    </>
-                  )}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleVerifyOtp} className="space-y-3">
-                <div className="p-3.5 rounded-2xl bg-[#25D366]/10 border border-[#25D366]/30 text-xs text-zinc-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-[#25D366] font-bold">
-                      <WhatsAppIcon className="w-4 h-4" />
-                      <span>WhatsApp Code for {phone}</span>
-                    </div>
-                  </div>
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={handleLogoutOtherDevice}
+                disabled={isLoading}
+                className="w-full py-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-black" />
+                    <span>Logging out other device...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4 text-black" />
+                    <span>Log Out Other Device & Watch Here</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStep('input');
+                  setOtpCode('');
+                }}
+                className="w-full py-2 text-xs text-zinc-400 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Auth Method Selector */}
+            <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800 mb-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('whatsapp');
+                  setStep('input');
+                  setErrorMessage('');
+                }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                  authMethod === 'whatsapp'
+                    ? 'bg-[#25D366] text-black shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <WhatsAppIcon className="w-4 h-4" />
+                <span>WhatsApp (Kenya)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('email');
+                  setStep('input');
+                  setErrorMessage('');
+                }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                  authMethod === 'email'
+                    ? 'bg-zinc-800 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Mail className="w-4 h-4" />
+                <span>Email</span>
+              </button>
+            </div>
 
-                  {generatedCode && (
-                    <div className="flex items-center justify-between bg-zinc-900/90 border border-zinc-800 rounded-xl px-3 py-2">
-                      <div>
-                        <span className="text-[10px] text-zinc-400 block">Your 6-Digit Code:</span>
-                        <span className="font-mono text-base font-extrabold text-white tracking-widest">{generatedCode}</span>
+            {/* WhatsApp Flow */}
+            {authMethod === 'whatsapp' && (
+              <div>
+                {step === 'input' ? (
+                  <form onSubmit={handleSendWhatsAppOtp} className="space-y-4">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                        Kenyan WhatsApp Phone Number
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
+                          <Smartphone className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="tel"
+                          placeholder="0712 345 678 or 0110 123 456"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          required
+                          autoFocus
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#25D366]"
+                        />
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-zinc-500 block mt-1">
+                        Maximum 1 active device per phone number.
+                      </span>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full py-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-black" />
+                          <span>Sending code...</span>
+                        </>
+                      ) : (
+                        <>
+                          <WhatsAppIcon className="w-4 h-4" />
+                          <span>Send Code via WhatsApp</span>
+                          <ArrowRight className="w-4 h-4 text-black" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleVerifyOtp} className="space-y-3">
+                    <div className="p-3.5 rounded-2xl bg-[#25D366]/10 border border-[#25D366]/30 text-xs text-zinc-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-[#25D366] font-bold">
+                          <WhatsAppIcon className="w-4 h-4" />
+                          <span>WhatsApp Code for {phone}</span>
+                        </div>
+                      </div>
+
+                      {generatedCode && (
+                        <div className="flex items-center justify-between bg-zinc-900/90 border border-zinc-800 rounded-xl px-3 py-2">
+                          <div>
+                            <span className="text-[10px] text-zinc-400 block">Your 6-Digit Code:</span>
+                            <span className="font-mono text-base font-extrabold text-white tracking-widest">{generatedCode}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={copyCode}
+                              className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                            >
+                              {codeCopied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                              <span>{codeCopied ? 'Copied' : 'Copy'}</span>
+                            </button>
+                            <a
+                              href={`https://wa.me/?text=${encodeURIComponent(`Verify my TubeTV account (${phone}). Code: ${generatedCode}`)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-black text-[10px] font-extrabold flex items-center gap-1 transition-colors"
+                            >
+                              <WhatsAppIcon className="w-3 h-3" />
+                              <span>Share</span>
+                            </a>
+                          </div>
+                        </div>
+                      )}
+
+                      <p className="text-[11px] text-zinc-300">
+                        Enter the 6-digit code below to verify your phone number and claim your 5 free coins.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                        Enter 6-Digit Verification Code
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder="123456"
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        required
+                        autoFocus
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-center text-lg font-mono tracking-widest text-white focus:outline-none focus:border-[#25D366]"
+                      />
+                      <div className="flex items-center justify-between mt-1 text-[10px] text-zinc-500">
                         <button
                           type="button"
-                          onClick={copyCode}
-                          className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                          onClick={() => {
+                            setStep('input');
+                            setOtpCode('');
+                          }}
+                          className="text-zinc-400 hover:text-white"
                         >
-                          {codeCopied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-                          <span>{codeCopied ? 'Copied' : 'Copy'}</span>
+                          Change number
                         </button>
-                        <a
-                          href={`https://wa.me/?text=${encodeURIComponent(`Verify my TubeTV account (${phone}). Code: ${generatedCode}`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-2.5 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-black text-[10px] font-extrabold flex items-center gap-1 transition-colors"
+                        <button
+                          type="button"
+                          onClick={(e) => handleSendWhatsAppOtp(e)}
+                          className="text-[#25D366] hover:underline"
                         >
-                          <WhatsAppIcon className="w-3 h-3" />
-                          <span>Share</span>
-                        </a>
+                          Resend code
+                        </button>
                       </div>
                     </div>
-                  )}
 
-                  <p className="text-[11px] text-zinc-300">
-                    Enter the 6-digit code below to verify your phone number and claim your 5 free coins.
-                  </p>
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full py-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-black" />
+                          <span>Verifying code...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-4 h-4 text-black" />
+                          <span>Verify & Claim 5 Coins</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* Email Flow */}
+            {authMethod === 'email' && (
+              <form onSubmit={handleEmailAuth} className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoFocus
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Enter 6-Digit Verification Code
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1 block">
+                    Password <span className="text-zinc-500 text-[10px] normal-case">(Optional for Magic Link)</span>
                   </label>
                   <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="123456"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    required
-                    autoFocus
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-center text-lg font-mono tracking-widest text-white focus:outline-none focus:border-[#25D366]"
+                    type="password"
+                    placeholder="Leave blank for Magic Link"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
                   />
-                  <div className="flex items-center justify-between mt-1 text-[10px] text-zinc-500">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStep('input');
-                        setOtpCode('');
-                      }}
-                      className="text-zinc-400 hover:text-white"
-                    >
-                      Change number
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => handleSendWhatsAppOtp(e)}
-                      className="text-[#25D366] hover:underline"
-                    >
-                      Resend code
-                    </button>
-                  </div>
                 </div>
 
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
+                  className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin text-black" />
-                      <span>Verifying code...</span>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Signing in...</span>
                     </>
                   ) : (
                     <>
-                      <ShieldCheck className="w-4 h-4 text-black" />
-                      <span>Verify & Claim 5 Coins</span>
+                      <Mail className="w-4 h-4" />
+                      <span>Sign In & Claim 5 Coins</span>
                     </>
                   )}
                 </button>
               </form>
             )}
-          </div>
-        )}
-
-        {/* Email Flow */}
-        {authMethod === 'email' && (
-          <form onSubmit={handleEmailAuth} className="space-y-3">
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                Email Address
-              </label>
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoFocus
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1 block">
-                Password <span className="text-zinc-500 text-[10px] normal-case">(Optional for Magic Link)</span>
-              </label>
-              <input
-                type="password"
-                placeholder="Leave blank for Magic Link"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Signing in...</span>
-                </>
-              ) : (
-                <>
-                  <Mail className="w-4 h-4" />
-                  <span>Sign In & Claim 5 Coins</span>
-                </>
-              )}
-            </button>
-          </form>
+          </>
         )}
       </div>
     </div>

@@ -66,6 +66,8 @@ const App: React.FC = () => {
     setShowLogin,
     showViewerAuth,
     setShowViewerAuth,
+    deviceConflictNotice,
+    setDeviceConflictNotice,
     handleLogout,
     setCurrentUser,
     setIsAuthenticated,
@@ -501,6 +503,28 @@ const App: React.FC = () => {
               onCancel={() => setShowLogin(false)}
             />
           </Suspense>
+        )}
+
+        {/* 1-Device Limit Conflict Alert */}
+        {deviceConflictNotice && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="relative w-full max-w-sm rounded-3xl bg-zinc-950 border border-red-800 p-6 shadow-2xl text-center">
+              <div className="w-12 h-12 rounded-2xl bg-red-600/20 border border-red-500/30 flex items-center justify-center text-red-500 mx-auto mb-3">
+                <Smartphone className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-white mb-2">1 Device Limit Reached</h3>
+              <p className="text-xs text-zinc-300 leading-relaxed mb-4">
+                {deviceConflictNotice}
+              </p>
+              <button
+                type="button"
+                onClick={() => setDeviceConflictNotice(null)}
+                className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow transition-colors"
+              >
+                Understood
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Viewer Welcome Bonus / Authentication Modal */}

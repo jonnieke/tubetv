@@ -59,27 +59,44 @@ export async function fetchWalletBalance(): Promise<CoinWallet | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data, error } = await supabase
-    .from('user_wallets')
-    .select('coin_balance, bonus_coins')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  try {
+    const [walletRes, unlocksRes] = await Promise.all([
+      supabase
+        .from('user_wallets')
+        .select('coin_balance, bonus_coins, total_spent_kes')
+        .eq('user_id', user.id)
+        .maybeSingle(),
+      supabase
+        .from('episode_unlocks')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id),
+    ]);
 
-  if (error || !data) {
-    return { coinBalance: 5, bonusCoins: 0, totalCoins: 5 }; // 5 Free Welcome Coins
-  }
+    const data = walletRes.data;
+    const unlocksCount = unlocksRes.count || 0;
+    const totalSpentKes = data?.total_spent_kes || 0;
 
-  // Normalize initial welcome bonus to 5 coins if no payments made
-  let bonus = data.bonus_coins || 0;
-  let balance = data.coin_balance || 0;
-  if (balance === 0 && bonus >= 30) {
-    bonus = 5; // Normalize legacy 30 bonus to 5 coins
+    // If viewer has never purchased a paid package, strictly enforce 5 welcome coins
+    if (totalSpentKes === 0) {
+      const freeCoins = Math.max(0, 5 - unlocksCount);
+      return {
+        coinBalance: 0,
+        bonusCoins: freeCoins,
+        totalCoins: freeCoins,
+      };
+    }
+
+    // For paying users: paid coins + remaining free coins
+    const freeCoins = Math.max(0, 5 - unlocksCount);
+    const paidBalance = Math.max(0, (data?.coin_balance || 0) + (data?.bonus_coins || 0) - unlocksCount);
+    return {
+      coinBalance: data?.coin_balance || 0,
+      bonusCoins: freeCoins,
+      totalCoins: paidBalance,
+    };
+  } catch {
+    return { coinBalance: 0, bonusCoins: 5, totalCoins: 5 };
   }
-  return {
-    coinBalance: balance,
-    bonusCoins: bonus,
-    totalCoins: balance + bonus,
-  };
 }
 
 /**
@@ -130,6 +147,16 @@ export async function unlockEpisodeWithCoins(
   seriesId?: string,
   cost: number = 1
 ): Promise<{ success: boolean; error?: string; remainingBalance?: number }> {
+  // Check effective balance first (strictly enforces 5 free coins limit)
+  const wallet = await fetchWalletBalance();
+  if (!wallet || wallet.totalCoins < cost) {
+    return {
+      success: false,
+      error: 'Insufficient coins. Please recharge your wallet.',
+      remainingBalance: wallet?.totalCoins || 0,
+    };
+  }
+
   const { data, error } = await supabase.rpc('unlock_episode_with_coins', {
     p_video_id: videoId,
     p_series_id: seriesId || null,
@@ -140,10 +167,13 @@ export async function unlockEpisodeWithCoins(
     return { success: false, error: error.message };
   }
 
+  // Fetch updated effective balance
+  const updatedWallet = await fetchWalletBalance();
+
   return {
     success: data?.success ?? false,
     error: data?.error,
-    remainingBalance: data?.remaining_balance,
+    remainingBalance: updatedWallet?.totalCoins ?? 0,
   };
 }
 
