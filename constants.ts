@@ -11,6 +11,7 @@ export const MOCK_VIDEOS: Video[] = [
   // Micro Dramas (Kenyan Vertical Episodic Stories)
   {
     id: 'micro-ns-1',
+    featuredInBanner: true,
     title: 'The Stolen Ledger',
     seriesTitle: 'Nairobi Secrets',
     seriesId: 'nairobi-secrets',
@@ -102,7 +103,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: '1',
     title: 'Nairobi Nightlife: Hidden Gems',
-    thumbnail: 'https://picsum.photos/800/450?random=1',
+    thumbnail: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=75',
     views: 1200000,
     duration: '24m',
     isPremium: true,
@@ -113,7 +114,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: '2',
     title: 'Matatu Culture: The Art of Moving',
-    thumbnail: 'https://picsum.photos/800/450?random=2',
+    thumbnail: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=800&q=75',
     views: 890000,
     duration: '45m',
     isPremium: true,
@@ -125,8 +126,9 @@ export const MOCK_VIDEOS: Video[] = [
   // Originals (Kenyan Drama/Comedy)
   {
     id: '3',
+    featuredInBanner: true,
     title: 'The Landlord: Episode 1',
-    thumbnail: 'https://picsum.photos/800/450?random=3',
+    thumbnail: 'https://images.unsplash.com/photo-1585647347483-22b66260dfff?auto=format&fit=crop&w=800&q=75',
     views: 3400000,
     duration: '22m',
     isPremium: true,
@@ -137,7 +139,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: '4',
     title: 'Campus Diaries: Semester 1',
-    thumbnail: 'https://picsum.photos/800/450?random=4',
+    thumbnail: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=800&q=75',
     views: 450000,
     duration: '30m',
     isPremium: true,
@@ -149,8 +151,9 @@ export const MOCK_VIDEOS: Video[] = [
   // School Flix
   {
     id: 'sf1',
+    featuredInBanner: true,
     title: 'National Drama Festivals: Echoes of the Mau',
-    thumbnail: 'https://picsum.photos/800/450?random=17',
+    thumbnail: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=800&q=75',
     views: 185000,
     duration: '38m',
     isPremium: false,
@@ -162,7 +165,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'sf2',
     title: 'Kakamega High Choral Verse: Mwamba Imara',
-    thumbnail: 'https://picsum.photos/800/450?random=18',
+    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=75',
     views: 142000,
     duration: '15m',
     isPremium: false,
@@ -175,8 +178,9 @@ export const MOCK_VIDEOS: Video[] = [
   // Music
   {
     id: 'mus1',
+    featuredInBanner: true,
     title: 'Live Session: Nairobi Afro-Soul & Gengetone Beats',
-    thumbnail: 'https://picsum.photos/800/450?random=19',
+    thumbnail: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=75',
     views: 320000,
     duration: '45m',
     isPremium: false,
@@ -188,7 +192,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'mus2',
     title: 'Benga Legends: Roots of Kenyan Sound',
-    thumbnail: 'https://picsum.photos/800/450?random=20',
+    thumbnail: 'https://images.unsplash.com/photo-1511192336575-5a79af67a629?auto=format&fit=crop&w=800&q=75',
     views: 198000,
     duration: '52m',
     isPremium: false,
@@ -201,8 +205,9 @@ export const MOCK_VIDEOS: Video[] = [
   // Documentary
   {
     id: 'doc1',
+    featuredInBanner: true,
     title: 'The Great Rift: Heartbeat of the Savannah',
-    thumbnail: 'https://picsum.photos/800/450?random=21',
+    thumbnail: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&w=800&q=75',
     views: 260000,
     duration: '58m',
     isPremium: false,
@@ -214,7 +219,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'doc2',
     title: 'Untold History: Freedom Fighters of Mount Kenya',
-    thumbnail: 'https://picsum.photos/800/450?random=22',
+    thumbnail: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=800&q=75',
     views: 310000,
     duration: '1h 12m',
     isPremium: false,
@@ -228,7 +233,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'edu1',
     title: 'Grade 4 CBC Math: Fractions made Easy',
-    thumbnail: 'https://picsum.photos/800/450?random=5',
+    thumbnail: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=800&q=75',
     views: 12000,
     duration: '15m',
     isPremium: false, // Selected free educational preview
@@ -239,7 +244,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'edu2',
     title: 'KCSE Revision: Biology Paper 1',
-    thumbnail: 'https://picsum.photos/800/450?random=6',
+    thumbnail: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=800&q=75',
     views: 85000,
     duration: '1h 10m',
     isPremium: true,
@@ -250,7 +255,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'edu3',
     title: 'Intro to AI for Kids',
-    thumbnail: 'https://picsum.photos/800/450?random=7',
+    thumbnail: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=800&q=75',
     views: 5000,
     duration: '10m',
     isPremium: true,
@@ -263,7 +268,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'farm1',
     title: 'How to Grow Avocados for Export',
-    thumbnail: 'https://picsum.photos/800/450?random=8',
+    thumbnail: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?auto=format&fit=crop&w=800&q=75',
     views: 230000,
     duration: '18m',
     isPremium: true,
@@ -274,7 +279,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'farm2',
     title: 'Modern Dairy Farming Techniques',
-    thumbnail: 'https://picsum.photos/800/450?random=9',
+    thumbnail: 'https://images.unsplash.com/photo-1500595046743-cd271d694d30?auto=format&fit=crop&w=800&q=75',
     views: 150000,
     duration: '25m',
     isPremium: true,
@@ -287,7 +292,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'faith1',
     title: 'Sunday Service Live: Hope and Restoration',
-    thumbnail: 'https://picsum.photos/800/450?random=10',
+    thumbnail: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?auto=format&fit=crop&w=800&q=75',
     views: 45000,
     duration: '1h 30m',
     isPremium: true,
@@ -298,7 +303,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'faith2',
     title: 'Bible Stories for Kids: David and Goliath',
-    thumbnail: 'https://picsum.photos/800/450?random=11',
+    thumbnail: 'https://images.unsplash.com/photo-1507692049790-de58290a4334?auto=format&fit=crop&w=800&q=75',
     views: 8000,
     duration: '5m',
     isPremium: true,
@@ -311,7 +316,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'kid1',
     title: 'Learn Swahili Alphabet Song',
-    thumbnail: 'https://picsum.photos/800/450?random=12',
+    thumbnail: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?auto=format&fit=crop&w=800&q=75',
     views: 560000,
     duration: '3m',
     isPremium: false, // Selected free kids song
@@ -322,7 +327,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'kid2',
     title: 'Tales by Moonlight: The Tortoise',
-    thumbnail: 'https://picsum.photos/800/450?random=13',
+    thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=75',
     views: 120000,
     duration: '10m',
     isPremium: true,
@@ -335,7 +340,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'dia1',
     title: 'Investing in Real Estate from Abroad',
-    thumbnail: 'https://picsum.photos/800/450?random=14',
+    thumbnail: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=75',
     views: 95000,
     duration: '40m',
     isPremium: true,
@@ -346,7 +351,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'dia2',
     title: 'Mugithi Night Live in London',
-    thumbnail: 'https://picsum.photos/800/450?random=15',
+    thumbnail: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=800&q=75',
     views: 210000,
     duration: '2h',
     isPremium: true,
@@ -359,7 +364,7 @@ export const MOCK_VIDEOS: Video[] = [
   {
     id: 'live1',
     title: 'Live: Safari Rally Highlights',
-    thumbnail: 'https://picsum.photos/800/450?random=16',
+    thumbnail: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=75',
     views: 300000,
     duration: 'Live',
     isPremium: true,
@@ -373,7 +378,7 @@ export const MOCK_VIDEOS: Video[] = [
 export const MOCK_SHORTS: ShortVideo[] = [
   {
     id: 's1',
-    thumbnail: 'https://picsum.photos/seed/tubetv-short-1/450/800',
+    thumbnail: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=450&h=800&q=75',
     videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
     author: '@tubetv_demo',
     description: 'Comedy preview from the TubeTV demo catalogue',
@@ -382,7 +387,7 @@ export const MOCK_SHORTS: ShortVideo[] = [
   },
   {
     id: 's2',
-    thumbnail: 'https://picsum.photos/seed/tubetv-short-2/450/800',
+    thumbnail: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=450&h=800&q=75',
     videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
     author: '@tubetv_demo',
     description: 'Food preview from the TubeTV demo catalogue',
@@ -391,7 +396,7 @@ export const MOCK_SHORTS: ShortVideo[] = [
   },
   {
     id: 'ad1',
-    thumbnail: 'https://picsum.photos/seed/tubetv-short-ad/450/800',
+    thumbnail: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=450&h=800&q=75',
     videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
     author: 'TubeTV demo sponsor',
     description: 'Example sponsored placement',
@@ -401,7 +406,7 @@ export const MOCK_SHORTS: ShortVideo[] = [
   },
   {
     id: 's3',
-    thumbnail: 'https://picsum.photos/seed/tubetv-short-3/450/800',
+    thumbnail: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=450&h=800&q=75',
     videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
     author: '@tubetv_demo',
     description: 'Travel preview from the TubeTV demo catalogue',
@@ -410,7 +415,7 @@ export const MOCK_SHORTS: ShortVideo[] = [
   },
   {
     id: 's4',
-    thumbnail: 'https://picsum.photos/seed/tubetv-short-4/450/800',
+    thumbnail: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=450&h=800&q=75',
     videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
     author: '@tubetv_demo',
     description: 'Sports preview from the TubeTV demo catalogue',
@@ -419,7 +424,7 @@ export const MOCK_SHORTS: ShortVideo[] = [
   },
   {
     id: 's5',
-    thumbnail: 'https://picsum.photos/seed/tubetv-short-5/450/800',
+    thumbnail: 'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=450&h=800&q=75',
     videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
     author: '@tubetv_demo',
     description: 'Series preview from the TubeTV demo catalogue',
@@ -428,7 +433,7 @@ export const MOCK_SHORTS: ShortVideo[] = [
   },
   {
     id: 's6',
-    thumbnail: 'https://picsum.photos/seed/tubetv-short-6/450/800',
+    thumbnail: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=450&h=800&q=75',
     videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
     author: '@tubetv_demo',
     description: 'Technology preview from the TubeTV demo catalogue',

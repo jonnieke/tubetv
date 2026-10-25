@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert
+  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Sparkles
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
 import UploadSection from './UploadSection';
@@ -65,6 +65,7 @@ const EMPTY_FORM = {
   contentRating: 'UNRATED' as ContentRating,
   classificationNumber: '',
   tags: '',
+  featuredInBanner: false,
 };
 
 type EditForm = typeof EMPTY_FORM;
@@ -97,6 +98,8 @@ const EditModal = ({
   existingSeries,
   seriesDetails,
   existingAuthors,
+  bannerCount,
+  isBannerFull,
   onSave,
   onClose,
 }: {
@@ -107,6 +110,8 @@ const EditModal = ({
   existingSeries: string[];
   seriesDetails: Record<string, { seriesId: string; seriesSynopsis: string }>;
   existingAuthors: string[];
+  bannerCount: number;
+  isBannerFull: boolean;
   onSave: () => void;
   onClose: () => void;
 }) => {
@@ -346,6 +351,51 @@ const EditModal = ({
             {field('Classification number', 'classificationNumber', { placeholder: 'Optional KFCB certificate number' })}
           </div>
 
+                    {/* Sliding Banner Spotlight (Max 5) */}
+          <div className={`p-4 rounded-xl border transition-all ${form.featuredInBanner ? 'bg-amber-950/20 border-amber-500/40' : 'bg-zinc-900 border-zinc-800'}`}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Sparkles className={`w-4 h-4 ${form.featuredInBanner ? 'text-amber-400' : 'text-zinc-500'}`} />
+                  <span className="text-sm font-bold text-white">
+                    Feature in Sliding Banner (Homepage Spotlight)
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    form.featuredInBanner 
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' 
+                      : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                  }`}>
+                    {bannerCount}/5 Active
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Featured items slide dynamically in the hero banner on the homepage. Maximum 5 videos allowed across the platform.
+                </p>
+                {isBannerFull && !form.featuredInBanner && (
+                  <p className="text-xs text-amber-400 mt-2 font-medium">
+                    ⚠️ Maximum 5 banner spots are currently filled. Uncheck another video to feature this one.
+                  </p>
+                )}
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer mt-0.5">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.featuredInBanner)}
+                  disabled={isBannerFull && !form.featuredInBanner}
+                  onChange={(e) => {
+                    if (e.target.checked && isBannerFull) {
+                      alert('Maximum 5 banner items reached. You must disable an existing banner item first.');
+                      return;
+                    }
+                    setForm(f => ({ ...f, featuredInBanner: e.target.checked }));
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed"></div>
+              </label>
+            </div>
+          </div>
+
           {/* Tags */}
           {field('Tags', 'tags', { placeholder: 'farming, maize, kenya (comma-separated)' })}
 
@@ -456,6 +506,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       contentRating: normalizeContentRating(saved.contentRating ?? mapped.contentRating),
       classificationNumber: saved.classificationNumber ?? getMeta(item.metaTags, 'classificationNumber'),
       tags: saved.tags ?? getMeta(item.metaTags, 'tags'),
+      featuredInBanner: saved.featuredInBanner ?? (getMeta(item.metaTags, 'featuredInBanner') === 'true' || getMeta(item.metaTags, 'banner') === 'true'),
     });
     setEditingItem(item);
   };
@@ -500,14 +551,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       // 1. Prepare the updated metadata
       // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds'];
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds', 'featuredinbanner', 'banner'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
       
       const newMetaTags = [
         ...filteredMetaTags,
-        ...Object.entries(normalizedForm).filter(([_, v]) => v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) }))
+        ...Object.entries(normalizedForm).filter(([k, v]) => k !== 'featuredInBanner' && v !== undefined && v !== '').map(([k, v]) => ({ property: k, value: String(v) })),
+        ...(normalizedForm.featuredInBanner ? [{ property: 'featuredInBanner', value: 'true' }, { property: 'banner', value: 'true' }] : [{ property: 'featuredInBanner', value: 'false' }, { property: 'banner', value: 'false' }])
       ];
 
       // 2. Save to Bunny CDN via Supabase Proxy
@@ -553,6 +605,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } finally {
       setSaving(false);
     }
+  };
+
+    const bannerItemsCount = items.filter(i => getMeta(i.metaTags, 'featuredInBanner') === 'true' || getMeta(i.metaTags, 'banner') === 'true').length;
+
+  const handleToggleBanner = async (item: BunnyVideoItem) => {
+    const isCurrentlyInBanner = getMeta(item.metaTags, 'featuredInBanner') === 'true' || getMeta(item.metaTags, 'banner') === 'true';
+    if (!isCurrentlyInBanner && bannerItemsCount >= 5) {
+      alert('Maximum 5 banner items reached across the platform. You must disable an existing banner item first.');
+      return;
+    }
+    const nextState = !isCurrentlyInBanner;
+    const filteredMetaTags = (item.metaTags || []).filter(
+      t => !['featuredinbanner', 'banner'].includes(t.property.toLowerCase())
+    );
+    const newMetaTags = [
+      ...filteredMetaTags,
+      { property: 'featuredInBanner', value: String(nextState) },
+      { property: 'banner', value: String(nextState) },
+    ];
+    setItems(prev => prev.map(v => v.guid === item.guid ? { ...v, metaTags: newMetaTags } : v));
+    await updateVideoMetadata(item.guid, { metaTags: newMetaTags });
   };
 
   const toggleVisibility = async (item: BunnyVideoItem) => {
@@ -918,6 +991,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           form={editForm}
           setForm={setEditForm}
           saving={saving}
+          bannerCount={bannerItemsCount}
+          isBannerFull={5 - bannerItemsCount + ((getMeta(editingItem.metaTags, 'featuredInBanner') === 'true' || getMeta(editingItem.metaTags, 'banner') === 'true') ? 1 : 0) <= 0}
           existingSeries={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'seriesTitle')).filter(Boolean))) as string[]).sort()}
           seriesDetails={Object.fromEntries(items.filter(item => getMeta(item.metaTags, 'seriesTitle')).map(item => [`${bunnyVideoToVideo(item).category}:${getMeta(item.metaTags, 'seriesTitle').trim().toLowerCase()}`, { seriesId: getMeta(item.metaTags, 'seriesId'), seriesSynopsis: getMeta(item.metaTags, 'seriesSynopsis') }]))}
           existingAuthors={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'author') || getMeta(v.metaTags, 'creator') || 'Tube Creator').filter(Boolean))) as string[]).sort()}

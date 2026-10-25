@@ -41,12 +41,23 @@ export default function HomeView({
   onToggleWatchLater,
   onNavigate,
 }: HomeViewProps) {
-  // Hero: Prioritize micro drama openers, then most-viewed videos
+  // Featured Sliding Banner:
+  // 1. Prioritize explicitly selected banner videos (up to 5)
+  // 2. Fill remainder with micro-drama openers and top-viewed titles
+  const explicitBannerVideos = videos.filter((video) => video.featuredInBanner);
   const dramaOpeners = videos.filter((video) => isMicroDrama(video) && (video.episode || 1) === 1);
-  const featuredVideos = [...(dramaOpeners.length ? dramaOpeners : videos)]
-    .sort((a, b) => b.views - a.views)
-    .slice(0, 5);
-  const hero = featuredVideos[heroIndex % featuredVideos.length];
+  const fallbackCandidates = [...(dramaOpeners.length ? dramaOpeners : videos)].sort((a, b) => b.views - a.views);
+
+  const featuredVideos = (
+    explicitBannerVideos.length > 0
+      ? [
+          ...explicitBannerVideos,
+          ...fallbackCandidates.filter((v) => !explicitBannerVideos.some((b) => b.id === v.id)),
+        ]
+      : fallbackCandidates
+  ).slice(0, 5);
+
+  const hero = featuredVideos[heroIndex % (featuredVideos.length || 1)];
 
   const microDramaEpisodes = videos.filter(isMicroDrama);
 
@@ -56,12 +67,13 @@ export default function HomeView({
       {hero && (
         <LandingHero
           video={hero}
+          slides={featuredVideos}
           real={isRealContent}
           saved={watchLaterIds.includes(hero.id)}
           onPlay={() => onPlayVideo(hero)}
           onSave={() => onToggleWatchLater(hero.id)}
           count={featuredVideos.length}
-          index={heroIndex % featuredVideos.length}
+          index={heroIndex % (featuredVideos.length || 1)}
           onSelect={onSetHeroIndex}
         />
       )}

@@ -72,6 +72,7 @@ export interface Video {
   productionYear?: number;
   trailerUrl?: string;
   muted?: boolean;        // Hidden from the public catalogue by an admin
+  featuredInBanner?: boolean; // Highlighted in homepage hero sliding banner (max 5)
 }
 
 export interface ShortVideo {

@@ -385,5 +385,6 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     transcriptUrl: getMeta(activeItem.metaTags, 'transcriptUrl') || undefined,
     uploadDate: activeItem.dateUploaded || undefined,
     muted: getMeta(activeItem.metaTags, 'muted') === 'true',
+    featuredInBanner: getMeta(activeItem.metaTags, 'featuredInBanner') === 'true' || getMeta(activeItem.metaTags, 'banner') === 'true',
   };
 };

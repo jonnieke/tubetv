@@ -163,7 +163,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
           id: Math.random().toString(36).substring(7),
           file,
           previewUrl: URL.createObjectURL(file),
-          metadata: { title: file.name.split('.')[0], description: '', category: uploadKind, contentRating: 'UNRATED', seriesTitle: '', seriesSynopsis: '', seasonSynopsis: '', episodeSynopsis: '', season: '1', episode: '', introEndSeconds: '', outroStartSeconds: '' },
+          metadata: { title: file.name.split('.')[0], description: '', category: uploadKind, contentRating: 'UNRATED', seriesTitle: '', seriesSynopsis: '', seasonSynopsis: '', episodeSynopsis: '', season: '1', episode: '', introEndSeconds: '', outroStartSeconds: '', featuredInBanner: false },
           thumbnail: null,
           thumbnailPrompt: file.name.split('.')[0],
           status: 'idle',
@@ -362,6 +362,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
           { property: 'contentRating', value: item.metadata.contentRating },
           { property: 'author', value: creatorName },
           { property: 'published', value: 'processing' },
+          ...(item.metadata.featuredInBanner ? [{ property: 'featuredInBanner', value: 'true' }, { property: 'banner', value: 'true' }] : []),
           ...(episodic ? [
             { property: 'seriesTitle', value: metadata.seriesTitle.trim() },
             { property: 'seriesSynopsis', value: metadata.seriesSynopsis.trim() },
@@ -722,6 +723,27 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                                 <p className="text-xs text-zinc-400">Cue points are optional. Verify them against the final encoded episode before publishing.</p>
                               </fieldset>
                             )}
+
+                                                        {/* Feature in Sliding Banner Checkbox */}
+                            <div className={`p-3 rounded-lg border transition-all ${activeItem.metadata.featuredInBanner ? 'bg-amber-950/20 border-amber-500/40' : 'bg-zinc-800/60 border-zinc-700'}`}>
+                              <label className="flex items-center justify-between cursor-pointer">
+                                <div>
+                                  <span className="text-xs font-bold text-white block">
+                                    Feature in Sliding Banner (Homepage Spotlight)
+                                  </span>
+                                  <span className="text-[11px] text-zinc-400 block mt-0.5">
+                                    Include this video in the 5 rotating hero slots on the homepage.
+                                  </span>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(activeItem.metadata.featuredInBanner)}
+                                  disabled={activeItem.status === 'completed'}
+                                  onChange={(e) => updateQueueItem(activeItem.id, { metadata: { ...activeItem.metadata, featuredInBanner: e.target.checked } })}
+                                  className="w-4 h-4 text-amber-500 rounded border-zinc-600 bg-zinc-900 focus:ring-amber-500"
+                                />
+                              </label>
+                            </div>
 
                             <textarea 
                                 rows={3}

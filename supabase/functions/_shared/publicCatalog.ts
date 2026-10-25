@@ -1,4 +1,4 @@
-export const publicTags = new Set(['category','author','creator','description','tags','seriestitle','series','seriesid','seriessynopsis','seasonsynopsis','episodesynopsis','season','episode','introendseconds','outrostartseconds','genre','productionyear','year','contentrating','classificationnumber','captionsurl','seriesformat','transcript','transcripturl','thumbnailurl','trailerurl']);
+export const publicTags = new Set(['category','author','creator','description','tags','seriestitle','series','seriesid','seriessynopsis','seasonsynopsis','episodesynopsis','season','episode','introendseconds','outrostartseconds','genre','productionyear','year','contentrating','classificationnumber','captionsurl','seriesformat','transcript','transcripturl','thumbnailurl','trailerurl','featuredinbanner','banner']);
 function tagValue(tags: {property?: string; value?: string}[], name: string) {
   return tags.find(tag => tag.property?.toLowerCase() === name)?.value?.trim() || '';
 }
