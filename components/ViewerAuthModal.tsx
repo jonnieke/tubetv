@@ -155,6 +155,9 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
 
       if (signData?.user) {
         user = signData.user;
+        if (signData.session) {
+          await supabase.auth.setSession(signData.session);
+        }
       } else {
         // Sign Up with phone in metadata
         const { data: upData } = await supabase.auth.signUp({
@@ -170,6 +173,9 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           },
         });
         user = upData?.user || null;
+        if (upData?.session) {
+          await supabase.auth.setSession(upData.session);
+        }
       }
 
       // Explicitly update profile with phone_e164
