@@ -193,7 +193,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     };
   }, []);
 
-  // 10-Second Hover Play preview for guests / homepage browsing
+  // 30-Second Hover Play preview for guests / homepage browsing
   useEffect(() => {
     if (isHovering && !isPlaying && !isRatingLocked && !effectiveDataSaver && !hoverPreviewEnded) {
       hoverTimerRef.current = setTimeout(() => {
@@ -407,8 +407,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
       setDuration(total || 0);
       setProgress((current / total) * 100);
 
-      // Stop hover play after the first 10 seconds for guests and display the Play Button
-      if (isHoverPlay && !isPlaying && current >= 10) {
+      // Stop hover play after the first 30 seconds for guests and display the Play Button
+      if (isHoverPlay && !isPlaying && current >= 30) {
         videoRef.current.pause();
         setIsHoverPlay(false);
         setHoverPreviewEnded(true);
@@ -633,7 +633,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               )}
             </video>
 
-            {/* 10-Second Hover Preview Ended Overlay */}
+            {/* 30-Second Hover Preview Ended Overlay */}
             {hoverPreviewEnded && !isPlaying && (
               <div 
                 onClick={(e) => {
