@@ -247,20 +247,34 @@ export default function MicroDramaPaywall({
                           Best Value
                         </span>
                       )}
-                      <div className="flex items-center justify-center gap-1 text-amber-400 font-extrabold text-sm mb-1 mt-1">
+                      <div className="flex items-center justify-center gap-1 text-amber-400 font-extrabold text-sm mb-0.5 mt-1">
                         <Coins className="w-3.5 h-3.5 fill-amber-400" />
-                        <span>{pkg.coins} Coins</span>
+                        <span>{pkg.coins + (pkg.bonus || 0)} Coins</span>
                       </div>
-                      {pkg.bonus > 0 && (
-                        <div className="text-[10px] text-green-400 font-semibold mb-1">+{pkg.bonus} Bonus</div>
-                      )}
+                      <div className="text-[11px] font-bold text-emerald-400 mb-0.5">
+                        {pkg.id === 'coins-daily-10' ? '1 Episode' : `~${Math.floor((pkg.coins + pkg.bonus) / 10)} Episodes`}
+                      </div>
                       <div className="text-xs font-extrabold text-white">
                         {paymentMethod === 'mpesa' ? `KES ${pkg.priceKes}` : `$${pkg.priceUsd}`}
                       </div>
-                      <div className="text-[10px] text-zinc-400 mt-0.5">{pkg.name}</div>
+                      <div className="text-[9px] text-zinc-400 mt-0.5">Coins never expire</div>
                     </button>
                   );
                 })}
+              </div>
+
+              {/* Pricing Clarity Helper */}
+              <div className="mt-3 p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 text-[11px] space-y-1">
+                <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>How Coin Pricing Works:</span>
+                </div>
+                <p className="text-[11px] text-zinc-300 leading-relaxed">
+                  • <strong className="text-white">1 Episode = 10 Coins</strong>.<br />
+                  • <strong className="text-white">KES 10 = 1 Episode</strong> (Daily 10 Bob micro-unlock).<br />
+                  • <strong className="text-white">KES 100 = 11 Episodes</strong> (100 coins + 10 bonus coins).<br />
+                  • <strong className="text-emerald-400 font-semibold">Never Expires:</strong> Purchased coins stay in your wallet forever. Unlocked episodes remain unlocked forever.
+                </p>
               </div>
             </div>
 

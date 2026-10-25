@@ -96,6 +96,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
   // Initialize HLS
   useEffect(() => {
     const shouldPlay = !isRatingLocked && (isPlaying || isHoverPlay);
+    if (!shouldPlay) {
+      if (videoRef.current && !videoRef.current.paused) {
+        videoRef.current.pause();
+      }
+      return;
+    }
+
     if (shouldPlay && !videoSrc) {
       setIsPlaying(false);
       setIsHoverPlay(false);
@@ -103,9 +110,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
     
     if (shouldPlay && videoRef.current) {
-        // If already attached and playing, just update muted state
+        // If already attached and playing, update playback & muted state
         if (hlsRef.current && videoRef.current.src) {
            videoRef.current.muted = isHoverPlay && !isPlaying;
+           if (isPlaying && videoRef.current.paused) {
+             videoRef.current.play().catch(() => {});
+           }
            return;
         }
 
@@ -231,8 +241,19 @@ const VideoCard: React.FC<VideoCardProps> = ({
       startAtRef.current = performance.now();
       startedRef.current = true;
       trackEvent('playback_start', { videoId: video.id, category: video.category, dataSaver: effectiveDataSaver });
+      setIsPlaying(true);
+      if (videoRef.current) {
+        videoRef.current.muted = isMuted;
+        videoRef.current.play().catch(() => {});
+      }
+    } else {
+      setIsPlaying(false);
+      setIsHoverPlay(false);
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
     }
-    setIsPlaying(!isPlaying);
   };
 
   const handleWhatsAppShare = (e: React.MouseEvent) => {
@@ -270,7 +291,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (e) e.stopPropagation();
     const container = containerRef.current;
     const video = videoRef.current;
-    if (!container || !video) return;
+    if (!container) return;
 
     try {
       // Standard API
@@ -314,13 +335,26 @@ const VideoCard: React.FC<VideoCardProps> = ({
     const DOUBLE_CLICK_DELAY = 300;
 
     if (now - lastClickTimeRef.current < DOUBLE_CLICK_DELAY) {
-      // Double click detected
+      // Double click detected -> Fullscreen
       toggleFullScreen();
-      lastClickTimeRef.current = 0; // Reset
+      lastClickTimeRef.current = 0;
     } else {
-      // Single click - toggle play
+      // Single click - toggle play/pause cleanly
       lastClickTimeRef.current = now;
-      setIsPlaying(!isPlaying);
+      if (isPlaying) {
+        setIsPlaying(false);
+        setIsHoverPlay(false);
+        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+        if (videoRef.current) {
+          videoRef.current.pause();
+        }
+      } else {
+        setIsPlaying(true);
+        if (videoRef.current) {
+          videoRef.current.muted = isMuted;
+          videoRef.current.play().catch(() => {});
+        }
+      }
     }
   };
 
@@ -410,6 +444,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     <div 
       ref={containerRef}
       className={`group relative overflow-hidden ${playerOnly ? '' : 'catalogue-video-card'}`}
+      onDoubleClick={handleCardDoubleClick}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => {
         setIsHovering(false);

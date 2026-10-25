@@ -211,7 +211,7 @@ export default function MicroDramaPlayer({
   };
 
   // Navigate to Next / Prev Episode with clean state reset
-  const goToNextEpisode = useCallback(() => {
+    const goToNextEpisode = useCallback(() => {
     if (nextEpisode) {
       trackEvent('episode_next', {
         fromVideoId: currentVideo.id,
@@ -219,8 +219,18 @@ export default function MicroDramaPlayer({
         automatic: false,
       });
       onPlayEpisode(nextEpisode);
+    } else {
+      // End of this series: bridge to first episode of next micro drama series
+      const currentKey = seriesKey(currentVideo);
+      const otherSeries = allVideos.filter(v => isMicroDrama(v) && seriesKey(v) !== currentKey && (v.episode || 1) === 1);
+      if (otherSeries.length > 0) {
+        showToast(`Next Series: ${otherSeries[0].seriesTitle || otherSeries[0].title}`);
+        onPlayEpisode(otherSeries[0]);
+      } else {
+        showToast('You have reached the end of this series!');
+      }
     }
-  }, [nextEpisode, currentVideo.id, onPlayEpisode]);
+  }, [nextEpisode, currentVideo, allVideos, onPlayEpisode]);
 
   const goToPrevEpisode = useCallback(() => {
     if (prevEpisode) {
@@ -277,6 +287,20 @@ export default function MicroDramaPlayer({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isDrawerOpen, goToNextEpisode, goToPrevEpisode, onClose]);
+
+  const wheelCooldownRef = useRef(false);
+  const handleWheel = (e: React.WheelEvent) => {
+    if (isDrawerOpen || wheelCooldownRef.current) return;
+    if (e.deltaY > 35) {
+      wheelCooldownRef.current = true;
+      goToNextEpisode();
+      setTimeout(() => { wheelCooldownRef.current = false; }, 650);
+    } else if (e.deltaY < -35) {
+      wheelCooldownRef.current = true;
+      goToPrevEpisode();
+      setTimeout(() => { wheelCooldownRef.current = false; }, 650);
+    }
+  };
 
   // Touch gesture listeners for vertical swipe (snap up/down)
   const onTouchStart = (e: React.TouchEvent) => {
@@ -472,17 +496,19 @@ export default function MicroDramaPlayer({
       lastTapTimeRef.current = 0;
     } else {
       lastTapTimeRef.current = now;
-      tapTimerRef.current = setTimeout(() => {
+            tapTimerRef.current = setTimeout(() => {
         if (!videoRef.current) return;
         if (isPlaying) {
           videoRef.current.pause();
+          setIsPlaying(false);
           flashIcon('pause');
         } else {
           videoRef.current.play().catch(() => {});
+          setIsPlaying(true);
           flashIcon('play');
         }
         triggerHaptic(12);
-      }, 300);
+      }, 250);
     }
   };
 
@@ -492,6 +518,7 @@ export default function MicroDramaPlayer({
     <div
       ref={containerRef}
       className="fixed inset-0 z-[150] flex items-center justify-center bg-black select-none overflow-hidden"
+      onWheel={handleWheel}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -516,7 +543,7 @@ export default function MicroDramaPlayer({
             ref={videoRef}
             playsInline
             preload="auto"
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain bg-black"
             poster={currentVideo.thumbnail}
           />
 

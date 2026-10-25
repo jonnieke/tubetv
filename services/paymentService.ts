@@ -17,26 +17,29 @@ export interface CoinPackage {
   priceKes: number;
   priceUsd: number;
   isPopular?: boolean;
+  episodesEstimate?: string;
+  validity?: string;
 }
 
 export const MPESA_PACKAGES: CoinPackage[] = [
-  { id: 'coins-daily-10', name: 'Daily 10 Bob', coins: 10, bonus: 0, priceKes: 10, priceUsd: 0.99, isPopular: true },
-  { id: 'coins-100', name: 'Starter Pack', coins: 100, bonus: 10, priceKes: 100, priceUsd: 0.99 },
-  { id: 'coins-300', name: 'Binge Pack', coins: 300, bonus: 50, priceKes: 300, priceUsd: 2.99 },
-  { id: 'coins-600', name: 'Marathon Pack', coins: 600, bonus: 150, priceKes: 500, priceUsd: 4.99 },
+  { id: 'coins-daily-10', name: 'Daily 10 Bob', coins: 10, bonus: 0, priceKes: 10, priceUsd: 0.99, episodesEstimate: '1 Episode', validity: 'Coins never expire', isPopular: true },
+  { id: 'coins-100', name: 'Starter Pack', coins: 100, bonus: 10, priceKes: 100, priceUsd: 0.99, episodesEstimate: '11 Episodes (100 + 10 Bonus)', validity: 'Coins never expire' },
+  { id: 'coins-300', name: 'Binge Pack', coins: 300, bonus: 50, priceKes: 300, priceUsd: 2.99, episodesEstimate: '35 Episodes (300 + 50 Bonus)', validity: 'Coins never expire' },
+  { id: 'coins-600', name: 'Marathon Pack', coins: 600, bonus: 150, priceKes: 500, priceUsd: 4.99, episodesEstimate: '75 Episodes (600 + 150 Bonus)', validity: 'Coins never expire' },
 ];
 
 export const CARD_PACKAGES: CoinPackage[] = [
-  { id: 'coins-100', name: 'Starter Pack', coins: 100, bonus: 0, priceKes: 130, priceUsd: 0.99 },
-  { id: 'coins-300', name: 'Binge Pack', coins: 300, bonus: 50, priceKes: 390, priceUsd: 2.99, isPopular: true },
-  { id: 'coins-600', name: 'Marathon Pack', coins: 600, bonus: 150, priceKes: 650, priceUsd: 4.99 },
+  { id: 'coins-100', name: 'Starter Pack', coins: 100, bonus: 0, priceKes: 130, priceUsd: 0.99, episodesEstimate: '10 Episodes', validity: 'Coins never expire' },
+  { id: 'coins-300', name: 'Binge Pack', coins: 300, bonus: 50, priceKes: 390, priceUsd: 2.99, episodesEstimate: '35 Episodes (300 + 50 Bonus)', validity: 'Coins never expire', isPopular: true },
+  { id: 'coins-600', name: 'Marathon Pack', coins: 600, bonus: 150, priceKes: 650, priceUsd: 4.99, episodesEstimate: '75 Episodes (600 + 150 Bonus)', validity: 'Coins never expire' },
 ];
 
 export const COIN_PACKAGES: CoinPackage[] = MPESA_PACKAGES;
 
 export const VIP_PASSES = [
-  { id: 'pass-daily', name: '24h VIP Day Pass', priceKes: 50, priceUsd: 1.49, description: 'Unlimited drama streaming for 24 hours' },
-  { id: 'pass-monthly', name: '30-Day VIP Pass', priceKes: 499, priceUsd: 4.99, description: 'Unlimited access to all microdramas and originals' },
+  { id: 'pass-daily', name: '24h VIP Day Pass', durationLabel: '24 Hours', priceKes: 50, priceUsd: 1.49, description: 'Unlimited drama streaming for 24 Hours' },
+  { id: 'pass-weekly', name: '7-Day Binge Pass', durationLabel: '7 Days', priceKes: 199, priceUsd: 2.49, description: 'Unlimited drama binge for 7 Days' },
+  { id: 'pass-monthly', name: '30-Day VIP Pass', durationLabel: '30 Days', priceKes: 499, priceUsd: 4.99, description: 'Unlimited access to all series for 30 Days' },
 ];
 
 /**
