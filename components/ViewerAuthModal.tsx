@@ -23,7 +23,13 @@ interface ViewerAuthModalProps {
 
 export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAuthModalProps) {
   const [authMethod, setAuthMethod] = useState<'phone' | 'email'>('phone');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(() => {
+    try {
+      return localStorage.getItem('tube_verified_phone') || '';
+    } catch {
+      return '';
+    }
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [step, setStep] = useState<'input' | 'conflict'>('input');
@@ -151,8 +157,9 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
       } as unknown as User;
     }
 
-    // Persist verified phone locally
+    // Persist verified session & phone locally so user is always remembered
     try {
+      localStorage.setItem('tubetv_viewer_session', JSON.stringify(user));
       localStorage.setItem('tube_verified_phone', phoneE164);
     } catch {}
 
@@ -224,6 +231,12 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     try {
       // Provisions strictly 5 free coins
       await claimWelcomeBonus(user.id);
+    } catch {}
+
+    // Persist session & phone locally so viewer is permanently remembered
+    try {
+      localStorage.setItem('tubetv_viewer_session', JSON.stringify(user));
+      localStorage.setItem('tube_verified_phone', phoneToE164(phone) || identifier);
     } catch {}
 
     setIsLoading(false);

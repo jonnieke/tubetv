@@ -53,10 +53,39 @@ export const VIP_PASSES: VipPass[] = [
 ];
 
 /**
+ * Gets the current effective authenticated viewer (from Supabase or persisted session)
+ */
+async function getEffectiveUser(): Promise<{ id: string; email?: string; phone?: string; user_metadata?: any } | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) return user;
+  } catch {}
+
+  try {
+    const stored = localStorage.getItem('tubetv_viewer_session');
+    if (stored) return JSON.parse(stored);
+  } catch {}
+
+  try {
+    const phone = localStorage.getItem('tube_verified_phone');
+    if (phone) {
+      const rawDigits = phone.replace(/\D/g, '');
+      return {
+        id: `viewer_${rawDigits}`,
+        phone,
+        user_metadata: { phone },
+      };
+    }
+  } catch {}
+
+  return null;
+}
+
+/**
  * Loads the current authenticated user's coin wallet
  */
 export async function fetchWalletBalance(): Promise<CoinWallet | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getEffectiveUser();
   if (!user) return null;
 
   try {
@@ -126,7 +155,7 @@ export async function claimWelcomeBonus(userId: string): Promise<CoinWallet> {
  * Checks if a specific episode has been unlocked by the viewer
  */
 export async function checkEpisodeUnlocked(videoId: string): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getEffectiveUser();
   if (!user) return false;
 
   const { data } = await supabase
