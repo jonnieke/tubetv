@@ -2,6 +2,8 @@ import React, { createContext, useContext } from 'react';
 import type { PlaybackPreferences, WatchProgress } from '../lib/viewerState';
 import { DEFAULT_PLAYBACK_PREFERENCES } from '../lib/viewerState';
 
+import type { Video } from '../types';
+
 interface PlaybackContextValue {
   preferences: PlaybackPreferences;
   getProgress: (videoId: string) => WatchProgress | undefined;
@@ -9,6 +11,7 @@ interface PlaybackContextValue {
   onEnded: (videoId: string) => void;
   isAuthenticated?: boolean;
   onRequireLogin?: () => void;
+  onOpenMovieDetails?: (video: Video) => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue>({
@@ -18,6 +21,7 @@ const PlaybackContext = createContext<PlaybackContextValue>({
   onEnded: () => undefined,
   isAuthenticated: false,
   onRequireLogin: () => {},
+  onOpenMovieDetails: () => {},
 });
 
 export const PlaybackProvider = PlaybackContext.Provider;

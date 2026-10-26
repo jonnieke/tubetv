@@ -10,6 +10,7 @@ interface VideoCarouselProps {
   onToggleWatchLater: (id: string) => void;
   watchLaterIds: string[];
   isAuthenticated: boolean;
+  onOpenDetails?: (video: Video) => void;
 }
 
 const VideoCarousel: React.FC<VideoCarouselProps> = ({ 
@@ -17,7 +18,8 @@ const VideoCarousel: React.FC<VideoCarouselProps> = ({
   videos, 
   onToggleWatchLater, 
   watchLaterIds,
-  isAuthenticated 
+  isAuthenticated,
+  onOpenDetails,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -57,7 +59,7 @@ const VideoCarousel: React.FC<VideoCarouselProps> = ({
                 video={video}
                 isWatchLater={watchLaterIds.includes(video.id)}
                 onToggleWatchLater={onToggleWatchLater}
-
+                onOpenDetails={onOpenDetails}
               />
             </div>
           ))}

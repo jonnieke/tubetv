@@ -16,6 +16,7 @@ interface OriginalsViewProps {
   onPlayVideo: (video: Video) => void;
   onToggleWatchLater: (id: string) => void;
   onNavigate: (view: ViewStateOrString, subCategory?: string) => void;
+  onOpenMovieDetails?: (video: Video) => void;
 }
 
 export default function OriginalsView({
@@ -27,6 +28,7 @@ export default function OriginalsView({
   onPlayVideo,
   onToggleWatchLater,
   onNavigate,
+  onOpenMovieDetails,
 }: OriginalsViewProps) {
   const microDramas = allVideos.filter(isMicroDrama);
 
@@ -40,6 +42,7 @@ export default function OriginalsView({
                 video={video}
                 isWatchLater={watchLaterIds.includes(video.id)}
                 onToggleWatchLater={onToggleWatchLater}
+                onOpenDetails={onOpenMovieDetails}
               />
             </div>
           ))}
@@ -79,6 +82,7 @@ export default function OriginalsView({
               watchLaterIds={watchLaterIds}
               onToggleWatchLater={onToggleWatchLater}
               isAuthenticated={isAuthenticated}
+              onOpenDetails={onOpenMovieDetails}
             />
           )}
 
@@ -96,6 +100,7 @@ export default function OriginalsView({
                 watchLaterIds={watchLaterIds}
                 onToggleWatchLater={onToggleWatchLater}
                 isAuthenticated={isAuthenticated}
+                onOpenDetails={onOpenMovieDetails}
               />
             );
           })}

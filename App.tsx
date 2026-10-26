@@ -42,6 +42,7 @@ const UploadSection = lazy(() => import('./components/UploadSection'));
 const WatchLaterSection = lazy(() => import('./components/WatchLaterSection'));
 const AuthModal = lazy(() => import('./components/AuthModal'));
 const ViewerAuthModal = lazy(() => import('./components/ViewerAuthModal'));
+const MovieDetails = lazy(() => import('./components/MovieDetails'));
 const SettingsSection = lazy(() => import('./components/SettingsSection'));
 const LiveSection = lazy(() => import('./components/LiveSection'));
 const CreatorStudio = lazy(() => import('./components/CreatorStudio').then(m => ({ default: m.CreatorStudio })));
@@ -154,11 +155,13 @@ const App: React.FC = () => {
 
   // ─── 3. Video Player & Route Sync ───────────────────────────────────────────
   const [activeHeroVideo, setActiveHeroVideo] = useState<Video | null>(null);
+  const [selectedMovieForDetails, setSelectedMovieForDetails] = useState<Video | null>(null);
   const [heroIndex, setHeroIndex] = useState(0);
   const playerDialogRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
 
   const openVideo = useCallback((video: Video) => {
+    setSelectedMovieForDetails(null);
     window.history.pushState({}, '', videoPath(video.id));
     setActiveHeroVideo(video);
   }, []);
@@ -396,6 +399,7 @@ const App: React.FC = () => {
                 onPlayVideo={openVideo}
                 onToggleWatchLater={toggleWatchLater}
                 onNavigate={handleNavigate}
+                onOpenMovieDetails={setSelectedMovieForDetails}
               />
             ) : currentView === ViewState.MICRO_DRAMAS && !searchQuery ? (
               videos.some(isMicroDrama) ? (
@@ -422,6 +426,7 @@ const App: React.FC = () => {
                 onPlayVideo={openVideo}
                 onToggleWatchLater={toggleWatchLater}
                 onNavigate={handleNavigate}
+                onOpenMovieDetails={setSelectedMovieForDetails}
               />
             ) : (
               // Standard Grid for Filtered or Category Results
@@ -457,6 +462,7 @@ const App: React.FC = () => {
                           video={video}
                           isWatchLater={watchLater.includes(video.id)}
                           onToggleWatchLater={toggleWatchLater}
+                          onOpenDetails={setSelectedMovieForDetails}
                         />
                       </div>
                     ))}
@@ -495,6 +501,7 @@ const App: React.FC = () => {
         onProgress: handleWatchProgress,
         isAuthenticated,
         onRequireLogin: () => setShowViewerAuth(true),
+        onOpenMovieDetails: (movie) => setSelectedMovieForDetails(movie),
       }}
     >
       <div className="flex h-screen bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">
@@ -533,6 +540,24 @@ const App: React.FC = () => {
               </button>
             </div>
           </div>
+        )}
+
+        {/* Movie Details Modal */}
+        {selectedMovieForDetails && (
+          <Suspense fallback={null}>
+            <MovieDetails
+              movie={selectedMovieForDetails}
+              allVideos={videos}
+              watchLaterIds={watchLater}
+              onToggleWatchLater={toggleWatchLater}
+              onPlay={(movie) => {
+                setSelectedMovieForDetails(null);
+                openVideo(movie);
+              }}
+              onSelectMovie={(movie) => setSelectedMovieForDetails(movie)}
+              onClose={() => setSelectedMovieForDetails(null)}
+            />
+          </Suspense>
         )}
 
         {/* Viewer Welcome Bonus / Authentication Modal */}

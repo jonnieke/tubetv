@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Lock, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles } from 'lucide-react';
+import { Play, Pause, Lock, Clock, Plus, Check, Volume2, VolumeX, Maximize, PictureInPicture, Settings, Loader2, Captions, Share2, Sparkles, Info } from 'lucide-react';
 import { Video } from '../types';
 import { CONTENT_RATING_ENFORCED } from '../constants';
 import type Hls from 'hls.js';
@@ -9,7 +9,7 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { canWatchContent, normalizeContentRating, ratingDescription } from '../lib/contentRating';
 import { trackEvent } from '../lib/analytics';
 import { shouldSaveData } from '../lib/network';
-import { isFreeVideo } from '../lib/series';
+import { isFreeVideo, isMovie } from '../lib/series';
 import CatalogueArtwork from './CatalogueArtwork';
 
 interface VideoCardProps {
@@ -20,6 +20,7 @@ interface VideoCardProps {
   onToggleWatchLater?: (id: string) => void;
   autoPlay?: boolean;
   playerOnly?: boolean;
+  onOpenDetails?: (video: Video) => void;
 }
 
 const VideoCard: React.FC<VideoCardProps> = ({
@@ -30,8 +31,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
   onToggleWatchLater,
   autoPlay = false,
   playerOnly = false,
+  onOpenDetails,
 }) => {
-  const { preferences, getProgress, onProgress, onEnded, isAuthenticated, onRequireLogin } = usePlayback();
+  const { preferences, getProgress, onProgress, onEnded, isAuthenticated, onRequireLogin, onOpenMovieDetails } = usePlayback();
   const contentRating = normalizeContentRating(video.contentRating);
   const isUnratedAllowedInTest = !CONTENT_RATING_ENFORCED && contentRating === 'UNRATED';
   const isRatingLocked = !isUnratedAllowedInTest && !canWatchContent(contentRating, preferences.maximumRating);
@@ -252,6 +254,17 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
   };
 
+  const handleOpenDetails = (e?: React.MouseEvent) => {
+    if (playerOnly) return;
+    if (onOpenDetails) {
+      if (e) e.stopPropagation();
+      onOpenDetails(video);
+    } else if (onOpenMovieDetails && isMovie(video)) {
+      if (e) e.stopPropagation();
+      onOpenMovieDetails(video);
+    }
+  };
+
   const togglePlay = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
@@ -376,8 +389,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
       toggleFullScreen();
       lastClickTimeRef.current = 0;
     } else {
-      // Single click - toggle play/pause cleanly
+      // Single click - open movie details if browsing a movie
       lastClickTimeRef.current = now;
+      if (!playerOnly && isMovie(video) && (onOpenDetails || onOpenMovieDetails)) {
+        handleOpenDetails(e);
+        return;
+      }
       if (isPlaying) {
         setIsPlaying(false);
         setIsHoverPlay(false);
@@ -503,7 +520,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
     >
       <div className={`relative ${video.seriesFormat === "micro-drama" || video.category === "Micro Dramas" ? "aspect-[9/16]" : "aspect-video"} bg-black overflow-hidden`}>
         {!isPlaying && !isHoverPlay && !isBuffering && !hoverPreviewEnded ? (
-          <>
+          <div
+            className={`w-full h-full relative ${!playerOnly && isMovie(video) ? 'cursor-pointer' : ''}`}
+            onClick={(e) => {
+              if (!playerOnly && isMovie(video)) {
+                handleOpenDetails(e);
+              }
+            }}
+          >
             <CatalogueArtwork src={video.thumbnail} className="catalogue-video-art w-full h-full object-cover" />
             
             {/* Duration Badge */}
@@ -534,7 +558,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
             {/* Hover Actions (Initial Play) */}
             <div className={`catalogue-video-actions ${isRatingLocked ? 'catalogue-video-actions-locked' : ''}`}>
                <button 
-                 onClick={togglePlay}
+                 onClick={(e) => {
+                   if (!playerOnly && isMovie(video) && (onOpenDetails || onOpenMovieDetails)) {
+                     handleOpenDetails(e);
+                   } else {
+                     togglePlay(e);
+                   }
+                 }}
                  disabled={!videoSrc}
                  aria-label={videoSrc ? `Play ${video.title}` : `${video.title} is unavailable`}
                  className="catalogue-action-play disabled:cursor-not-allowed disabled:opacity-50"
@@ -542,6 +572,17 @@ const VideoCard: React.FC<VideoCardProps> = ({
                    <Play fill="currentColor" className="w-5 h-5 ml-0.5" />
                </button>
                
+               {isMovie(video) && !playerOnly && (
+                 <button
+                   onClick={handleOpenDetails}
+                   title="Movie Details & Synopsis"
+                   aria-label={`View details and synopsis for ${video.title}`}
+                   className="catalogue-action-secondary"
+                 >
+                   <Info className="w-4 h-4" />
+                 </button>
+               )}
+
                {onToggleWatchLater && (
                  <button 
                     onClick={(e) => {
@@ -566,7 +607,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                  <Share2 className="w-4 h-4" />
                </button>
             </div>
-          </>
+          </div>
         ) : (
           <div className="relative w-full h-full">
             {(canSkipIntro || canSkipOutro) && <div className="absolute left-3 top-3 z-40 flex gap-2">
@@ -837,11 +878,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
         )}
       </div>
 
-      {!playerOnly && <div className="catalogue-video-info">
-        <p className="cinema-card-kicker">{video.category}{video.episode ? ` · Episode ${video.episode}` : ''}</p>
-        <h3>{video.title}</h3>
-        <p className="catalogue-video-creator">{video.author}</p>
-      </div>}
+      {!playerOnly && (
+        <div 
+          className={`catalogue-video-info ${isMovie(video) ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
+          onClick={handleOpenDetails}
+        >
+          <p className="cinema-card-kicker">{video.category}{video.episode ? ` · Episode ${video.episode}` : ''}</p>
+          <h3>{video.title}</h3>
+          <p className="catalogue-video-creator">{video.author}</p>
+        </div>
+      )}
     </div>
   );
 };

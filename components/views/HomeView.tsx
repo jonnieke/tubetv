@@ -25,6 +25,7 @@ interface HomeViewProps {
   onPlayVideo: (video: Video) => void;
   onToggleWatchLater: (id: string) => void;
   onNavigate: (view: ViewStateOrString, subCategory?: string) => void;
+  onOpenMovieDetails?: (video: Video) => void;
 }
 
 export default function HomeView({
@@ -40,6 +41,7 @@ export default function HomeView({
   onPlayVideo,
   onToggleWatchLater,
   onNavigate,
+  onOpenMovieDetails,
 }: HomeViewProps) {
   // Featured Sliding Banner:
   // 1. Prioritize explicitly selected banner videos (up to 5)
@@ -47,6 +49,7 @@ export default function HomeView({
   const explicitBannerVideos = videos.filter((video) => video.featuredInBanner);
   const dramaOpeners = videos.filter((video) => isMicroDrama(video) && (video.episode || 1) === 1);
   const fallbackCandidates = [...(dramaOpeners.length ? dramaOpeners : videos)].sort((a, b) => b.views - a.views);
+  const watchLaterVideos = videos.filter((v) => watchLaterIds.includes(v.id));
 
   const featuredVideos = (
     explicitBannerVideos.length > 0
@@ -93,6 +96,18 @@ export default function HomeView({
         />
       )}
 
+      {/* Watch Later User Playlist Carousel */}
+      {watchLaterVideos.length > 0 && (
+        <VideoCarousel
+          title="Watch Later · Your Playlist"
+          videos={watchLaterVideos}
+          watchLaterIds={watchLaterIds}
+          onToggleWatchLater={onToggleWatchLater}
+          isAuthenticated={isAuthenticated}
+          onOpenDetails={onOpenMovieDetails}
+        />
+      )}
+
       {/* Continue Watching Section */}
       {recommendations.continueWatching.length > 0 && (
         <VideoCarousel
@@ -101,6 +116,7 @@ export default function HomeView({
           watchLaterIds={watchLaterIds}
           onToggleWatchLater={onToggleWatchLater}
           isAuthenticated={isAuthenticated}
+          onOpenDetails={onOpenMovieDetails}
         />
       )}
 
@@ -112,6 +128,7 @@ export default function HomeView({
           watchLaterIds={watchLaterIds}
           onToggleWatchLater={onToggleWatchLater}
           isAuthenticated={isAuthenticated}
+          onOpenDetails={onOpenMovieDetails}
         />
       )}
 
@@ -131,6 +148,7 @@ export default function HomeView({
         watchLaterIds={watchLaterIds}
         onToggleWatchLater={onToggleWatchLater}
         isAuthenticated={isAuthenticated}
+        onOpenDetails={onOpenMovieDetails}
       />
 
       {/* Standard Series Carousel */}
@@ -156,6 +174,7 @@ export default function HomeView({
             watchLaterIds={watchLaterIds}
             onToggleWatchLater={onToggleWatchLater}
             isAuthenticated={isAuthenticated}
+            onOpenDetails={onOpenMovieDetails}
           />
         );
       })}

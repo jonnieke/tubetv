@@ -2,6 +2,7 @@ import type { Video } from '../types';
 
 export const isMicroDrama = (video: Video) => video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas';
 export const seriesKey = (video: Video) => video.seriesId || (video.seriesTitle?.trim() ? `${isMicroDrama(video) ? 'micro' : 'series'}:${video.seriesTitle.trim().toLowerCase()}` : undefined);
+export const isMovie = (video: Video) => !isMicroDrama(video) && !seriesKey(video);
 export const compareEpisodes = (a: Video, b: Video) =>
   (a.season || 1) - (b.season || 1) || (a.episode || 1) - (b.episode || 1) || a.id.localeCompare(b.id);
 
