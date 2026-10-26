@@ -84,9 +84,26 @@ async function getEffectiveUser(): Promise<{ id: string; email?: string; phone?:
 /**
  * Loads the current authenticated user's coin wallet
  */
+const isSyntheticId = (id?: string) =>
+  !id || id.startsWith('viewer_') || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
 export async function fetchWalletBalance(): Promise<CoinWallet | null> {
   const user = await getEffectiveUser();
   if (!user) return null;
+
+  if (isSyntheticId(user.id)) {
+    let unlocksCount = 0;
+    try {
+      const stored = localStorage.getItem(`tube_synthetic_unlocks_${user.id}`);
+      if (stored) unlocksCount = JSON.parse(stored).length;
+    } catch {}
+    const freeCoins = Math.max(0, 5 - unlocksCount);
+    return {
+      coinBalance: 0,
+      bonusCoins: freeCoins,
+      totalCoins: freeCoins,
+    };
+  }
 
   try {
     const [walletRes, unlocksRes] = await Promise.all([
@@ -132,6 +149,9 @@ export async function fetchWalletBalance(): Promise<CoinWallet | null> {
  * Claims or provisions 5 welcome bonus coins for a new viewer (1 coin = 1 episode)
  */
 export async function claimWelcomeBonus(userId: string): Promise<CoinWallet> {
+  if (isSyntheticId(userId)) {
+    return { coinBalance: 5, bonusCoins: 0, totalCoins: 5 };
+  }
   try {
     const { data } = await supabase
       .from('user_wallets')
@@ -158,6 +178,14 @@ export async function checkEpisodeUnlocked(videoId: string): Promise<boolean> {
   const user = await getEffectiveUser();
   if (!user) return false;
 
+  if (isSyntheticId(user.id)) {
+    try {
+      const stored = localStorage.getItem(`tube_synthetic_unlocks_${user.id}`);
+      if (stored) return JSON.parse(stored).includes(videoId);
+    } catch {}
+    return false;
+  }
+
   const { data } = await supabase
     .from('episode_unlocks')
     .select('video_id')
@@ -176,6 +204,38 @@ export async function unlockEpisodeWithCoins(
   seriesId?: string,
   cost: number = 1
 ): Promise<{ success: boolean; error?: string; remainingBalance?: number }> {
+  const user = await getEffectiveUser();
+  if (!user) {
+    return { success: false, error: 'User not authenticated' };
+  }
+
+  // Handle synthetic viewer locally (strictly enforces 5 free episodes)
+  if (isSyntheticId(user.id)) {
+    try {
+      const key = `tube_synthetic_unlocks_${user.id}`;
+      const stored = localStorage.getItem(key);
+      const list: string[] = stored ? JSON.parse(stored) : [];
+      if (list.length >= 5 && !list.includes(videoId)) {
+        return {
+          success: false,
+          error: 'Free episodes limit reached. Please recharge coins to continue.',
+          remainingBalance: 0,
+        };
+      }
+      if (!list.includes(videoId)) {
+        list.push(videoId);
+        localStorage.setItem(key, JSON.stringify(list));
+      }
+      const remaining = Math.max(0, 5 - list.length);
+      return {
+        success: true,
+        remainingBalance: remaining,
+      };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
   // Check effective balance first (strictly enforces 5 free coins limit)
   const wallet = await fetchWalletBalance();
   if (!wallet || wallet.totalCoins < cost) {

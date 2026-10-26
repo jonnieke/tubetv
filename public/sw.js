@@ -3,7 +3,7 @@
 // Target: Safari iOS, Chrome Android, Edge, Desktop PWA
 // ==============================================================================
 
-const CACHE_VERSION = 'tubetv-v1.0.0';
+const CACHE_VERSION = 'tubetv-v1.0.1';
 const STATIC_CACHE = `tubetv-static-${CACHE_VERSION}`;
 const IMAGE_CACHE = `tubetv-images-${CACHE_VERSION}`;
 const API_CACHE = `tubetv-api-${CACHE_VERSION}`;
@@ -46,9 +46,11 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 1. Skip non-GET requests and cross-origin video byte streams (HLS .ts chunks are buffered by player)
+  // 1. Skip non-GET requests, backend APIs, and video media streams (HLS/video chunks buffered by players)
   if (request.method !== 'GET') return;
-  if (url.pathname.endsWith('.ts') || url.pathname.endsWith('.m4s')) return;
+  if (request.destination === 'video' || request.destination === 'audio') return;
+  if (url.pathname.match(/\.(ts|m4s|m3u8|mp4|webm)$/i)) return;
+  if (url.hostname.includes('supabase.co')) return;
 
   // 2. Images (Thumbnails, Posters, Bunny CDN thumbs) -> Cache First, fall back to network
   if (
@@ -99,8 +101,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. HTML Navigation Requests -> Network First, fall back to offline.html
-  if (request.mode === 'navigate') {
+  // 4. HTML Navigation / SPA Page Requests -> Network First, fall back to cached index.html or offline.html
+  if (request.mode === 'navigate' || url.pathname.startsWith('/watch/')) {
     event.respondWith(
       fetch(request).catch(async () => {
         const cache = await caches.open(STATIC_CACHE);
@@ -114,8 +116,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Default fallback
+  // Default fallback (safely catch to prevent unhandled rejected promise errors)
   event.respondWith(
-    caches.match(request).then((response) => response || fetch(request))
+    caches.match(request).then((response) => {
+      return response || fetch(request).catch(() => new Response('', { status: 408 }));
+    })
   );
 });

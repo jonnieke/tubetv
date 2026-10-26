@@ -143,6 +143,29 @@ export default function MicroDramaPlayer({
   const firstFrameRecorded = useRef<boolean>(false);
   const prefetchTriggeredRef = useRef<boolean>(false);
 
+  // Safe Playback with Autoplay Policy Fallback (muted autoplay if unmuted is rejected by browser)
+  const safePlay = useCallback((el: HTMLVideoElement | null) => {
+    if (!el) return;
+    el.muted = isMuted;
+    const playPromise = el.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => setIsPlaying(true))
+        .catch((_err) => {
+          // If unmuted autoplay blocked by browser, seamlessly switch to muted playback so it streams immediately
+          if (!el.muted) {
+            el.muted = true;
+            setIsMuted(true);
+            el.play()
+              .then(() => setIsPlaying(true))
+              .catch(() => setIsPlaying(false));
+          } else {
+            setIsPlaying(false);
+          }
+        });
+    }
+  }, [isMuted]);
+
   // Auto-scroll active episode into center view when drawer opens
   useEffect(() => {
     if (isDrawerOpen && activeEpRef.current) {
@@ -271,8 +294,7 @@ export default function MicroDramaPlayer({
         e.preventDefault();
         if (videoRef.current) {
           if (videoRef.current.paused) {
-            videoRef.current.play();
-            setIsPlaying(true);
+            safePlay(videoRef.current);
           } else {
             videoRef.current.pause();
             setIsPlaying(false);
@@ -410,7 +432,7 @@ export default function MicroDramaPlayer({
         if (!Hls.isSupported() || !videoRef.current) {
           if (videoRef.current) {
             videoRef.current.src = videoSrc;
-            videoRef.current.play().catch(() => setIsPlaying(false));
+            safePlay(videoRef.current);
           }
           return;
         }
@@ -430,14 +452,14 @@ export default function MicroDramaPlayer({
         hls.loadSource(videoSrc);
         hls.attachMedia(videoRef.current);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+          safePlay(videoRef.current);
         });
 
         hlsRef.current = hls;
       });
     } else {
       videoEl.src = videoSrc;
-      videoEl.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      safePlay(videoEl);
     }
 
     return () => {
@@ -456,7 +478,7 @@ export default function MicroDramaPlayer({
         prefetchHlsRef.current = null;
       }
     };
-  }, [currentVideo.id, videoSrc, isUnlocked, effectiveDataSaver, nextEpisode, onPlayEpisode, onProgress]);
+  }, [currentVideo.id, videoSrc, isUnlocked, effectiveDataSaver, nextEpisode, onPlayEpisode, onProgress, safePlay]);
 
   // Sync mute state
   useEffect(() => {
@@ -503,8 +525,7 @@ export default function MicroDramaPlayer({
           setIsPlaying(false);
           flashIcon('pause');
         } else {
-          videoRef.current.play().catch(() => {});
-          setIsPlaying(true);
+          safePlay(videoRef.current);
           flashIcon('play');
         }
         triggerHaptic(12);
@@ -543,6 +564,7 @@ export default function MicroDramaPlayer({
             ref={videoRef}
             playsInline
             preload="auto"
+            muted={isMuted}
             className="w-full h-full object-contain bg-black"
             poster={currentVideo.thumbnail}
           />

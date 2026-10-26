@@ -96,6 +96,39 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   const qualities = ['Auto', '1080p', '720p', '480p'];
 
+  const safePlay = useCallback((el: HTMLVideoElement) => {
+    const wantsSound = !isMuted && (!isHoverPlay || isPlaying);
+    el.muted = !wantsSound;
+    const playPromise = el.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => setIsPlaying(true))
+        .catch((_err) => {
+          if (wantsSound) {
+            // Autoplay policy prevented unmuted sound: fall back to muted playback so video streams smoothly
+            el.muted = true;
+            setIsMuted(true);
+            el.play()
+              .then(() => setIsPlaying(true))
+              .catch(() => {
+                setIsPlaying(false);
+                setIsHoverPlay(false);
+              });
+          } else {
+            setIsPlaying(false);
+            setIsHoverPlay(false);
+          }
+        });
+    }
+  }, [isMuted, isHoverPlay, isPlaying]);
+
+  // Sync muted state when isMuted changes
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = (isHoverPlay && !isPlaying) || isMuted;
+    }
+  }, [isMuted, isHoverPlay, isPlaying]);
+
   // Initialize HLS
   useEffect(() => {
     const shouldPlay = !isRatingLocked && (isPlaying || isHoverPlay);
@@ -115,9 +148,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (shouldPlay && videoRef.current) {
         // If already attached and playing, update playback & muted state
         if (hlsRef.current && videoRef.current.src) {
-           videoRef.current.muted = isHoverPlay && !isPlaying;
+           videoRef.current.muted = (isHoverPlay && !isPlaying) || isMuted;
            if (isPlaying && videoRef.current.paused) {
-             videoRef.current.play().catch(() => {});
+             safePlay(videoRef.current);
            }
            return;
         }
@@ -127,7 +160,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
             if (!Hls.isSupported() || !videoRef.current) {
               if (videoRef.current) {
                 videoRef.current.src = videoSrc;
-                videoRef.current.play().catch(() => setIsPlaying(false));
+                safePlay(videoRef.current);
               }
               return;
             }
@@ -147,11 +180,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               if (matchingLevel >= 0) hls.currentLevel = matchingLevel;
             }
                 if (videoRef.current) {
-                  videoRef.current.muted = isHoverPlay && !isPlaying;
-                  videoRef.current.play().catch(() => {
-                    setIsPlaying(false);
-                    setIsHoverPlay(false);
-                  });
+                  safePlay(videoRef.current);
                 }
             });
             hlsRef.current = hls;
@@ -169,11 +198,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
              if (!videoRef.current.src || videoRef.current.src !== videoSrc) {
                videoRef.current.src = videoSrc;
              }
-             videoRef.current.muted = isHoverPlay && !isPlaying;
-             videoRef.current.play().catch(() => {
-               setIsPlaying(false);
-               setIsHoverPlay(false);
-             });
+             safePlay(videoRef.current);
         }
     } else {
         if (videoRef.current) {
@@ -182,6 +207,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
           // videoRef.current.src = ""; 
         }
     }
+  }, [videoSrc, isPlaying, isHoverPlay, quality, effectiveDataSaver, video.id, video.category, isRatingLocked, safePlay]);
 
     // We don't destroy on every effect run, only on unmount
   }, [isPlaying, isHoverPlay, videoSrc, isRatingLocked]);
@@ -280,8 +306,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       trackEvent('playback_start', { videoId: video.id, category: video.category, dataSaver: effectiveDataSaver });
       setIsPlaying(true);
       if (videoRef.current) {
-        videoRef.current.muted = isMuted;
-        videoRef.current.play().catch(() => {});
+        safePlay(videoRef.current);
       }
     } else {
       setIsPlaying(false);
@@ -409,8 +434,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
         }
         setIsPlaying(true);
         if (videoRef.current) {
-          videoRef.current.muted = isMuted;
-          videoRef.current.play().catch(() => {});
+          safePlay(videoRef.current);
         }
       }
     }
@@ -657,7 +681,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 onEnded(video.id);
               }}
               onClick={handleVideoClick}
-              muted={isHoverPlay && !isPlaying}
+              muted={(isHoverPlay && !isPlaying) || isMuted}
               autoPlay
               loop={false}
               playsInline
@@ -739,7 +763,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 <p className="font-bold">This video could not load</p>
                 <p className="mt-1 text-xs text-zinc-400">Check your connection and try again.</p>
                 <button
-                  onClick={() => { setPlaybackError(false); hlsRef.current?.destroy(); hlsRef.current = null; setIsPlaying(true); }}
+                  onClick={() => {
+                    setPlaybackError(false);
+                    hlsRef.current?.destroy();
+                    hlsRef.current = null;
+                    setIsPlaying(true);
+                    if (videoRef.current) safePlay(videoRef.current);
+                  }}
                   className="mt-4 rounded-lg bg-white px-4 py-2 text-sm font-bold text-black hover:bg-zinc-200"
                 >
                   Try again
