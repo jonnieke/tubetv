@@ -209,9 +209,6 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
   }, [videoSrc, isPlaying, isHoverPlay, quality, effectiveDataSaver, video.id, video.category, isRatingLocked, safePlay]);
 
-    // We don't destroy on every effect run, only on unmount
-  }, [isPlaying, isHoverPlay, videoSrc, isRatingLocked]);
-
   // Clean up on unmount
   useEffect(() => {
     return () => {
