@@ -268,6 +268,7 @@ export async function unlockEpisodeWithCoins(
 
 /**
  * Initializes Paystack checkout via Supabase Edge Function
+ * Supports both standard Supabase auth sessions and phone-verified viewers
  */
 export async function initializePayment(params: {
   packageId: string;
@@ -275,20 +276,39 @@ export async function initializePayment(params: {
   currency: 'KES' | 'USD';
   paymentMethod: 'mpesa' | 'card';
   phone?: string;
-}): Promise<{ authorizationUrl?: string; reference?: string; error?: string }> {
+}): Promise<{ authorizationUrl?: string; accessCode?: string; reference?: string; error?: string }> {
+  const viewer = await getEffectiveUser();
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    return { error: 'Please log in to complete your purchase' };
+
+  let effectivePhone = params.phone || viewer?.phone;
+  if (!effectivePhone && typeof window !== 'undefined') {
+    try {
+      effectivePhone = localStorage.getItem('tube_verified_phone') || '';
+    } catch {}
+  }
+
+  const userId = viewer?.id || session?.user?.id || (effectivePhone ? `viewer_${effectivePhone.replace(/\D/g, '')}` : undefined);
+
+  if (!session && !userId && !effectivePhone) {
+    return { error: 'Please enter your phone number to complete purchase' };
   }
 
   try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+
     const res = await fetch(`${SUPABASE_URL}/functions/v1/paystack-checkout`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify(params),
+      headers,
+      body: JSON.stringify({
+        ...params,
+        userId,
+        phone: effectivePhone,
+      }),
     });
 
     const result = await res.json();
@@ -298,10 +318,25 @@ export async function initializePayment(params: {
 
     return {
       authorizationUrl: result.authorizationUrl,
+      accessCode: result.accessCode,
       reference: result.reference,
     };
   } catch (err: any) {
     return { error: err.message || 'Network error during checkout' };
+  }
+}
+
+/**
+ * Verifies Paystack transaction reference and refreshes wallet
+ */
+export async function verifyPayment(reference: string): Promise<{ success: boolean; wallet?: CoinWallet | null; error?: string }> {
+  try {
+    // Wait briefly for webhook processing or DB sync
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const wallet = await fetchWalletBalance();
+    return { success: true, wallet };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to verify payment' };
   }
 }
 

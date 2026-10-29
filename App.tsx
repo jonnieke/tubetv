@@ -9,7 +9,7 @@ import LegalPage from './components/LegalPage';
 import HomeView from './components/views/HomeView';
 import OriginalsView from './components/views/OriginalsView';
 import { ViewState, Video } from './types';
-import { Loader2, Home, PlayCircle, Clock, BarChart2 } from 'lucide-react';
+import { Loader2, Home, PlayCircle, Clock, BarChart2, CheckCircle2 } from 'lucide-react';
 import { PlaybackProvider } from './contexts/PlaybackContext';
 import {
   DEFAULT_PLAYBACK_PREFERENCES,
@@ -155,6 +155,21 @@ const App: React.FC = () => {
 
   // ─── 3. Video Player & Route Sync ───────────────────────────────────────────
   const [activeHeroVideo, setActiveHeroVideo] = useState<Video | null>(null);
+  const [paymentSuccessNotice, setPaymentSuccessNotice] = useState<string | null>(null);
+
+  // Detect Paystack redirect callback (?payment=success & ?reference=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get('payment');
+    const reference = params.get('reference') || params.get('trxref');
+
+    if (payment === 'success' || reference) {
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+      setPaymentSuccessNotice('🎉 Payment received via Paystack! Your wallet has been credited.');
+      setTimeout(() => setPaymentSuccessNotice(null), 6500);
+    }
+  }, []);
   const [selectedMovieForDetails, setSelectedMovieForDetails] = useState<Video | null>(null);
   const [heroIndex, setHeroIndex] = useState(0);
   const playerDialogRef = useRef<HTMLDivElement>(null);
@@ -518,6 +533,14 @@ const App: React.FC = () => {
               onCancel={() => setShowLogin(false)}
             />
           </Suspense>
+        )}
+
+        {/* Paystack Payment Success Toast */}
+        {paymentSuccessNotice && (
+          <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[300] px-5 py-3 rounded-2xl bg-emerald-600 border border-emerald-400 text-white font-bold text-xs shadow-2xl flex items-center gap-2 animate-in slide-in-from-top duration-300">
+            <CheckCircle2 className="w-5 h-5 text-white flex-shrink-0" />
+            <span>{paymentSuccessNotice}</span>
+          </div>
         )}
 
         {/* 1-Device Limit Conflict Alert */}

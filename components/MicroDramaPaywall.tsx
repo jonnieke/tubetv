@@ -51,7 +51,14 @@ export default function MicroDramaPaywall({
   const [purchaseTab, setPurchaseTab] = useState<'coins' | 'vip'>('coins');
   const [selectedPackage, setSelectedPackage] = useState<CoinPackage>(MPESA_PACKAGES[0]);
   const [selectedVipPass, setSelectedVipPass] = useState<VipPass>(VIP_PASSES[0]);
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(() => {
+    try {
+      return localStorage.getItem('tube_verified_phone') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -125,10 +132,30 @@ export default function MicroDramaPaywall({
         return;
       }
 
-      if (isMpesa) {
-        setStkSent(true);
+      // Launch Paystack Inline if available, otherwise redirect to Paystack hosted page
+      const hasPaystackPop = typeof (window as any).PaystackPop !== 'undefined';
+      if (hasPaystackPop && result.accessCode) {
+        const handler = (window as any).PaystackPop.setup({
+          key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '',
+          access_code: result.accessCode,
+          onClose: () => {
+            setIsPaying(false);
+          },
+          callback: async (response: any) => {
+            setIsPaying(true);
+            setSuccessNotice('🎉 Payment received! Unlocking episode...');
+            // Wait briefly for wallet sync then unlock
+            await new Promise((r) => setTimeout(r, 1200));
+            await fetchWalletBalance().then(setWallet);
+            await unlockEpisodeWithCoins(video.id, video.seriesId, coinCost);
+            onUnlocked();
+          },
+        });
+        handler.openIframe();
       } else if (result.authorizationUrl) {
         window.location.href = result.authorizationUrl;
+      } else {
+        setErrorMessage('Unable to load Paystack payment page. Please try again.');
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Payment initiation failed.');
@@ -430,31 +457,50 @@ export default function MicroDramaPaywall({
               )}
             </div>
 
-            {/* Pay Button */}
-            {!stkSent && (
-              <button
-                onClick={handlePurchase}
-                disabled={isPaying}
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-95 disabled:opacity-50"
-              >
-                {isPaying ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Initiating payment...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>
-                      Pay {paymentMethod === 'mpesa' 
-                        ? `KES ${purchaseTab === 'vip' ? selectedVipPass.priceKes : selectedPackage.priceKes}` 
-                        : `$${purchaseTab === 'vip' ? selectedVipPass.priceUsd : selectedPackage.priceUsd}`}
-                      {purchaseTab === 'vip' && ` (${selectedVipPass.durationLabel} VIP)`}
-                    </span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+            {/* Status Notice */}
+            {successNotice && (
+              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-700 text-xs text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                <span>{successNotice}</span>
+              </div>
             )}
+
+            {/* Pay Button */}
+            <button
+              onClick={handlePurchase}
+              disabled={isPaying}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-500 hover:to-green-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-95 disabled:opacity-50"
+            >
+              {isPaying ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Connecting to Paystack...</span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    Pay with Paystack {paymentMethod === 'mpesa' 
+                      ? `(KES ${purchaseTab === 'vip' ? selectedVipPass.priceKes : selectedPackage.priceKes})` 
+                      : `(${purchaseTab === 'vip' ? selectedVipPass.priceUsd : selectedPackage.priceUsd})`}
+                    {purchaseTab === 'vip' && ` • ${selectedVipPass.durationLabel} VIP`}
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+
+            {/* Paystack Kenya Trust Footer */}
+            <div className="pt-2 flex flex-col items-center gap-1.5 border-t border-zinc-900 mt-2">
+              <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Secured by <a href="https://paystack.com/ke" target="_blank" rel="noopener noreferrer" className="font-bold text-white hover:underline">Paystack Kenya</a> (CBK Licensed PSP)</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] text-zinc-500">
+                <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-emerald-400 font-bold">M-Pesa STK</span>
+                <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300">Visa / Mastercard</span>
+                <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300">Apple Pay</span>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -49,16 +49,17 @@ serve(async (req: Request) => {
     return new Response('Invalid JSON', { status: 400 });
   }
 
-  // Handle successful charges
+  // Handle successful charges from Paystack (https://paystack.com/ke)
   if (event.event === 'charge.success') {
     const data = event.data;
     const metadata = data.metadata || {};
-    const userId = metadata.user_id;
+    let userId = metadata.user_id;
     const reference = data.reference;
+    const phone = metadata.phone || data.customer?.phone || '';
 
-    if (!userId) {
-      console.warn('Webhook received without user_id in metadata');
-      return new Response('Awaiting user_id', { status: 200 });
+    if (!userId && !phone) {
+      console.warn('Webhook received without user_id or phone in metadata');
+      return new Response('Awaiting identity', { status: 200 });
     }
 
     const supabase = createClient(
@@ -67,11 +68,24 @@ serve(async (req: Request) => {
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
 
+    // If userId is synthetic (viewer_254...), resolve real UUID from profiles if available
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId || '');
+    if (!isUuid && phone) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('phone_e164', phone)
+        .maybeSingle();
+      if (profile?.id) {
+        userId = profile.id;
+      }
+    }
+
     const packageType = metadata.package_type || 'coins';
 
     try {
       // 1. If Coins: Credit to User Wallet
-      if (packageType === 'coins') {
+      if (packageType === 'coins' && isUuid) {
         const coins = Number(metadata.coins) || 0;
         const bonus = Number(metadata.bonus_coins) || 0;
 
@@ -88,9 +102,9 @@ serve(async (req: Request) => {
       }
 
       // 2. If Pass / VIP Subscription: Activate Subscription
-      if (packageType === 'pass') {
+      if (packageType === 'pass' && isUuid) {
         const plan = metadata.plan_code || 'daily';
-        const hours = plan === 'monthly' ? 24 * 30 : 24;
+        const hours = plan === 'monthly' ? 24 * 30 : plan === 'weekly' ? 24 * 7 : 24;
         const endDate = new Date(Date.now() + hours * 3600 * 1000).toISOString();
 
         await supabase.from('subscriptions').upsert({
@@ -106,26 +120,29 @@ serve(async (req: Request) => {
       const amountKes = Math.round(Number(data.amount || 0) / 100);
       const mpesaReceipt = data.authorization?.channel === 'mobile_money' ? reference : null;
 
-      await supabase.from('payment_transactions').upsert(
-        {
-          user_id: userId,
-          phone_e164: metadata.phone || data.customer?.phone || '',
-          plan_code: metadata.plan_code || 'coins',
-          amount_kes: amountKes,
-          idempotency_key: reference,
-          checkout_request_id: reference,
-          mpesa_receipt: mpesaReceipt,
-          status: 'succeeded',
-          result_code: 0,
-          result_description: 'Payment verified via Paystack webhook',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'checkout_request_id' }
-      );
+      if (isUuid) {
+        await supabase.from('payment_transactions').upsert(
+          {
+            user_id: userId,
+            phone_e164: phone,
+            plan_code: metadata.package_id || metadata.plan_code || 'coins',
+            amount_kes: amountKes,
+            idempotency_key: reference,
+            checkout_request_id: reference,
+            mpesa_receipt: mpesaReceipt,
+            status: 'succeeded',
+            result_code: 0,
+            result_description: 'Payment verified via Paystack webhook',
+            raw_payload: data,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'idempotency_key' }
+        );
+      }
 
-      console.log(`Payment confirmed for user ${userId}: Ref ${reference}`);
+      console.log(`[Paystack Webhook] Successfully processed ${reference} for ${userId || phone}`);
     } catch (err) {
-      console.error('Error processing charge.success webhook:', err);
+      console.error('Webhook processing error:', err);
     }
   }
 

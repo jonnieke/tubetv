@@ -24,72 +24,89 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders(req) });
   }
 
-  // 1. Verify authenticated user
-  const authHeader = req.headers.get('Authorization') || '';
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') || '',
-    Deno.env.get('SUPABASE_ANON_KEY') || '',
-    { global: { headers: { Authorization: authHeader } } }
-  );
+  // 1. Resolve user (Supabase Auth session or verified Kenyan phone viewer)
+  let effectiveUserId = '';
+  let effectiveEmail = '';
+  let effectivePhone = '';
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders(req) });
+  const authHeader = req.headers.get('Authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_ANON_KEY') || '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        effectiveUserId = user.id;
+        effectiveEmail = user.email || '';
+        effectivePhone = user.phone || '';
+      }
+    } catch {}
   }
 
   try {
     const body = await req.json();
-    const { packageId, amount, currency = 'KES', paymentMethod = 'mpesa', phone } = body;
+    const { packageId, amount, currency = 'KES', paymentMethod = 'mpesa', phone, userId } = body;
 
     if (!amount || amount <= 0) {
       return new Response(JSON.stringify({ error: 'Invalid amount' }), { status: 400, headers: corsHeaders(req) });
     }
 
-    // Packages Definition
+    // Format phone to 254XXXXXXXXX for Kenyan M-Pesa
+    const rawPhone = phone || effectivePhone || '';
+    let formattedPhone = rawPhone ? rawPhone.replace(/[^0-9]/g, '') : '';
+    if (formattedPhone.startsWith('0')) formattedPhone = '254' + formattedPhone.slice(1);
+    if (formattedPhone.startsWith('7') || formattedPhone.startsWith('1')) formattedPhone = '254' + formattedPhone;
+
+    // Resolve user ID & email
+    effectiveUserId = effectiveUserId || userId || (formattedPhone ? `viewer_${formattedPhone}` : `guest_${Date.now()}`);
+    effectiveEmail = effectiveEmail || (formattedPhone ? `${formattedPhone}@tube.co.ke` : `${effectiveUserId.slice(0, 8)}@tube.co.ke`);
+
+    // Packages Definition for TubeTV Microdramas (KES & USD)
     const PACKAGES: Record<string, { coins: number; bonus: number; type: string; plan?: string }> = {
+      'coins-10': { coins: 10, bonus: 0, type: 'coins' },
       'coins-daily-10': { coins: 10, bonus: 0, type: 'coins' },
-      'coins-100': { coins: 100, bonus: 0, type: 'coins' },
+      'coins-50': { coins: 50, bonus: 5, type: 'coins' },
+      'coins-100': { coins: 100, bonus: 15, type: 'coins' },
       'coins-300': { coins: 300, bonus: 50, type: 'coins' },
       'coins-600': { coins: 600, bonus: 150, type: 'coins' },
       'pass-daily': { coins: 0, bonus: 0, type: 'pass', plan: 'daily' },
+      'pass-weekly': { coins: 0, bonus: 0, type: 'pass', plan: 'weekly' },
       'pass-monthly': { coins: 0, bonus: 0, type: 'pass', plan: 'monthly' },
     };
 
     const pkg = PACKAGES[packageId] || { coins: Math.floor(amount), bonus: 0, type: 'coins' };
 
-    // Format phone to 254XXXXXXXXX for Kenyan M-Pesa
-    let formattedPhone = phone ? phone.replace(/[^0-9]/g, '') : '';
-    if (formattedPhone.startsWith('0')) formattedPhone = '254' + formattedPhone.slice(1);
-    if (formattedPhone.startsWith('7') || formattedPhone.startsWith('1')) formattedPhone = '254' + formattedPhone;
-
-    // Convert amount to minor currency unit (cents/kobo) required by Paystack
+    // Convert amount to minor currency unit (subunits/cents) required by Paystack
     const amountInSubunits = Math.round(amount * 100);
 
-    const email = user.email || `${user.id.slice(0, 8)}@tube.co.ke`;
-
-    // 2. Initialize transaction with Paystack
+    // 2. Initialize transaction with Paystack (https://paystack.com/ke)
+    const callbackUrl = `${req.headers.get('Origin') || 'https://www.tube.co.ke'}/?payment=success`;
     const paystackPayload: Record<string, any> = {
-      email,
+      email: effectiveEmail,
       amount: amountInSubunits,
       currency: currency.toUpperCase(),
-      callback_url: `${req.headers.get('Origin') || 'https://www.tube.co.ke'}/?payment=success`,
+      callback_url: callbackUrl,
       metadata: {
-        user_id: user.id,
+        user_id: effectiveUserId,
         package_id: packageId,
         package_type: pkg.type,
         plan_code: pkg.plan || null,
         coins: pkg.coins,
         bonus_coins: pkg.bonus,
-        phone: formattedPhone || user.phone || null,
+        phone: formattedPhone || null,
         custom_fields: [
           { display_name: 'Platform', variable_name: 'platform', value: 'TubeTV Microdramas' },
-          { display_name: 'User ID', variable_name: 'user_id', value: user.id },
+          { display_name: 'User ID', variable_name: 'user_id', value: effectiveUserId },
+          { display_name: 'Package', variable_name: 'package', value: packageId },
         ],
       },
     };
 
     if (paymentMethod === 'mpesa') {
-      paystackPayload.channels = ['mobile_money'];
+      paystackPayload.channels = ['mobile_money', 'card'];
       if (formattedPhone) {
         paystackPayload.mobile_money = {
           phone: formattedPhone,
@@ -97,7 +114,7 @@ serve(async (req: Request) => {
         };
       }
     } else {
-      paystackPayload.channels = ['card', 'apple_pay'];
+      paystackPayload.channels = ['card', 'mobile_money', 'apple_pay'];
     }
 
     const paystackRes = await fetch('https://api.paystack.co/transaction/initialize', {
