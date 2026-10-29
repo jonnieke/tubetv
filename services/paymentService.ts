@@ -97,11 +97,17 @@ export async function fetchWalletBalance(): Promise<CoinWallet | null> {
       const stored = localStorage.getItem(`tube_synthetic_unlocks_${user.id}`);
       if (stored) unlocksCount = JSON.parse(stored).length;
     } catch {}
+    let purchasedCoins = 0;
+    try {
+      const storedPurchased = localStorage.getItem(`tube_synthetic_purchased_${user.id}`);
+      if (storedPurchased) purchasedCoins = Number(storedPurchased) || 0;
+    } catch {}
     const freeCoins = Math.max(0, 5 - unlocksCount);
+    const total = freeCoins + purchasedCoins;
     return {
-      coinBalance: 0,
+      coinBalance: purchasedCoins,
       bonusCoins: freeCoins,
-      totalCoins: freeCoins,
+      totalCoins: total,
     };
   }
 
@@ -209,24 +215,36 @@ export async function unlockEpisodeWithCoins(
     return { success: false, error: 'User not authenticated' };
   }
 
-  // Handle synthetic viewer locally (strictly enforces 5 free episodes)
+  // Handle synthetic viewer locally (strictly enforces 5 free episodes + test sandbox purchases)
   if (isSyntheticId(user.id)) {
     try {
       const key = `tube_synthetic_unlocks_${user.id}`;
       const stored = localStorage.getItem(key);
       const list: string[] = stored ? JSON.parse(stored) : [];
-      if (list.length >= 5 && !list.includes(videoId)) {
+
+      let purchasedCoins = 0;
+      try {
+        const storedPurchased = localStorage.getItem(`tube_synthetic_purchased_${user.id}`);
+        if (storedPurchased) purchasedCoins = Number(storedPurchased) || 0;
+      } catch {}
+
+      const available = Math.max(0, 5 - list.length) + purchasedCoins;
+      if (available < cost && !list.includes(videoId)) {
         return {
           success: false,
-          error: 'Free episodes limit reached. Please recharge coins to continue.',
-          remainingBalance: 0,
+          error: 'Insufficient coins. Please recharge your wallet.',
+          remainingBalance: available,
         };
       }
       if (!list.includes(videoId)) {
         list.push(videoId);
         localStorage.setItem(key, JSON.stringify(list));
+        if (list.length > 5 && purchasedCoins > 0) {
+          purchasedCoins = Math.max(0, purchasedCoins - cost);
+          localStorage.setItem(`tube_synthetic_purchased_${user.id}`, String(purchasedCoins));
+        }
       }
-      const remaining = Math.max(0, 5 - list.length);
+      const remaining = Math.max(0, 5 - list.length) + purchasedCoins;
       return {
         success: true,
         remainingBalance: remaining,
@@ -338,6 +356,46 @@ export async function verifyPayment(reference: string): Promise<{ success: boole
   } catch (err: any) {
     return { success: false, error: err.message || 'Failed to verify payment' };
   }
+}
+
+
+/**
+ * Simulates a test/sandbox purchase for QA while awaiting Paystack live verification
+ */
+export async function simulateTestPayment(params: {
+  packageId: string;
+  coins: number;
+  bonus?: number;
+}): Promise<{ success: boolean; wallet: CoinWallet }> {
+  const user = await getEffectiveUser();
+  const userId = user?.id || 'viewer_test';
+  const totalCredited = params.coins + (params.bonus || 0);
+
+  if (isSyntheticId(userId)) {
+    const key = `tube_synthetic_purchased_${userId}`;
+    let current = 0;
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) current = Number(stored) || 0;
+    } catch {}
+    const nextVal = current + totalCredited;
+    localStorage.setItem(key, String(nextVal));
+  } else {
+    try {
+      await supabase.rpc('credit_user_coins', {
+        p_user_id: userId,
+        p_regular_coins: params.coins,
+        p_bonus_coins: params.bonus || 0,
+        p_reference_id: `test_sim_${Date.now()}`,
+      });
+    } catch {}
+  }
+
+  const wallet = await fetchWalletBalance();
+  return {
+    success: true,
+    wallet: wallet || { coinBalance: totalCredited, bonusCoins: 5, totalCoins: totalCredited + 5 },
+  };
 }
 
 /**

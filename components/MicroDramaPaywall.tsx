@@ -17,6 +17,7 @@ import {
   fetchWalletBalance,
   unlockEpisodeWithCoins,
   initializePayment,
+  simulateTestPayment,
   MPESA_PACKAGES,
   CARD_PACKAGES,
   VIP_PASSES,
@@ -51,7 +52,7 @@ export default function MicroDramaPaywall({
   const [purchaseTab, setPurchaseTab] = useState<'coins' | 'vip'>('coins');
   const [selectedPackage, setSelectedPackage] = useState<CoinPackage>(MPESA_PACKAGES[0]);
   const [selectedVipPass, setSelectedVipPass] = useState<VipPass>(VIP_PASSES[0]);
-  const [phone, setPhone] = useState(() => {
+    const [phone, setPhone] = useState(() => {
     try {
       return localStorage.getItem('tube_verified_phone') || '';
     } catch {
@@ -59,6 +60,46 @@ export default function MicroDramaPaywall({
     }
   });
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [showTestSettings, setShowTestSettings] = useState(false);
+  const [testPublicKey, setTestPublicKey] = useState(() => {
+    try {
+      return localStorage.getItem('tube_paystack_test_pk') || import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const handleSimulateTestPayment = async () => {
+    if (!isAuthenticated) {
+      onRequireLogin();
+      return;
+    }
+    setIsSimulating(true);
+    setErrorMessage('');
+    try {
+      const isVip = purchaseTab === 'vip';
+      const coins = isVip ? 100 : selectedPackage.coins;
+      const bonus = isVip ? 0 : (selectedPackage.bonus || 0);
+
+      const res = await simulateTestPayment({
+        packageId: isVip ? selectedVipPass.id : selectedPackage.id,
+        coins,
+        bonus,
+      });
+
+      setWallet(res.wallet);
+      setSuccessNotice(`🎉 Sandbox: Added ${coins + bonus} Coins to your wallet!`);
+      await unlockEpisodeWithCoins(video.id, video.seriesId, coinCost);
+      setTimeout(() => {
+        onUnlocked();
+      }, 1000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Test payment simulation failed.');
+    } finally {
+      setIsSimulating(false);
+    }
+  };
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -136,7 +177,7 @@ export default function MicroDramaPaywall({
       const hasPaystackPop = typeof (window as any).PaystackPop !== 'undefined';
       if (hasPaystackPop && result.accessCode) {
         const handler = (window as any).PaystackPop.setup({
-          key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '',
+          key: testPublicKey || import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '',
           access_code: result.accessCode,
           onClose: () => {
             setIsPaying(false);
@@ -455,6 +496,61 @@ export default function MicroDramaPaywall({
                   <span>M-Pesa prompt sent to phone. Enter your PIN to complete the unlock.</span>
                 </div>
               )}
+            </div>
+
+            
+            {/* Paystack Kenya Test Sandbox Panel */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-bold text-amber-400">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                  <span>Paystack Kenya Sandbox (Test Mode)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTestSettings(!showTestSettings)}
+                  className="text-[10px] text-zinc-400 hover:text-white underline"
+                >
+                  {showTestSettings ? 'Hide Key' : 'Set Test Key'}
+                </button>
+              </div>
+
+              {showTestSettings && (
+                <div className="pt-2 border-t border-amber-500/20 space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-zinc-400">Paystack Test Public Key (pk_test_...)</label>
+                  <input
+                    type="text"
+                    placeholder="pk_test_..."
+                    value={testPublicKey}
+                    onChange={(e) => {
+                      setTestPublicKey(e.target.value);
+                      localStorage.setItem('tube_paystack_test_pk', e.target.value);
+                    }}
+                    className="w-full bg-black/60 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-zinc-600 outline-none focus:border-amber-500"
+                  />
+                </div>
+              )}
+
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
+                {paymentMethod === 'mpesa' ? (
+                  <>
+                    Test M-Pesa: <span className="text-white cursor-pointer underline font-bold" onClick={() => setPhone('0712345678')}>0712 345 678</span>. In Paystack popup, enter PIN <strong className="text-white">1234</strong>.
+                  </>
+                ) : (
+                  <>
+                    Test Visa: <strong className="text-white">4084 0840 8408 4081</strong> • Exp: <strong>12/30</strong> • CVV: <strong>123</strong> • OTP: <strong>123456</strong>
+                  </>
+                )}
+              </p>
+
+              <button
+                type="button"
+                onClick={handleSimulateTestPayment}
+                disabled={isSimulating}
+                className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-[11px] flex items-center justify-center gap-1.5 shadow transition-all active:scale-95"
+              >
+                {isSimulating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>⚡ 1-Click Sandbox Test Credit & Unlock</span>}
+              </button>
             </div>
 
             {/* Status Notice */}
