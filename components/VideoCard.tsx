@@ -55,6 +55,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const [isHoverPlay, setIsHoverPlay] = useState(false);
   const [hoverPreviewEnded, setHoverPreviewEnded] = useState(false);
   const hoverTimerRef = useRef<any>(null);
+  const isHoveringRef = useRef(false);
+  useEffect(() => {
+    isHoveringRef.current = isHovering;
+  }, [isHovering]);
   const lastClickTimeRef = useRef<number>(0);
   const lastProgressSaveRef = useRef(0);
   const startAtRef = useRef(performance.now());
@@ -97,19 +101,43 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const qualities = ['Auto', '1080p', '720p', '480p'];
 
   const safePlay = useCallback((el: HTMLVideoElement) => {
-    const wantsSound = !isMuted && (!isHoverPlay || isPlaying);
+    const isHover = isHoverPlay && !isPlaying;
+    // If this was triggered as hover play but mouse already left, abort immediately
+    if (isHover && !isHoveringRef.current) {
+      el.pause();
+      return;
+    }
+
+    const wantsSound = !isMuted && !isHover;
     el.muted = !wantsSound;
     const playPromise = el.play();
     if (playPromise !== undefined) {
       playPromise
-        .then(() => setIsPlaying(true))
+        .then(() => {
+          if (isHover && !isHoveringRef.current) {
+            el.pause();
+            return;
+          }
+          // Never promote hover play to isPlaying (only set isPlaying for actual user playback)
+          if (!isHover) {
+            setIsPlaying(true);
+          }
+        })
         .catch((_err) => {
           if (wantsSound) {
             // Autoplay policy prevented unmuted sound: fall back to muted playback so video streams smoothly
             el.muted = true;
             setIsMuted(true);
             el.play()
-              .then(() => setIsPlaying(true))
+              .then(() => {
+                if (isHover && !isHoveringRef.current) {
+                  el.pause();
+                  return;
+                }
+                if (!isHover) {
+                  setIsPlaying(true);
+                }
+              })
               .catch(() => {
                 setIsPlaying(false);
                 setIsHoverPlay(false);
@@ -136,6 +164,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
       if (videoRef.current && !videoRef.current.paused) {
         videoRef.current.pause();
       }
+      if (hlsRef.current && !isPlaying) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
       return;
     }
 
@@ -157,6 +189,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
         if (videoSrc.endsWith('.m3u8')) {
             void loadHls().then((Hls) => {
+            // If hover play was cancelled while loading Hls module, do not proceed
+            if (!isPlaying && !isHoveringRef.current) {
+              return;
+            }
             if (!Hls.isSupported() || !videoRef.current) {
               if (videoRef.current) {
                 videoRef.current.src = videoSrc;
@@ -170,18 +206,24 @@ const VideoCard: React.FC<VideoCardProps> = ({
             hls.loadSource(videoSrc);
             hls.attachMedia(videoRef.current);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            const targetQuality = effectiveDataSaver ? '360p' : quality;
-            if (targetQuality !== 'Auto') {
-              const targetHeight = Number.parseInt(targetQuality, 10);
-              const matchingLevel = hls.levels.reduce((best, level, index) => (
-                level.height <= targetHeight && (best < 0 || level.height > hls.levels[best].height)
-                  ? index : best
-              ), -1);
-              if (matchingLevel >= 0) hls.currentLevel = matchingLevel;
-            }
-                if (videoRef.current) {
-                  safePlay(videoRef.current);
-                }
+              // Abort if mouse already left before manifest parsed
+              if (!isPlaying && !isHoveringRef.current) {
+                hls.destroy();
+                hlsRef.current = null;
+                return;
+              }
+              const targetQuality = effectiveDataSaver ? '360p' : quality;
+              if (targetQuality !== 'Auto') {
+                const targetHeight = Number.parseInt(targetQuality, 10);
+                const matchingLevel = hls.levels.reduce((best, level, index) => (
+                  level.height <= targetHeight && (best < 0 || level.height > hls.levels[best].height)
+                    ? index : best
+                ), -1);
+                if (matchingLevel >= 0) hls.currentLevel = matchingLevel;
+              }
+              if (videoRef.current) {
+                safePlay(videoRef.current);
+              }
             });
             hlsRef.current = hls;
             hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -195,6 +237,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
             });
         } else {
              // Native playback for MP4 or if HLS natively supported (Safari)
+             if (!isPlaying && !isHoveringRef.current) {
+               return;
+             }
              if (!videoRef.current.src || videoRef.current.src !== videoSrc) {
                videoRef.current.src = videoSrc;
              }
@@ -203,8 +248,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
     } else {
         if (videoRef.current) {
           videoRef.current.pause();
-          // Clear src to allow re-init on next play if needed
-          // videoRef.current.src = ""; 
+        }
+        if (hlsRef.current && !isPlaying) {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
         }
     }
   }, [videoSrc, isPlaying, isHoverPlay, quality, effectiveDataSaver, video.id, video.category, isRatingLocked, safePlay]);
@@ -222,19 +269,34 @@ const VideoCard: React.FC<VideoCardProps> = ({
   useEffect(() => {
     if (isHovering && !isPlaying && !isRatingLocked && !effectiveDataSaver && !hoverPreviewEnded) {
       hoverTimerRef.current = setTimeout(() => {
-        setIsHoverPlay(true);
+        if (isHoveringRef.current) {
+          setIsHoverPlay(true);
+        }
       }, 500); // Delay to avoid accidental plays while scrolling
     } else if (!isHovering) {
-      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-      setIsHoverPlay(false);
-      setHoverPreviewEnded(false);
-      if (videoRef.current && !isPlaying) {
-        videoRef.current.currentTime = 0;
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
+      if (!isPlaying) {
+        setIsHoverPlay(false);
+        setHoverPreviewEnded(false);
+        if (videoRef.current) {
+          videoRef.current.pause();
+          videoRef.current.currentTime = 0;
+        }
+        if (hlsRef.current) {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        }
       }
     }
 
     return () => {
-      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
     };
   }, [isHovering, isPlaying, isRatingLocked, effectiveDataSaver, hoverPreviewEnded]);
 
@@ -533,10 +595,30 @@ const VideoCard: React.FC<VideoCardProps> = ({
       ref={containerRef}
       className={`group relative overflow-hidden ${playerOnly ? '' : 'catalogue-video-card'}`}
       onDoubleClick={handleCardDoubleClick}
-      onMouseEnter={() => setIsHovering(true)}
+      onMouseEnter={() => {
+        setIsHovering(true);
+        isHoveringRef.current = true;
+      }}
       onMouseLeave={() => {
         setIsHovering(false);
+        isHoveringRef.current = false;
         setShowSettings(false);
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current);
+          hoverTimerRef.current = null;
+        }
+        if (!playerOnly && !isPlaying) {
+          setIsHoverPlay(false);
+          setHoverPreviewEnded(false);
+          if (videoRef.current) {
+            videoRef.current.pause();
+            videoRef.current.currentTime = 0;
+          }
+          if (hlsRef.current) {
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+          }
+        }
       }}
     >
       <div className={`relative ${video.seriesFormat === "micro-drama" || video.category === "Micro Dramas" ? "aspect-[9/16]" : "aspect-video"} bg-black overflow-hidden`}>
@@ -649,6 +731,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
               onLoadedMetadata={handleLoadedMetadata}
               onWaiting={() => { if (firstFrameRef.current && bufferAtRef.current === null) bufferAtRef.current = performance.now(); setIsBuffering(true); }}
               onPlaying={() => {
+                if (isHoverPlay && !isPlaying && !isHoveringRef.current) {
+                  videoRef.current?.pause();
+                  return;
+                }
                 document.dispatchEvent(new CustomEvent('tubetv:player-start', {detail:playerInstanceRef.current}));
                 setIsBuffering(false);
                 if (bufferAtRef.current !== null) {
