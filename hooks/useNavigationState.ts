@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ChangeEvent } from 'react';
 import { ViewState, type NavItem, type ViewStateOrString } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { TranslationKey } from '../translations';
@@ -190,7 +190,7 @@ export function useNavigationState() {
     setCurrentView((current) => (current === id ? ViewState.HOME : current));
   }, []);
 
-  const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSearch = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
     if (e.target.value) {
       setCurrentView(ViewState.HOME);

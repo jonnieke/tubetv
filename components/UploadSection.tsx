@@ -19,6 +19,7 @@ interface UploadMetadata {
   episode: string;
   introEndSeconds: string;
   outroStartSeconds: string;
+  featuredInBanner: boolean;
 }
 
 interface UploadItem {
