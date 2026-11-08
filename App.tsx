@@ -125,6 +125,8 @@ const App: React.FC = () => {
       setPreferences(nextPreferences);
       setWatchLater(nextWatchLater);
       setWatchProgress(nextProgress);
+    }).catch(() => {
+      if (!cancelled) console.warn('Could not load viewer playback settings.');
     });
     return () => {
       cancelled = true;
@@ -139,18 +141,24 @@ const App: React.FC = () => {
 
   const handlePreferencesChange = useCallback((nextPreferences: PlaybackPreferences) => {
     setPreferences(nextPreferences);
-    void savePreferences(currentUser?.id, nextPreferences);
+    void savePreferences(currentUser?.id, nextPreferences).catch(() => {
+      console.warn('Could not sync playback preferences.');
+    });
   }, [currentUser?.id]);
 
   const handleWatchProgress = useCallback((videoId: string, progress: WatchProgress) => {
     setWatchProgress((current) => ({ ...current, [videoId]: progress }));
-    void saveProgress(currentUser?.id, videoId, progress);
+    void saveProgress(currentUser?.id, videoId, progress).catch(() => {
+      console.warn('Could not sync playback progress.');
+    });
   }, [currentUser?.id]);
 
   const toggleWatchLater = useCallback((id: string) => {
     const shouldSave = !watchLater.includes(id);
     setWatchLater((current) => (shouldSave ? [...current, id] : current.filter((videoId) => videoId !== id)));
-    void persistWatchLater(currentUser?.id, id, shouldSave);
+    void persistWatchLater(currentUser?.id, id, shouldSave).catch(() => {
+      console.warn('Could not sync Watch Later.');
+    });
   }, [watchLater, currentUser?.id]);
 
   // ─── 3. Video Player & Route Sync ───────────────────────────────────────────
