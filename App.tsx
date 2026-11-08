@@ -29,6 +29,7 @@ import { filterDiscoveryVideos } from './lib/discovery';
 import { recommendVideos } from './lib/recommendations';
 import { shouldSaveData } from './lib/network';
 import { useViewerAuth } from './hooks/useViewerAuth';
+import { getPaymentStatus } from './services/paymentService';
 import { useCatalogue } from './hooks/useCatalogue';
 import { useNavigationState } from './hooks/useNavigationState';
 
@@ -163,20 +164,47 @@ const App: React.FC = () => {
 
   // ─── 3. Video Player & Route Sync ───────────────────────────────────────────
   const [activeHeroVideo, setActiveHeroVideo] = useState<Video | null>(null);
-  const [paymentSuccessNotice, setPaymentSuccessNotice] = useState<string | null>(null);
+  const [paymentNotice, setPaymentNotice] = useState<{
+    message: string;
+    fulfilled: boolean;
+  } | null>(null);
 
-  // Detect Paystack redirect callback (?payment=success & ?reference=...)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const payment = params.get('payment');
-    const reference = params.get('reference') || params.get('trxref');
+    const url = new URL(window.location.href);
+    const marker = url.searchParams.get('payment');
+    const reference = url.searchParams.get('reference') || url.searchParams.get('trxref');
+    if ((marker !== 'return' && marker !== 'success') || !reference) return;
 
-    if (payment === 'success' || reference) {
-      const cleanUrl = window.location.pathname;
-      window.history.replaceState({}, '', cleanUrl);
-      setPaymentSuccessNotice('🎉 Payment received via Paystack! Your wallet has been credited.');
-      setTimeout(() => setPaymentSuccessNotice(null), 6500);
-    }
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+    setPaymentNotice({ message: 'Checking your payment…', fulfilled: false });
+
+    const check = async () => {
+      const status = await getPaymentStatus(reference, controller.signal).catch(() => 'unavailable');
+      if (controller.signal.aborted) return;
+      if (status === 'fulfilled') {
+        for (const key of ['payment', 'reference', 'trxref']) url.searchParams.delete(key);
+        window.history.replaceState(window.history.state, '', url);
+        setPaymentNotice({ message: 'Payment confirmed. Your purchase is ready.', fulfilled: true });
+        timer = setTimeout(() => setPaymentNotice(null), 6500);
+      } else if (++attempts < 8) {
+        timer = setTimeout(check, 2000);
+      } else {
+        setPaymentNotice({
+          message: status === 'pending'
+            ? 'Payment is still pending. Refresh this page to check again.'
+            : 'Payment status is unavailable. Sign in to the purchasing account and refresh to check again.',
+          fulfilled: false,
+        });
+        timer = setTimeout(() => setPaymentNotice(null), 10000);
+      }
+    };
+    void check();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
   }, []);
   const [selectedMovieForDetails, setSelectedMovieForDetails] = useState<Video | null>(null);
   const [heroIndex, setHeroIndex] = useState(0);
@@ -543,11 +571,10 @@ const App: React.FC = () => {
           </Suspense>
         )}
 
-        {/* Paystack Payment Success Toast */}
-        {paymentSuccessNotice && (
-          <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[300] px-5 py-3 rounded-2xl bg-emerald-600 border border-emerald-400 text-white font-bold text-xs shadow-2xl flex items-center gap-2 animate-in slide-in-from-top duration-300">
-            <CheckCircle2 className="w-5 h-5 text-white flex-shrink-0" />
-            <span>{paymentSuccessNotice}</span>
+        {paymentNotice && (
+          <div role="status" className={`fixed top-5 left-1/2 -translate-x-1/2 z-[300] px-5 py-3 rounded-2xl border text-white font-bold text-xs shadow-2xl flex items-center gap-2 ${paymentNotice.fulfilled ? 'bg-emerald-600 border-emerald-400' : 'bg-zinc-900 border-zinc-700'}`}>
+            {paymentNotice.fulfilled && <CheckCircle2 className="w-5 h-5 flex-shrink-0" />}
+            <span>{paymentNotice.message}</span>
           </div>
         )}
 

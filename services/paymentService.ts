@@ -111,46 +111,19 @@ export async function fetchWalletBalance(): Promise<CoinWallet | null> {
     };
   }
 
-  try {
-    const [walletRes, unlocksRes] = await Promise.all([
-      supabase
-        .from('user_wallets')
-        .select('coin_balance, bonus_coins, total_spent_kes')
-        .eq('user_id', user.id)
-        .maybeSingle(),
-      supabase
-        .from('episode_unlocks')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id),
-    ]);
+  const { data, error } = await supabase
+    .from('user_wallets')
+    .select('coin_balance, bonus_coins')
+    .eq('user_id', user.id)
+    .maybeSingle();
 
-    const data = walletRes.data;
-    const unlocksCount = unlocksRes.count || 0;
-    const totalSpentKes = data?.total_spent_kes || 0;
-
-    // If viewer has never purchased a paid package, strictly enforce 5 welcome coins
-    if (totalSpentKes === 0) {
-      const freeCoins = Math.max(0, 5 - unlocksCount);
-      return {
-        coinBalance: 0,
-        bonusCoins: freeCoins,
-        totalCoins: freeCoins,
-      };
-    }
-
-    // For paying users: paid coins + remaining free coins
-    const freeCoins = Math.max(0, 5 - unlocksCount);
-    const paidBalance = Math.max(0, (data?.coin_balance || 0) + (data?.bonus_coins || 0) - unlocksCount);
-    return {
-      coinBalance: data?.coin_balance || 0,
-      bonusCoins: freeCoins,
-      totalCoins: paidBalance,
-    };
-  } catch {
-    return { coinBalance: 0, bonusCoins: 5, totalCoins: 5 };
-  }
+  if (error || !data) return null;
+  return {
+    coinBalance: data.coin_balance,
+    bonusCoins: data.bonus_coins,
+    totalCoins: data.coin_balance + data.bonus_coins,
+  };
 }
-
 /**
  * Claims or provisions 5 welcome bonus coins for a new viewer (1 coin = 1 episode)
  */
@@ -215,7 +188,7 @@ export async function unlockEpisodeWithCoins(
     return { success: false, error: 'User not authenticated' };
   }
 
-  // Handle synthetic viewer locally (strictly enforces 5 free episodes + test sandbox purchases)
+  // Handle synthetic viewer locally (strictly enforces 5 free episodes + local preview credits)
   if (isSyntheticId(user.id)) {
     try {
       const key = `tube_synthetic_unlocks_${user.id}`;
@@ -284,120 +257,45 @@ export async function unlockEpisodeWithCoins(
   };
 }
 
-/**
- * Initializes Paystack checkout via Supabase Edge Function
- * Supports both standard Supabase auth sessions and phone-verified viewers
- */
 export async function initializePayment(params: {
   packageId: string;
-  amount: number;
-  currency: 'KES' | 'USD';
   paymentMethod: 'mpesa' | 'card';
-  phone?: string;
-}): Promise<{ authorizationUrl?: string; accessCode?: string; reference?: string; error?: string }> {
-  const viewer = await getEffectiveUser();
+}): Promise<{ authorizationUrl?: string; error?: string }> {
   const { data: { session } } = await supabase.auth.getSession();
-
-  let effectivePhone = params.phone || viewer?.phone;
-  if (!effectivePhone && typeof window !== 'undefined') {
-    try {
-      effectivePhone = localStorage.getItem('tube_verified_phone') || '';
-    } catch {}
-  }
-
-  const userId = viewer?.id || session?.user?.id || (effectivePhone ? `viewer_${effectivePhone.replace(/\D/g, '')}` : undefined);
-
-  if (!session && !userId && !effectivePhone) {
-    return { error: 'Please enter your phone number to complete purchase' };
-  }
+  if (!session) return { error: 'Sign in with a verified account to purchase.' };
 
   try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`;
-    }
-
     const res = await fetch(`${SUPABASE_URL}/functions/v1/paystack-checkout`, {
       method: 'POST',
-      headers,
-      body: JSON.stringify({
-        ...params,
-        userId,
-        phone: effectivePhone,
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(params),
     });
 
     const result = await res.json();
-    if (!res.ok || result.error) {
-      return { error: result.error || 'Payment initialization failed' };
+    if (!res.ok || !result.authorizationUrl) {
+      return { error: result.error || 'Unable to start payment. Please try again.' };
     }
-
-    return {
-      authorizationUrl: result.authorizationUrl,
-      accessCode: result.accessCode,
-      reference: result.reference,
-    };
-  } catch (err: any) {
-    return { error: err.message || 'Network error during checkout' };
+    return { authorizationUrl: result.authorizationUrl };
+  } catch {
+    return { error: 'Unable to reach checkout. Please try again.' };
   }
 }
 
-/**
- * Verifies Paystack transaction reference and refreshes wallet
- */
-export async function verifyPayment(reference: string): Promise<{ success: boolean; wallet?: CoinWallet | null; error?: string }> {
-  try {
-    // Wait briefly for webhook processing or DB sync
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    const wallet = await fetchWalletBalance();
-    return { success: true, wallet };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Failed to verify payment' };
-  }
+export async function getPaymentStatus(
+  reference: string,
+  signal: AbortSignal,
+): Promise<'fulfilled' | 'pending' | 'unavailable'> {
+  const { data, error } = await supabase.from('paystack_orders')
+    .select('fulfilled_at')
+    .eq('reference', reference)
+    .abortSignal(signal)
+    .maybeSingle();
+  if (error || !data) return 'unavailable';
+  return data.fulfilled_at ? 'fulfilled' : 'pending';
 }
-
-
-/**
- * Simulates a test/sandbox purchase for QA while awaiting Paystack live verification
- */
-export async function simulateTestPayment(params: {
-  packageId: string;
-  coins: number;
-  bonus?: number;
-}): Promise<{ success: boolean; wallet: CoinWallet }> {
-  const user = await getEffectiveUser();
-  const userId = user?.id || 'viewer_test';
-  const totalCredited = params.coins + (params.bonus || 0);
-
-  if (isSyntheticId(userId)) {
-    const key = `tube_synthetic_purchased_${userId}`;
-    let current = 0;
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored) current = Number(stored) || 0;
-    } catch {}
-    const nextVal = current + totalCredited;
-    localStorage.setItem(key, String(nextVal));
-  } else {
-    try {
-      await supabase.rpc('credit_user_coins', {
-        p_user_id: userId,
-        p_regular_coins: params.coins,
-        p_bonus_coins: params.bonus || 0,
-        p_reference_id: `test_sim_${Date.now()}`,
-      });
-    } catch {}
-  }
-
-  const wallet = await fetchWalletBalance();
-  return {
-    success: true,
-    wallet: wallet || { coinBalance: totalCredited, bonusCoins: 5, totalCoins: totalCredited + 5 },
-  };
-}
-
 /**
  * Requests a time-limited signed playback stream URL from the Edge Function
  */

@@ -1,150 +1,68 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
-const PAYSTACK_SECRET = Deno.env.get('PAYSTACK_SECRET_KEY') || '';
+const secret = Deno.env.get('PAYSTACK_SECRET_KEY');
+const encoder = new TextEncoder();
 
-function hexToUint8Array(hexString: string): Uint8Array {
-  const bytes = new Uint8Array(hexString.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hexString.substr(i * 2, 2), 16);
-  }
-  return bytes;
+async function verifySignature(signature: string, body: Uint8Array, keyText: string) {
+  if (!/^[0-9a-f]{128}$/i.test(signature)) return false;
+  const bytes = Uint8Array.from(signature.match(/../g)!, (pair) => parseInt(pair, 16));
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(keyText), { name: 'HMAC', hash: 'SHA-512' }, false, ['verify'],
+  );
+  return crypto.subtle.verify('HMAC', key, bytes, body);
 }
 
-async function verifyPaystackSignature(signature: string, payload: string): Promise<boolean> {
-  if (!signature || !PAYSTACK_SECRET) return false;
+serve(async (req) => {
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+  if (!secret) return new Response('Unavailable', { status: 503 });
+
   try {
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(PAYSTACK_SECRET),
-      { name: 'HMAC', hash: 'SHA-512' },
-      false,
-      ['verify']
-    );
-    return await crypto.subtle.verify('HMAC', key, hexToUint8Array(signature), encoder.encode(payload));
-  } catch {
-    return false;
-  }
-}
+    const raw = new Uint8Array(await req.arrayBuffer());
+    if (!await verifySignature(req.headers.get('x-paystack-signature') || '', raw, secret)) {
+      return new Response('Invalid signature', { status: 401 });
+    }
+    const event = JSON.parse(new TextDecoder().decode(raw));
+    if (event?.event !== 'charge.success') return new Response('Ignored');
 
-serve(async (req: Request) => {
-  if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
-  }
-
-  const signature = req.headers.get('x-paystack-signature') || '';
-  const rawBody = await req.text();
-
-  const isValid = await verifyPaystackSignature(signature, rawBody);
-  if (!isValid) {
-    console.error('Invalid Paystack webhook signature');
-    return new Response('Invalid signature', { status: 400 });
-  }
-
-  let event: any;
-  try {
-    event = JSON.parse(rawBody);
-  } catch {
-    return new Response('Invalid JSON', { status: 400 });
-  }
-
-  // Handle successful charges from Paystack (https://paystack.com/ke)
-  if (event.event === 'charge.success') {
-    const data = event.data;
-    const metadata = data.metadata || {};
-    let userId = metadata.user_id;
-    const reference = data.reference;
-    const phone = metadata.phone || data.customer?.phone || '';
-
-    if (!userId && !phone) {
-      console.warn('Webhook received without user_id or phone in metadata');
-      return new Response('Awaiting identity', { status: 200 });
+    const reference = event.data?.reference;
+    if (typeof reference !== 'string' || !/^tube-order-[a-f0-9-]{36}$/.test(reference)) {
+      // Legacy checkouts lack a server-owned order. Reconcile them separately.
+      console.warn('Paystack charge has no managed order', reference);
+      return new Response('Unmanaged charge');
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') || '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
-      { auth: { persistSession: false, autoRefreshToken: false } }
-    );
+    const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: order, error: lookupError } = await db.from('paystack_orders')
+      .select('amount_minor, currency, fulfilled_at').eq('reference', reference).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!order) throw new Error(`Missing order ${reference}`);
+    if (order.fulfilled_at) return new Response('Already fulfilled');
 
-    // If userId is synthetic (viewer_254...), resolve real UUID from profiles if available
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId || '');
-    if (!isUuid && phone) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('phone_e164', phone)
-        .maybeSingle();
-      if (profile?.id) {
-        userId = profile.id;
-      }
+    const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
+      headers: { Authorization: `Bearer ${secret}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    const verified = await response.json();
+    const payment = verified.data;
+    if (!response.ok || verified.status !== true || payment?.status !== 'success') {
+      throw new Error(`Paystack verification unavailable for ${reference}`);
+    }
+    if (payment.reference !== reference || payment.amount !== order.amount_minor ||
+        payment.currency !== order.currency) {
+      console.error('Paystack payment does not match order', reference);
+      return new Response('Payment does not match order', { status: 422 });
     }
 
-    const packageType = metadata.package_type || 'coins';
-
-    try {
-      // 1. If Coins: Credit to User Wallet
-      if (packageType === 'coins' && isUuid) {
-        const coins = Number(metadata.coins) || 0;
-        const bonus = Number(metadata.bonus_coins) || 0;
-
-        const { error: creditError } = await supabase.rpc('credit_user_coins', {
-          p_user_id: userId,
-          p_regular_coins: coins,
-          p_bonus_coins: bonus,
-          p_reference_id: reference,
-        });
-
-        if (creditError) {
-          console.error('Error crediting coins:', creditError);
-        }
-      }
-
-      // 2. If Pass / VIP Subscription: Activate Subscription
-      if (packageType === 'pass' && isUuid) {
-        const plan = metadata.plan_code || 'daily';
-        const hours = plan === 'monthly' ? 24 * 30 : plan === 'weekly' ? 24 * 7 : 24;
-        const endDate = new Date(Date.now() + hours * 3600 * 1000).toISOString();
-
-        await supabase.from('subscriptions').upsert({
-          user_id: userId,
-          tier: plan,
-          is_active: true,
-          end_date: endDate,
-          updated_at: new Date().toISOString(),
-        });
-      }
-
-      // 3. Record Audit Payment Transaction
-      const amountKes = Math.round(Number(data.amount || 0) / 100);
-      const mpesaReceipt = data.authorization?.channel === 'mobile_money' ? reference : null;
-
-      if (isUuid) {
-        await supabase.from('payment_transactions').upsert(
-          {
-            user_id: userId,
-            phone_e164: phone,
-            plan_code: metadata.package_id || metadata.plan_code || 'coins',
-            amount_kes: amountKes,
-            idempotency_key: reference,
-            checkout_request_id: reference,
-            mpesa_receipt: mpesaReceipt,
-            status: 'succeeded',
-            result_code: 0,
-            result_description: 'Payment verified via Paystack webhook',
-            raw_payload: data,
-            created_at: new Date().toISOString(),
-          },
-          { onConflict: 'idempotency_key' }
-        );
-      }
-
-      console.log(`[Paystack Webhook] Successfully processed ${reference} for ${userId || phone}`);
-    } catch (err) {
-      console.error('Webhook processing error:', err);
-    }
+    const { data, error } = await db.rpc('fulfill_paystack_order', {
+      p_reference: reference, p_amount_minor: payment.amount, p_currency: payment.currency,
+    });
+    if (error || data !== true) throw error || new Error(`Fulfillment rejected for ${reference}`);
+    return new Response('Fulfilled');
+  } catch (error) {
+    console.error('Paystack webhook processing failed', error);
+    return new Response('Unable to process payment', { status: 503 });
   }
-
-  return new Response('Webhook received', { status: 200 });
 });
