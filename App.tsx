@@ -187,6 +187,7 @@ const App: React.FC = () => {
         for (const key of ['payment', 'reference', 'trxref']) url.searchParams.delete(key);
         window.history.replaceState(window.history.state, '', url);
         setPaymentNotice({ message: 'Payment confirmed. Your purchase is ready.', fulfilled: true });
+        window.dispatchEvent(new Event('tubetv:payment-fulfilled'));
         timer = setTimeout(() => setPaymentNotice(null), 6500);
       } else if (++attempts < 8) {
         timer = setTimeout(check, 2000);
@@ -553,6 +554,7 @@ const App: React.FC = () => {
         isAuthenticated,
         onRequireLogin: () => setShowViewerAuth(true),
         onOpenMovieDetails: (movie) => setSelectedMovieForDetails(movie),
+        onOpenEpisode: openVideo,
       }}
     >
       <div className="flex h-screen bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">

@@ -12,6 +12,7 @@ interface PlaybackContextValue {
   isAuthenticated?: boolean;
   onRequireLogin?: () => void;
   onOpenMovieDetails?: (video: Video) => void;
+  onOpenEpisode?: (video: Video) => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue>({

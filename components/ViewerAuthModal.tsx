@@ -11,8 +11,7 @@ import {
   ArrowRight,
   AlertTriangle,
 } from 'lucide-react';
-import { supabase, isSupabaseConfigured, phoneToE164, isValidKenyanPhone } from '../lib/supabase';
-import { claimWelcomeBonus } from '../services/paymentService';
+import { supabase, isSupabaseConfigured, phoneToE164, requestPhoneOtp, verifyPhoneOtp } from '../lib/supabase';
 import { isAnotherDeviceActive, claimActiveDevice } from '../lib/deviceSession';
 
 interface ViewerAuthModalProps {
@@ -31,6 +30,8 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     }
   });
   const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpPhone, setOtpPhone] = useState('');
   const [password, setPassword] = useState('');
   const [step, setStep] = useState<'input' | 'conflict'>('input');
   const [conflictDeviceName, setConflictDeviceName] = useState('Another Device');
@@ -41,25 +42,31 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
 
   if (!isOpen) return null;
 
-  // Handle Direct Kenyan Phone Authentication
   const handlePhoneAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-
-    if (!isValidKenyanPhone(phone)) {
-      setErrorMessage('Please enter a valid Kenyan phone number (e.g. 0712 345 678 or 0110 123 456).');
+    setSuccessMessage('');
+    const e164 = phoneToE164(phone);
+    if (!isSupabaseConfigured || !e164) {
+      setErrorMessage(isSupabaseConfigured ? 'Enter a valid Kenyan mobile number.' : 'Sign-in is unavailable.');
       return;
     }
 
     setIsLoading(true);
-
     try {
-      const e164 = phoneToE164(phone) || phone;
-      // Register or sign in user with phone captured in Supabase profiles & auth metadata
-      const user = await registerViewerWithPhone(e164);
-      await checkDeviceAndComplete(user, e164);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Unable to sign in with phone. Please try again.');
+      if (!otpPhone) {
+        const { error } = await requestPhoneOtp(e164, true, undefined, 'sms');
+        if (error) throw error;
+        setOtpPhone(e164);
+        setSuccessMessage('Enter the verification code sent to your phone.');
+        return;
+      }
+      const { data, error } = await verifyPhoneOtp(otpPhone, otp.trim());
+      if (error) throw error;
+      if (!data?.session || !data.user) throw new Error('Unable to verify your phone.');
+      await checkDeviceAndComplete(data.user, otpPhone);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in with phone.');
     } finally {
       setIsLoading(false);
     }
@@ -95,81 +102,10 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
     }
   };
 
-  // Register / Sign in viewer with phone captured into Supabase & localStorage
-  const registerViewerWithPhone = async (phoneE164: string): Promise<User> => {
-    const rawDigits = phoneE164.replace(/\D/g, '');
-    const syntheticEmail = `${rawDigits}@viewer.tube.co.ke`;
-    const fallbackPassword = `tube_${rawDigits.slice(-6) || 'welcome2026'}`;
-
-    let user: User | null = null;
-
-    if (isSupabaseConfigured) {
-      // Try Sign In first
-      const { data: signData } = await supabase.auth.signInWithPassword({
-        email: syntheticEmail,
-        password: fallbackPassword,
-      });
-
-      if (signData?.user) {
-        user = signData.user;
-        if (signData.session) {
-          await supabase.auth.setSession(signData.session);
-        }
-      } else {
-        // Sign Up with phone in metadata
-        const { data: upData } = await supabase.auth.signUp({
-          email: syntheticEmail,
-          password: fallbackPassword,
-          options: {
-            data: {
-              phone: phoneE164,
-              phone_number: phoneE164,
-              display_name: phone,
-              is_viewer: true,
-            },
-          },
-        });
-        user = upData?.user || null;
-        if (upData?.session) {
-          await supabase.auth.setSession(upData.session);
-        }
-      }
-
-      // Explicitly update profile with phone_e164
-      if (user) {
-        try {
-          await supabase.from('profiles').update({
-            phone_e164: phoneE164,
-            display_name: phone,
-            updated_at: new Date().toISOString(),
-          }).eq('id', user.id);
-        } catch {}
-      }
-    }
-
-    if (!user) {
-      user = {
-        id: `viewer_${rawDigits || Date.now()}`,
-        app_metadata: {},
-        user_metadata: { phone: phoneE164 },
-        aud: 'authenticated',
-        created_at: new Date().toISOString(),
-      } as unknown as User;
-    }
-
-    // Persist verified session & phone locally so user is always remembered
-    try {
-      localStorage.setItem('tubetv_viewer_session', JSON.stringify(user));
-      localStorage.setItem('tube_verified_phone', phoneE164);
-    } catch {}
-
-    return user;
-  };
-
   // Email Sign In / Sign Up
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
+    if (!isSupabaseConfigured || !email.includes('@') || email.trim().toLowerCase().endsWith('@viewer.tube.co.ke')) {
       setErrorMessage('Please enter a valid email address.');
       return;
     }
@@ -184,7 +120,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           password,
         });
 
-        if (!signInError && signInData.user) {
+        if (!signInError && signInData.session && signInData.user) {
           await checkDeviceAndComplete(signInData.user, email);
           return;
         }
@@ -200,8 +136,10 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           return;
         }
 
-        if (signUpData.user) {
+        if (signUpData.session && signUpData.user) {
           await checkDeviceAndComplete(signUpData.user, email);
+        } else {
+          setSuccessMessage('Check your email to confirm your account, then sign in.');
           return;
         }
       } else {
@@ -228,15 +166,11 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
   };
 
   const finalizeLogin = async (user: User, identifier: string) => {
-    try {
-      // Provisions strictly 5 free coins
-      await claimWelcomeBonus(user.id);
-    } catch {}
-
     // Persist session & phone locally so viewer is permanently remembered
     try {
       localStorage.setItem('tubetv_viewer_session', JSON.stringify(user));
-      localStorage.setItem('tube_verified_phone', phoneToE164(phone) || identifier);
+      if (user.phone && user.phone_confirmed_at) localStorage.setItem('tube_verified_phone', phoneToE164(user.phone));
+      else localStorage.removeItem('tube_verified_phone');
     } catch {}
 
     setIsLoading(false);
@@ -264,10 +198,10 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
           </div>
           <div className="flex items-center justify-center gap-1.5 mb-1">
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <h3 className="text-lg font-black text-white tracking-tight">Claim 5 Free Coins</h3>
+            <h3 className="text-lg font-black text-white tracking-tight">Sign in to TubeTV</h3>
           </div>
           <p className="text-xs text-zinc-400 max-w-[260px] mx-auto leading-relaxed">
-            Enter your Kenyan phone number to activate your wallet and get 5 free episodes immediately!
+            Verify your phone number or email to access your wallet and purchases.
           </p>
         </div>
 
@@ -383,7 +317,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                       type="tel"
                       placeholder="0712 345 678 or 0110 123 456"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => setPhone(e.target.value)} disabled={Boolean(otpPhone) || isLoading}
                       required
                       autoFocus
                       className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
@@ -394,6 +328,20 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                   </span>
                 </div>
 
+                {otpPhone && (
+                  <div className="space-y-2">
+                    <label className="block text-xs text-zinc-300">
+                      Verification code
+                      <input value={otp} onChange={e => setOtp(e.target.value)} required
+                        inputMode="numeric" autoComplete="one-time-code"
+                        className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 p-3" />
+                    </label>
+                    <button type="button" disabled={isLoading} onClick={() => {
+                      setOtpPhone(''); setOtp(''); setSuccessMessage(''); setErrorMessage('');
+                    }} className="text-xs text-zinc-300 underline">Change number or resend</button>
+                  </div>
+                )}
+
                 <button
                   type="submit"
                   disabled={isLoading}
@@ -402,12 +350,12 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-black" />
-                      <span>Activating wallet...</span>
+                      <span>Verifying...</span>
                     </>
                   ) : (
                     <>
                       <Coins className="w-4 h-4 text-black" />
-                      <span>Claim 5 Free Coins & Start Watching</span>
+                      <span>{otpPhone ? 'Verify code' : 'Send verification code'}</span>
                       <ArrowRight className="w-4 h-4 text-black" />
                     </>
                   )}
@@ -459,7 +407,7 @@ export default function ViewerAuthModal({ isOpen, onClose, onSuccess }: ViewerAu
                   ) : (
                     <>
                       <Mail className="w-4 h-4" />
-                      <span>Sign In & Claim 5 Coins</span>
+                      <span>Sign in</span>
                     </>
                   )}
                 </button>

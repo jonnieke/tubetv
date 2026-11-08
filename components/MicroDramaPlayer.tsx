@@ -29,7 +29,7 @@ import { shouldSaveData } from '../lib/network';
 import { trackEvent } from '../lib/analytics';
 import CatalogueArtwork from './CatalogueArtwork';
 import MicroDramaPaywall from './MicroDramaPaywall';
-import { checkEpisodeUnlocked } from '../services/paymentService';
+import { getSecurePlaybackStream, type EpisodePlayback } from '../services/paymentService';
 import type Hls from 'hls.js';
 
 interface MicroDramaPlayerProps {
@@ -78,22 +78,25 @@ export default function MicroDramaPlayer({
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isBuffering, setIsBuffering] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const isFreeEpisode = isFreeVideo(currentVideo);
-  const [isUnlocked, setIsUnlocked] = useState(isFreeEpisode);
+  const [access, setAccess] = useState<{ id: string; result: EpisodePlayback } | null>(null);
+  const [accessCheck, setAccessCheck] = useState(0);
+  const refreshAccess = useCallback(() => setAccessCheck(check => check + 1), []);
+  const playback = access?.id === currentVideo.id ? access.result : undefined;
+  const isUnlocked = playback?.status === 'ready';
 
   useEffect(() => {
-    let active = true;
-    if (isFreeEpisode) {
-      setIsUnlocked(true);
-      return;
-    }
-    checkEpisodeUnlocked(currentVideo.id).then((unlocked) => {
-      if (active) setIsUnlocked(unlocked);
+    const controller = new AbortController();
+    setAccess(null);
+    void getSecurePlaybackStream(currentVideo, controller.signal).then(result => {
+      if (!controller.signal.aborted) setAccess({ id: currentVideo.id, result });
     });
-    return () => {
-      active = false;
-    };
-  }, [currentVideo.id, isFreeEpisode]);
+    return () => controller.abort();
+  }, [currentVideo, isAuthenticated, accessCheck]);
+
+  useEffect(() => {
+    window.addEventListener('tubetv:payment-fulfilled', refreshAccess);
+    return () => window.removeEventListener('tubetv:payment-fulfilled', refreshAccess);
+  }, [refreshAccess]);
 
   const [isLiked, setIsLiked] = useState(() => {
     try {
@@ -357,11 +360,12 @@ export default function MicroDramaPlayer({
   };
 
   // HLS stream setup & playback
-  const videoSrc = currentVideo.url || '';
+  const videoSrc = playback?.status === 'ready' ? playback.url : '';
 
   useEffect(() => {
     const videoEl = videoRef.current;
     if (!videoEl || !videoSrc || !isUnlocked) return;
+    let cancelled = false;
 
     firstFrameRecorded.current = false;
     prefetchTriggeredRef.current = false;
@@ -396,19 +400,19 @@ export default function MicroDramaPlayer({
       }
 
       // Pre-buffer next episode when at 65% duration (seamless microdrama cliffhanger bridge)
-      if (dur > 0 && cur / dur >= 0.65 && !prefetchTriggeredRef.current && nextEpisode?.url) {
+      if (!effectiveDataSaver && dur > 0 && cur / dur >= 0.65 && !prefetchTriggeredRef.current && nextEpisode && isFreeVideo(nextEpisode)) {
         prefetchTriggeredRef.current = true;
-        if (nextEpisode.url.endsWith('.m3u8')) {
-          void loadHls().then((Hls) => {
-            if (Hls.isSupported() && prefetchVideoRef.current) {
+        void getSecurePlaybackStream(nextEpisode).then(async next => {
+          if (cancelled || next.status !== 'ready') return;
+          const Hls = await loadHls();
+          if (!cancelled && Hls.isSupported() && prefetchVideoRef.current) {
               if (prefetchHlsRef.current) prefetchHlsRef.current.destroy();
               const preHls = new Hls({ maxBufferLength: 10, maxBufferSize: 2 * 1024 * 1024 });
-              preHls.loadSource(nextEpisode.url!);
+              preHls.loadSource(next.url);
               preHls.attachMedia(prefetchVideoRef.current);
               prefetchHlsRef.current = preHls;
-            }
-          });
-        }
+          }
+        }).catch(() => {});
       }
     };
 
@@ -429,6 +433,7 @@ export default function MicroDramaPlayer({
 
     if (videoSrc.endsWith('.m3u8')) {
       void loadHls().then((Hls) => {
+        if (cancelled || videoRef.current !== videoEl) return;
         if (!Hls.isSupported() || !videoRef.current) {
           if (videoRef.current) {
             videoRef.current.src = videoSrc;
@@ -463,6 +468,7 @@ export default function MicroDramaPlayer({
     }
 
     return () => {
+      cancelled = true;
       videoEl.removeEventListener('play', onPlay);
       videoEl.removeEventListener('pause', onPause);
       videoEl.removeEventListener('waiting', onWaiting);
@@ -476,6 +482,11 @@ export default function MicroDramaPlayer({
       if (prefetchHlsRef.current) {
         prefetchHlsRef.current.destroy();
         prefetchHlsRef.current = null;
+      }
+      videoEl.pause();
+      if (videoEl.hasAttribute('src')) {
+        videoEl.removeAttribute('src');
+        videoEl.load();
       }
     };
   }, [currentVideo.id, videoSrc, isUnlocked, effectiveDataSaver, nextEpisode, onPlayEpisode, onProgress, safePlay]);
@@ -918,17 +929,22 @@ export default function MicroDramaPlayer({
         )}
 
         {/* PAYWALL OVERLAY FOR LOCKED EPISODES */}
-        {!isUnlocked && (
+        {playback?.status === 'locked' && (
           <MicroDramaPaywall
             video={currentVideo}
             isAuthenticated={isAuthenticated}
             onRequireLogin={onRequireLogin}
             onUnlocked={() => {
-              setIsUnlocked(true);
-              showToast('Episode unlocked! Enjoy the twist.');
+              refreshAccess();
             }}
             onClose={onClose}
           />
+        )}
+        {playback?.status === 'unavailable' && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/80 p-6 text-center">
+            <p role="status">This episode couldn’t load. Please try again.</p>
+            <button type="button" onClick={refreshAccess} className="rounded-lg bg-white px-4 py-2 font-bold text-black">Retry playback</button>
+          </div>
         )}
       </div>
     </div>

@@ -32,8 +32,8 @@ function getPersistedViewerUser(): SupabaseUser | null {
 
 export function useViewerAuth() {
   // Synchronously initialize with remembered user so viewer is IMMEDIATELY recognized on visit!
-  const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(() => getPersistedViewerUser());
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => Boolean(getPersistedViewerUser()));
+  const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(() => isSupabaseConfigured ? null : getPersistedViewerUser());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !isSupabaseConfigured && Boolean(getPersistedViewerUser()));
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [showLogin, setShowLogin] = useState(false); // Admin login modal
   const [showViewerAuth, setShowViewerAuth] = useState(false); // Viewer phone/email modal
@@ -56,11 +56,12 @@ export function useViewerAuth() {
       }
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session ? (await supabase.auth.getUser(session.access_token)).data.user : null;
 
         if (!active) return;
 
-        if (user) {
+        if (user && !user.email?.toLowerCase().endsWith('@viewer.tube.co.ke')) {
           // Check single active device check
           const conflict = isAnotherDeviceActive(user);
           if (conflict.isAnotherActive) {
@@ -92,48 +93,12 @@ export function useViewerAuth() {
           return;
         }
 
-        // If no user in Supabase, but we have a remembered phone:
-        // Try silent background login with synthetic viewer credentials
-        if (persistedPhone) {
-          const rawDigits = persistedPhone.replace(/\D/g, '');
-          const syntheticEmail = `${rawDigits}@viewer.tube.co.ke`;
-          const fallbackPassword = `tube_${rawDigits.slice(-6) || 'welcome2026'}`;
-
-          const { data: signData } = await supabase.auth.signInWithPassword({
-            email: syntheticEmail,
-            password: fallbackPassword,
-          });
-
-          if (!active) return;
-
-          if (signData?.user) {
-            if (signData.session) {
-              await supabase.auth.setSession(signData.session);
-            }
-            try {
-              localStorage.setItem('tubetv_viewer_session', JSON.stringify(signData.user));
-              localStorage.setItem('tube_verified_phone', persistedPhone);
-            } catch {}
-            setCurrentUser(signData.user);
-            setIsAuthenticated(true);
-            return;
-          }
-
-          // If background sign in fails (e.g. offline/network), KEEP the persisted viewer user active!
-          const restored = getPersistedViewerUser();
-          if (restored && active) {
-            setCurrentUser(restored);
-            setIsAuthenticated(true);
-          }
-        }
+        setCurrentUser(null);
+        setIsAuthenticated(false);
       } catch {
-        // Network error: maintain remembered user
         if (active) {
-          const restored = getPersistedViewerUser();
-          if (restored) {
-            setCurrentUser(restored);
-            setIsAuthenticated(true);
-          }
+          setCurrentUser(null);
+          setIsAuthenticated(false);
         }
       }
     };
@@ -144,13 +109,9 @@ export function useViewerAuth() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
-      if (!session?.user) {
-        // Only drop session if localStorage was explicitly cleared (logout)
-        const stored = getPersistedViewerUser();
-        if (!stored) {
-          setCurrentUser(null);
-          setIsAuthenticated(false);
-        }
+      if (!session?.user || session.user.email?.toLowerCase().endsWith('@viewer.tube.co.ke')) {
+        setCurrentUser(null);
+        setIsAuthenticated(false);
         return;
       }
 
@@ -187,8 +148,9 @@ export function useViewerAuth() {
 
     const checkDevice = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session ? (await supabase.auth.getUser(session.access_token)).data.user : null;
+        if (user && !user.email?.toLowerCase().endsWith('@viewer.tube.co.ke')) {
           const conflict = isAnotherDeviceActive(user);
           if (conflict.isAnotherActive) {
             await handleLogout();

@@ -20,6 +20,14 @@ grant select, insert on public.paystack_orders to service_role;
 create policy "View own Paystack orders" on public.paystack_orders
   for select to authenticated using (auth.uid() = user_id);
 
+create table public.paystack_legacy_receipts (
+  reference text primary key,
+  received_at timestamptz not null default now()
+);
+alter table public.paystack_legacy_receipts enable row level security;
+revoke all on public.paystack_legacy_receipts from public, anon, authenticated;
+grant insert, select on public.paystack_legacy_receipts to service_role;
+
 create function public.fulfill_paystack_order(
   p_reference text, p_amount_minor integer, p_currency text
 )

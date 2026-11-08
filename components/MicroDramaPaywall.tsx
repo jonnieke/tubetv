@@ -74,7 +74,7 @@ export default function MicroDramaPaywall({
     setErrorMessage('');
 
     try {
-      const result = await unlockEpisodeWithCoins(video.id, video.seriesId, coinCost);
+      const result = await unlockEpisodeWithCoins(video.id, video.seriesId);
       if (result.success) {
         if (wallet) {
           setWallet({
@@ -104,7 +104,7 @@ export default function MicroDramaPaywall({
 
     try {
       const targetItem = purchaseTab === 'vip' ? selectedVipPass : selectedPackage;
-      const result = await initializePayment({ packageId: targetItem.id, paymentMethod });
+      const result = await initializePayment({ packageId: targetItem.id, paymentMethod, videoId: video.id });
 
       if (result.authorizationUrl) {
         window.location.assign(result.authorizationUrl);

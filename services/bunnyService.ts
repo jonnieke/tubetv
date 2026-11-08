@@ -2,6 +2,7 @@
 // The sensitive BUNNY_ACCESS_KEY is now stored in Supabase Secrets.
 import { normalizeContentRating } from '../lib/contentRating';
 import { supabase } from '../lib/supabase';
+import { catalogueEpisode, isFreeMicroDramaEpisode } from '../supabase/functions/_shared/episodeAccess';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const BASE_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/bunny-api` : '';
@@ -340,7 +341,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   // Also attempt to extract S/E from title if not in metaTags
   const seMatch = activeItem.title?.match(/^S(\d+)\s*E(\d+)\s*[-–:]?\s*/i);
   const parsedSeason = rawSeason ? parseInt(rawSeason) : (seMatch ? parseInt(seMatch[1]) : undefined);
-  const parsedEpisode = rawEpisode ? parseInt(rawEpisode) : (seMatch ? parseInt(seMatch[2]) : undefined);
+  const parsedEpisode = catalogueEpisode(activeItem.title || '', rawEpisode);
   const rawCleanTitle = seMatch ? activeItem.title.replace(seMatch[0], '').trim() : activeItem.title;
   const cleanTitle = rawCleanTitle ? rawCleanTitle.replace(/\.(mp4|mov|mkv|webm|avi|m4v)$/i, '').trim() : 'Untitled';
 
@@ -354,11 +355,9 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     url: getStreamUrl(activeItem.guid),
     duration: formatDuration(activeItem.length),
     views: activeItem.views ?? 0,
-    isPremium: getMeta(activeItem.metaTags, 'free') === 'true'
-      ? false
-      : (category === 'Micro Dramas' || getMeta(activeItem.metaTags, 'seriesFormat') === 'micro-drama')
-        ? (parsedEpisode ? parsedEpisode > 3 : false)
-        : true,
+    isPremium: category === 'Micro Dramas' || getMeta(activeItem.metaTags, 'seriesFormat') === 'micro-drama'
+      ? !isFreeMicroDramaEpisode(parsedEpisode)
+      : getMeta(activeItem.metaTags, 'free') !== 'true',
     author: getMeta(activeItem.metaTags, 'author') || getMeta(activeItem.metaTags, 'creator') || 'Tube Creator',
     category,
     tags: getMeta(activeItem.metaTags, 'tags')

@@ -9,7 +9,7 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { canWatchContent, normalizeContentRating, ratingDescription } from '../lib/contentRating';
 import { trackEvent } from '../lib/analytics';
 import { shouldSaveData } from '../lib/network';
-import { isFreeVideo, isMovie } from '../lib/series';
+import { isFreeVideo, isMicroDrama, isMovie } from '../lib/series';
 import CatalogueArtwork from './CatalogueArtwork';
 
 interface VideoCardProps {
@@ -33,14 +33,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
   playerOnly = false,
   onOpenDetails,
 }) => {
-  const { preferences, getProgress, onProgress, onEnded, isAuthenticated, onRequireLogin, onOpenMovieDetails } = usePlayback();
+  const { preferences, getProgress, onProgress, onEnded, isAuthenticated, onRequireLogin, onOpenMovieDetails, onOpenEpisode } = usePlayback();
   const contentRating = normalizeContentRating(video.contentRating);
   const isUnratedAllowedInTest = !CONTENT_RATING_ENFORCED && contentRating === 'UNRATED';
   const isRatingLocked = !isUnratedAllowedInTest && !canWatchContent(contentRating, preferences.maximumRating);
   const savedProgress = getProgress(video.id);
   const effectiveDataSaver = shouldSaveData(preferences.dataSaver);
   const preferredQuality = effectiveDataSaver ? '360p' : preferences.quality === 'auto' ? 'Auto' : preferences.quality;
-  const [isPlaying, setIsPlaying] = useState(autoPlay && !isRatingLocked);
+  const isDrama = isMicroDrama(video);
+  const [isPlaying, setIsPlaying] = useState(autoPlay && !isRatingLocked && !isDrama);
   const [isHovering, setIsHovering] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -267,7 +268,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   // 30-Second Hover Play preview for guests / homepage browsing
   useEffect(() => {
-    if (isHovering && !isPlaying && !isRatingLocked && !effectiveDataSaver && !hoverPreviewEnded) {
+    if (!isDrama && isHovering && !isPlaying && !isRatingLocked && !effectiveDataSaver && !hoverPreviewEnded) {
       hoverTimerRef.current = setTimeout(() => {
         if (isHoveringRef.current) {
           setIsHoverPlay(true);
@@ -298,7 +299,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
         hoverTimerRef.current = null;
       }
     };
-  }, [isHovering, isPlaying, isRatingLocked, effectiveDataSaver, hoverPreviewEnded]);
+  }, [isDrama, isHovering, isPlaying, isRatingLocked, effectiveDataSaver, hoverPreviewEnded]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -352,6 +353,11 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   const togglePlay = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+
+    if (isDrama) {
+      if (!isRatingLocked) onOpenEpisode?.(video);
+      return;
+    }
 
     if (!isAuthenticated) {
       promptLogin();

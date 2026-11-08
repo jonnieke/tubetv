@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { Video } from '../types';
+import { isVerifiedPaymentIdentity } from '../supabase/functions/_shared/episodeAccess';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 
@@ -52,71 +53,14 @@ export const VIP_PASSES: VipPass[] = [
   { id: 'pass-monthly', name: '30-Day VIP Pass', durationLabel: '30 Days', priceKes: 300, priceUsd: 3.49, description: 'Unlimited access to all series for 30 Days' },
 ];
 
-/**
- * Gets the current effective authenticated viewer (from Supabase or persisted session)
- */
-async function getEffectiveUser(): Promise<{ id: string; email?: string; phone?: string; user_metadata?: any } | null> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) return user;
-  } catch {}
-
-  try {
-    const stored = localStorage.getItem('tubetv_viewer_session');
-    if (stored) return JSON.parse(stored);
-  } catch {}
-
-  try {
-    const phone = localStorage.getItem('tube_verified_phone');
-    if (phone) {
-      const rawDigits = phone.replace(/\D/g, '');
-      return {
-        id: `viewer_${rawDigits}`,
-        phone,
-        user_metadata: { phone },
-      };
-    }
-  } catch {}
-
-  return null;
-}
-
-/**
- * Loads the current authenticated user's coin wallet
- */
-const isSyntheticId = (id?: string) =>
-  !id || id.startsWith('viewer_') || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
 export async function fetchWalletBalance(): Promise<CoinWallet | null> {
-  const user = await getEffectiveUser();
-  if (!user) return null;
-
-  if (isSyntheticId(user.id)) {
-    let unlocksCount = 0;
-    try {
-      const stored = localStorage.getItem(`tube_synthetic_unlocks_${user.id}`);
-      if (stored) unlocksCount = JSON.parse(stored).length;
-    } catch {}
-    let purchasedCoins = 0;
-    try {
-      const storedPurchased = localStorage.getItem(`tube_synthetic_purchased_${user.id}`);
-      if (storedPurchased) purchasedCoins = Number(storedPurchased) || 0;
-    } catch {}
-    const freeCoins = Math.max(0, 5 - unlocksCount);
-    const total = freeCoins + purchasedCoins;
-    return {
-      coinBalance: purchasedCoins,
-      bonusCoins: freeCoins,
-      totalCoins: total,
-    };
-  }
-
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session || !isVerifiedPaymentIdentity(session.user)) return null;
   const { data, error } = await supabase
     .from('user_wallets')
     .select('coin_balance, bonus_coins')
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .maybeSingle();
-
   if (error || !data) return null;
   return {
     coinBalance: data.coin_balance,
@@ -124,145 +68,28 @@ export async function fetchWalletBalance(): Promise<CoinWallet | null> {
     totalCoins: data.coin_balance + data.bonus_coins,
   };
 }
-/**
- * Claims or provisions 5 welcome bonus coins for a new viewer (1 coin = 1 episode)
- */
-export async function claimWelcomeBonus(userId: string): Promise<CoinWallet> {
-  if (isSyntheticId(userId)) {
-    return { coinBalance: 5, bonusCoins: 0, totalCoins: 5 };
-  }
-  try {
-    const { data } = await supabase
-      .from('user_wallets')
-      .upsert({ user_id: userId, coin_balance: 5, bonus_coins: 0 }, { onConflict: 'user_id' })
-      .select('coin_balance, bonus_coins')
-      .maybeSingle();
 
-    if (data) {
-      return {
-        coinBalance: data.coin_balance || 5,
-        bonusCoins: data.bonus_coins || 0,
-        totalCoins: (data.coin_balance || 5) + (data.bonus_coins || 0),
-      };
-    }
-  } catch {}
-
-  return { coinBalance: 5, bonusCoins: 0, totalCoins: 5 };
-}
-
-/**
- * Checks if a specific episode has been unlocked by the viewer
- */
-export async function checkEpisodeUnlocked(videoId: string): Promise<boolean> {
-  const user = await getEffectiveUser();
-  if (!user) return false;
-
-  if (isSyntheticId(user.id)) {
-    try {
-      const stored = localStorage.getItem(`tube_synthetic_unlocks_${user.id}`);
-      if (stored) return JSON.parse(stored).includes(videoId);
-    } catch {}
-    return false;
-  }
-
-  const { data } = await supabase
-    .from('episode_unlocks')
-    .select('video_id')
-    .eq('user_id', user.id)
-    .eq('video_id', videoId)
-    .maybeSingle();
-
-  return Boolean(data);
-}
-
-/**
- * Atomically unlocks an episode using coins via Supabase RPC
- */
-export async function unlockEpisodeWithCoins(
-  videoId: string,
-  seriesId?: string,
-  cost: number = 1
-): Promise<{ success: boolean; error?: string; remainingBalance?: number }> {
-  const user = await getEffectiveUser();
-  if (!user) {
-    return { success: false, error: 'User not authenticated' };
-  }
-
-  // Handle synthetic viewer locally (strictly enforces 5 free episodes + local preview credits)
-  if (isSyntheticId(user.id)) {
-    try {
-      const key = `tube_synthetic_unlocks_${user.id}`;
-      const stored = localStorage.getItem(key);
-      const list: string[] = stored ? JSON.parse(stored) : [];
-
-      let purchasedCoins = 0;
-      try {
-        const storedPurchased = localStorage.getItem(`tube_synthetic_purchased_${user.id}`);
-        if (storedPurchased) purchasedCoins = Number(storedPurchased) || 0;
-      } catch {}
-
-      const available = Math.max(0, 5 - list.length) + purchasedCoins;
-      if (available < cost && !list.includes(videoId)) {
-        return {
-          success: false,
-          error: 'Insufficient coins. Please recharge your wallet.',
-          remainingBalance: available,
-        };
-      }
-      if (!list.includes(videoId)) {
-        list.push(videoId);
-        localStorage.setItem(key, JSON.stringify(list));
-        if (list.length > 5 && purchasedCoins > 0) {
-          purchasedCoins = Math.max(0, purchasedCoins - cost);
-          localStorage.setItem(`tube_synthetic_purchased_${user.id}`, String(purchasedCoins));
-        }
-      }
-      const remaining = Math.max(0, 5 - list.length) + purchasedCoins;
-      return {
-        success: true,
-        remainingBalance: remaining,
-      };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
-  }
-
-  // Check effective balance first (strictly enforces 5 free coins limit)
-  const wallet = await fetchWalletBalance();
-  if (!wallet || wallet.totalCoins < cost) {
-    return {
-      success: false,
-      error: 'Insufficient coins. Please recharge your wallet.',
-      remainingBalance: wallet?.totalCoins || 0,
-    };
-  }
-
+export async function unlockEpisodeWithCoins(videoId: string, seriesId?: string) {
   const { data, error } = await supabase.rpc('unlock_episode_with_coins', {
     p_video_id: videoId,
     p_series_id: seriesId || null,
-    p_cost: cost,
+    p_cost: 1,
   });
-
-  if (error) {
-    return { success: false, error: error.message };
-  }
-
-  // Fetch updated effective balance
-  const updatedWallet = await fetchWalletBalance();
-
+  if (error) return { success: false, error: 'Unable to unlock this episode.' };
   return {
-    success: data?.success ?? false,
-    error: data?.error,
-    remainingBalance: updatedWallet?.totalCoins ?? 0,
+    success: data?.success === true,
+    error: typeof data?.error === 'string' ? data.error : undefined,
+    remainingBalance: typeof data?.remaining_balance === 'number' ? data.remaining_balance : undefined,
   };
 }
 
 export async function initializePayment(params: {
   packageId: string;
   paymentMethod: 'mpesa' | 'card';
+  videoId: string;
 }): Promise<{ authorizationUrl?: string; error?: string }> {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return { error: 'Sign in with a verified account to purchase.' };
+  if (!session || !isVerifiedPaymentIdentity(session.user)) return { error: 'Sign in with a verified account to purchase.' };
 
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/paystack-checkout`, {
@@ -299,36 +126,30 @@ export async function getPaymentStatus(
 /**
  * Requests a time-limited signed playback stream URL from the Edge Function
  */
-export async function getSecurePlaybackStream(video: Video): Promise<{ streamUrl: string; isLocked?: boolean }> {
-  if (!SUPABASE_URL || import.meta.env.DEV) {
-    return { streamUrl: video.url || '' };
-  }
+export type EpisodePlayback = { status: 'ready'; url: string } | { status: 'locked' | 'unavailable' };
 
-  const { data: { session } } = await supabase.auth.getSession();
-  const headers: Record<string, string> = {};
-  if (session?.access_token) {
-    headers['Authorization'] = `Bearer ${session.access_token}`;
-  }
-
-  const isDrama = video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas';
-  const query = new URLSearchParams({
-    videoId: video.id,
-    episode: String(video.episode || 1),
-    isMicroDrama: String(isDrama),
-  });
-
-  try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/playback-token?${query}`, { headers });
-    const data = await res.json();
-
-    if (res.status === 403 || data.status === 'LOCKED') {
-      return { streamUrl: '', isLocked: true };
+export async function getSecurePlaybackStream(video: Video, signal?: AbortSignal): Promise<EpisodePlayback> {
+  if (!SUPABASE_URL) {
+    if (import.meta.env.DEV && (video.episode === 1 || video.episode === 2) && video.url) {
+      return { status: 'ready', url: video.url };
     }
-
-    return { streamUrl: data.streamUrl || video.url || '' };
-  } catch {
-    return { streamUrl: video.url || '' };
+    return { status: 'unavailable' };
   }
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers: Record<string, string> = {};
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+    const query = new URLSearchParams({ videoId: video.id });
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/playback-token?${query}`, { headers, signal });
+    const data = await res.json();
+    if (res.status === 403 && data.status === 'LOCKED') return { status: 'locked' };
+    if (res.ok && typeof data.streamUrl === 'string' && data.streamUrl.startsWith('https://')) {
+      return { status: 'ready', url: data.streamUrl };
+    }
+  } catch {
+    // A failed authorization request must never load the public media URL.
+  }
+  return { status: 'unavailable' };
 }
 
 export interface CreatorMetrics {

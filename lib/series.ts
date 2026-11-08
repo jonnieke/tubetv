@@ -1,4 +1,5 @@
 import type { Video } from '../types';
+import { isFreeMicroDramaEpisode } from '../supabase/functions/_shared/episodeAccess';
 
 export const isMicroDrama = (video: Video) => video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas';
 export const seriesKey = (video: Video) => video.seriesId || (video.seriesTitle?.trim() ? `${isMicroDrama(video) ? 'micro' : 'series'}:${video.seriesTitle.trim().toLowerCase()}` : undefined);
@@ -20,8 +21,7 @@ export function nextEpisode(videos: Video[], currentId: string): Video | undefin
  */
 export function isFreeVideo(video: Video): boolean {
   if (isMicroDrama(video)) {
-    // Only Episode 1 is free preview; Episode 2+ requires coins or VIP pass
-    return (video.episode || 1) <= 1 && video.isPremium === false;
+    return isFreeMicroDramaEpisode(video.episode);
   }
   return video.isPremium === false;
 }
