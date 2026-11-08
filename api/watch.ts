@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../lib/vercelTypes';
 
 // Regular expression matching social platform scrapers and search bots
 const SOCIAL_BOTS = /whatsapp|facebookexternalhit|twitterbot|telegrambot|slackbot|discordbot|applebot|bingbot|googlebot|linkedinbot|embedly|quora link preview|showyoubot|outbrain|pinterest|snapchat|skypeuripreview/i;

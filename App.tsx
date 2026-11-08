@@ -9,7 +9,7 @@ import LegalPage from './components/LegalPage';
 import HomeView from './components/views/HomeView';
 import OriginalsView from './components/views/OriginalsView';
 import { ViewState, Video } from './types';
-import { Loader2, Home, PlayCircle, Clock, BarChart2, CheckCircle2 } from 'lucide-react';
+import { Loader2, Home, PlayCircle, Clock, BarChart2, CheckCircle2, Smartphone } from 'lucide-react';
 import { PlaybackProvider } from './contexts/PlaybackContext';
 import {
   DEFAULT_PLAYBACK_PREFERENCES,

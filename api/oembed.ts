@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../lib/vercelTypes';
 
 const SITE_URL = process.env.VITE_SITE_URL || 'https://www.tube.co.ke';
 
