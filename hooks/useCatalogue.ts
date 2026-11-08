@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Video, ShortVideo } from '../types';
 import { fetchBunnyVideos, bunnyVideoToVideo } from '../services/bunnyService';
+import { thumbnailFor } from '../lib/thumbnails';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS } from '../constants';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from '../lib/contentRating';
@@ -80,7 +81,7 @@ export function useCatalogue() {
       .filter((v) => v.category === 'Shorts')
       .map((v) => ({
         id: v.id,
-        thumbnail: v.thumbnail,
+        thumbnail: thumbnailFor(v, 'portrait'),
         author: v.author,
         description: v.description || v.title,
         likes: 0,

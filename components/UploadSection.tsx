@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadCloud, FileVideo, CheckCircle2, Wand2, Loader2, ImageIcon, ImagePlus, Scissors, Play, Pause, RefreshCw, Repeat, Film, AlertTriangle, X, ListVideo, Trash2, ChevronRight, Clock, AlertCircle, Timer, Tag, Mic, Radio } from 'lucide-react';
+import { UploadCloud, FileVideo, CheckCircle2, Wand2, Loader2, ImageIcon, Scissors, Play, Pause, RefreshCw, Repeat, Film, AlertTriangle, X, ListVideo, Trash2, ChevronRight, Clock, AlertCircle, Timer, Tag, Mic, Radio } from 'lucide-react';
 import { generateVideoMetadata, generateThumbnail } from '../services/geminiService';
 import { createVideoEntry, uploadVideoFile, getStreamUrl, getThumbnailUrl, updateVideoMetadata, getVideoStatus, uploadCustomThumbnail } from '../services/bunnyService';
 import { Video } from '../types';
 import type { ContentRating } from '../lib/contentRating';
+import type { ThumbnailOrientation } from '../lib/thumbnails';
+import { thumbnailAccept, uploadCatalogueThumbnail, validateThumbnailFile } from '../services/thumbnailStorage';
 
 interface UploadMetadata {
   title: string;
@@ -30,6 +32,8 @@ interface UploadItem {
   metadata: UploadMetadata;
   thumbnail: string | null;
   thumbnailFile?: File;
+  landscapeThumbnailFile?: File;
+  portraitThumbnailFile?: File;
   thumbnailPrompt: string;
   status: 'idle' | 'pending' | 'uploading' | 'encoding' | 'completed' | 'error';
   progress: number;
@@ -89,7 +93,6 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
 
   const sliderRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
   // Helper to get the currently active item
   const activeItem = queue.find(item => item.id === activeId);
@@ -287,12 +290,16 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
     setIsGeneratingThumbnail(false);
   };
 
-  const handleCustomThumbnailUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0] && activeItem) {
-          const file = e.target.files[0];
-          const url = URL.createObjectURL(file);
-          updateQueueItem(activeItem.id, { thumbnail: url, thumbnailFile: file });
-      }
+  const handleCustomThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>, orientation: ThumbnailOrientation) => {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (!file || !activeItem) return;
+    try {
+      await validateThumbnailFile(file, orientation);
+      updateQueueItem(activeItem.id, orientation === 'landscape' ? { landscapeThumbnailFile: file } : { portraitThumbnailFile: file });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Could not read the thumbnail.');
+    }
   };
 
   const startUploadQueue = async () => {
@@ -353,7 +360,11 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
         }
         
         const videoId = videoEntry.guid;
-        updateQueueItem(item.id, { videoId, stageInfo: 'Uploading File...' });
+        updateQueueItem(item.id, { videoId, stageInfo: 'Saving artwork and metadata...' });
+        const [thumbnailLandscapeUrl, thumbnailPortraitUrl] = await Promise.all([
+          item.landscapeThumbnailFile && uploadCatalogueThumbnail(videoId, 'landscape', item.landscapeThumbnailFile),
+          item.portraitThumbnailFile && uploadCatalogueThumbnail(videoId, 'portrait', item.portraitThumbnailFile),
+        ]);
 
         // Store publication metadata before transfer. The public endpoint only
         // returns finished encodes, so a partially uploaded title stays hidden.
@@ -363,6 +374,8 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
           { property: 'contentRating', value: item.metadata.contentRating },
           { property: 'author', value: creatorName },
           { property: 'published', value: 'processing' },
+          ...(thumbnailLandscapeUrl ? [{ property: 'thumbnailLandscapeUrl', value: thumbnailLandscapeUrl }] : []),
+          ...(thumbnailPortraitUrl ? [{ property: 'thumbnailPortraitUrl', value: thumbnailPortraitUrl }] : []),
           ...(item.metadata.featuredInBanner ? [{ property: 'featuredInBanner', value: 'true' }, { property: 'banner', value: 'true' }] : []),
           ...(episodic ? [
             { property: 'seriesTitle', value: metadata.seriesTitle.trim() },
@@ -402,7 +415,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
         updateQueueItem(item.id, {
           status: 'encoding', progress: 100, timeRemaining: 0,
           stageInfo: 'Encoding on Bunny. It will appear when ready.',
-          thumbnail: getThumbnailUrl(videoId),
+          thumbnail: thumbnailLandscapeUrl || thumbnailPortraitUrl || getThumbnailUrl(videoId),
         });
         void (async () => {
           for (let attempt = 0; attempt < 180; attempt += 1) {
@@ -419,6 +432,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
               onUploadComplete({
                 id: videoId, title: item.metadata.title || item.file.name,
                 description: item.metadata.description, thumbnail: getThumbnailUrl(videoId),
+                thumbnailLandscapeUrl, thumbnailPortraitUrl,
                 url: getStreamUrl(videoId), duration: formatTime(item.duration), views: 0,
                 isPremium: false, author: creatorName,
                 category: item.metadata.category || 'New Releases',
@@ -436,7 +450,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
         console.error("Upload Failed", error);
         updateQueueItem(item.id, { 
             status: 'error', 
-            stageInfo: 'Upload Failed. Check console.', 
+            stageInfo: error instanceof Error ? error.message : 'Upload failed.',
             progress: 0 
         });
       }
@@ -551,7 +565,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                                     <img src={activeItem.thumbnail} alt="Generated Thumbnail" className="w-full h-full object-cover" />
                                     <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded backdrop-blur-md">Thumbnail Preview</div>
                                     <button 
-                                        onClick={() => updateQueueItem(activeItem.id, { thumbnail: null })}
+                                        onClick={() => updateQueueItem(activeItem.id, { thumbnail: null, thumbnailFile: undefined })}
                                         className="absolute bottom-4 right-4 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-md hover:bg-black/80 flex items-center gap-2 border border-zinc-700"
                                     >
                                         <RefreshCw size={12} /> Edit / Regenerate
@@ -757,7 +771,28 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                             
                             {/* Thumbnail */}
                              <div className="bg-zinc-800/50 rounded-lg p-3 border border-zinc-700">
-                                 <label className="block text-xs text-zinc-400 mb-2 ml-1">Thumbnail</label>
+                                 <p className="mb-2 text-xs text-zinc-400">Thumbnails</p>
+                                 <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                                   {(['landscape', 'portrait'] as const).map(orientation => {
+                                     const key = orientation === 'landscape' ? 'landscapeThumbnailFile' : 'portraitThumbnailFile';
+                                     const file = activeItem[key];
+                                     const editable = activeItem.status === 'idle' || activeItem.status === 'pending' || activeItem.status === 'error';
+                                     return (
+                                       <div key={orientation} className="min-w-0">
+                                         <label className="block text-sm capitalize">
+                                           {orientation} thumbnail ({orientation === 'landscape' ? '16:9' : '9:16'} recommended)
+                                           <input type="file" accept={thumbnailAccept} disabled={!editable}
+                                             onChange={event => void handleCustomThumbnailUpload(event, orientation)}
+                                             className="mt-1 block w-full text-xs text-zinc-300" />
+                                         </label>
+                                         {file && <div className="mt-1 flex gap-2 text-xs">
+                                           <span className="truncate">{file.name}</span>
+                                           <button type="button" disabled={!editable} onClick={() => updateQueueItem(activeItem.id, { [key]: undefined })}>Remove</button>
+                                         </div>}
+                                       </div>
+                                     );
+                                   })}
+                                 </div>
                                  <div className="flex gap-2 flex-wrap">
                                      <input 
                                         type="text" 
@@ -776,22 +811,6 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                                          <span className="hidden sm:inline">AI Generate</span>
                                      </button>
 
-                                     {/* Custom Upload */}
-                                     <button 
-                                        onClick={() => thumbnailInputRef.current?.click()}
-                                        className="bg-zinc-700 hover:bg-zinc-600 text-white p-2 rounded flex items-center gap-2 text-sm"
-                                        title="Upload Custom Image"
-                                     >
-                                         <ImagePlus size={16} />
-                                         <span className="hidden sm:inline">Upload</span>
-                                     </button>
-                                     <input 
-                                        type="file" 
-                                        ref={thumbnailInputRef}
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={handleCustomThumbnailUpload}
-                                     />
                                  </div>
                              </div>
                         </div>

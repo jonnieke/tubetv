@@ -351,6 +351,8 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     title: cleanTitle || 'Untitled',
     description: getMeta(activeItem.metaTags, 'description'),
     thumbnail: getMeta(activeItem.metaTags, 'thumbnailUrl') || getThumbnailUrl(activeItem.guid, activeItem.thumbnailFileName),
+    thumbnailLandscapeUrl: getMeta(activeItem.metaTags, 'thumbnailLandscapeUrl') || undefined,
+    thumbnailPortraitUrl: getMeta(activeItem.metaTags, 'thumbnailPortraitUrl') || undefined,
     url: getStreamUrl(activeItem.guid),
     duration: formatDuration(activeItem.length),
     views: activeItem.views ?? 0,

@@ -43,6 +43,8 @@ export interface Video {
   id: string;
   title: string;
   thumbnail: string;
+  thumbnailLandscapeUrl?: string;
+  thumbnailPortraitUrl?: string;
   views: number;
   duration: string;
   isPremium: boolean;

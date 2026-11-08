@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Check, Play, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Video } from '../types';
 import CatalogueArtwork from './CatalogueArtwork';
+import { thumbnailFor } from '../lib/thumbnails';
 
 interface Props {
   video: Video;
@@ -69,14 +70,14 @@ export default function LandingHero({
               style={{ willChange: 'opacity' }}
             >
               <CatalogueArtwork
-                src={slide.thumbnail}
+                src={thumbnailFor(slide, 'landscape')}
                 priority={i === 0 || i === activeIndex}
                 className="landing-hero-art"
               />
             </div>
           ))
         ) : (
-          <CatalogueArtwork src={currentVideo.thumbnail} priority className="landing-hero-art" />
+          <CatalogueArtwork src={thumbnailFor(currentVideo, 'landscape')} priority className="landing-hero-art" />
         )}
       </div>
 

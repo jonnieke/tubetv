@@ -3,7 +3,9 @@ import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
   ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Sparkles
 } from 'lucide-react';
-import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
+import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
+import { thumbnailAccept, uploadCatalogueThumbnail } from '../services/thumbnailStorage';
+import type { ThumbnailOrientation } from '../lib/thumbnails';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { NavItem, Video } from '../types';
@@ -60,6 +62,8 @@ const EMPTY_FORM = {
   author: '',
   description: '',
   thumbnailUrl: '',
+  thumbnailLandscapeUrl: '',
+  thumbnailPortraitUrl: '',
   trailerUrl: '',
   productionYear: '',
   contentRating: 'UNRATED' as ContentRating,
@@ -117,27 +121,22 @@ const EditModal = ({
 }) => {
   const [thumbError, setThumbError] = useState(false);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
-  const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName);
+  const thumbSrc = form.thumbnailLandscapeUrl || form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName);
 
-  const handleThumbUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleThumbUpload = async (e: React.ChangeEvent<HTMLInputElement>, orientation: ThumbnailOrientation) => {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
     if (!file) return;
 
     setIsUploadingThumb(true);
     try {
-      const newFileName = await uploadCustomThumbnail(item.guid, file);
-      if (newFileName !== null) {
-        // Build cache-busted URL using the exact filename Bunny assigned
-        const host = import.meta.env.VITE_BUNNY_PULL_ZONE?.replace(/\/$/, '') || '';
-        const cacheBustedUrl = `https://${host}/${item.guid}/${newFileName}?t=${Date.now()}`;
-        setForm(f => ({ ...f, thumbnailUrl: cacheBustedUrl }));
-        setThumbError(false);
-      } else {
-        alert('Failed to upload thumbnail. Please try again.');
-      }
+      const url = await uploadCatalogueThumbnail(item.guid, orientation, file);
+      const key = orientation === 'landscape' ? 'thumbnailLandscapeUrl' : 'thumbnailPortraitUrl';
+      setForm(f => ({ ...f, [key]: url }));
+      setThumbError(false);
     } catch (err) {
       console.error(err);
-      alert('Upload error.');
+      alert(err instanceof Error ? err.message : 'Could not upload the thumbnail.');
     } finally {
       setIsUploadingThumb(false);
     }
@@ -191,7 +190,7 @@ const EditModal = ({
               <p className="text-zinc-500 text-xs">{item.guid.slice(0, 16)}...</p>
             </div>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors">
+          <button onClick={onClose} disabled={isUploadingThumb} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -228,29 +227,27 @@ const EditModal = ({
 
           {/* Thumbnail & Trailer URLs */}
           <div className="grid grid-cols-1 gap-4">
-            <div className="flex items-end gap-3">
-              <div className="flex-1">
-                {field('Custom Thumbnail URL', 'thumbnailUrl', { placeholder: 'https://... (leave blank to use CDN default)' })}
-              </div>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleThumbUpload}
-                  disabled={isUploadingThumb}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                  title="Upload Image to Bunny"
-                />
-                <button
-                  type="button"
-                  disabled={isUploadingThumb}
-                  className="h-10 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl border border-zinc-700 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center gap-2"
-                >
-                  <UploadCloud size={16} />
-                  Upload
-                </button>
-              </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {(['landscape', 'portrait'] as const).map(orientation => {
+                const key = orientation === 'landscape' ? 'thumbnailLandscapeUrl' : 'thumbnailPortraitUrl';
+                return <div key={orientation}>
+                  <label className="block text-sm capitalize">
+                    {orientation} thumbnail ({orientation === 'landscape' ? '16:9' : '9:16'} recommended)
+                    <input type="file" accept={thumbnailAccept} disabled={isUploadingThumb || saving}
+                      onChange={event => void handleThumbUpload(event, orientation)}
+                      className="mt-1 block w-full text-xs text-zinc-300" />
+                  </label>
+                  {form[key] && <div className="mt-2 flex items-center gap-3">
+                    <img src={form[key]} alt={`${orientation} thumbnail preview`} className={orientation === 'landscape' ? 'h-12 w-auto rounded' : 'h-20 w-auto rounded'} />
+                    <button type="button" disabled={isUploadingThumb || saving} onClick={() => {
+                      setForm(current => ({ ...current, [key]: '' }));
+                      setThumbError(false);
+                    }} className="text-xs text-zinc-300 underline">Remove</button>
+                  </div>}
+                </div>;
+              })}
             </div>
+            {field('Fallback thumbnail URL', 'thumbnailUrl', { placeholder: 'https://... (leave blank to use Bunny)' })}
             {field('Trailer URL', 'trailerUrl', { placeholder: 'https://... (optional YouTube/CDN trailer link)' })}
           </div>
 
@@ -405,12 +402,12 @@ const EditModal = ({
         <div className="flex flex-wrap items-center justify-between gap-3 p-6 border-t border-zinc-800 sticky bottom-0 bg-zinc-950">
           <p className="text-xs text-zinc-500">Draft saved automatically on this device</p>
           <div className="flex items-center gap-3">
-            <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors">
+            <button onClick={onClose} disabled={isUploadingThumb} className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors">
               Cancel
             </button>
             <button
               onClick={onSave}
-              disabled={saving}
+              disabled={saving || isUploadingThumb}
               className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-zinc-700 text-white text-sm font-bold flex items-center gap-2 transition-colors"
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -501,6 +498,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       author: saved.author ?? mapped.author,
       description: saved.description ?? getMeta(item.metaTags, 'description'),
       thumbnailUrl: saved.thumbnailUrl ?? getMeta(item.metaTags, 'thumbnailUrl'),
+      thumbnailLandscapeUrl: saved.thumbnailLandscapeUrl ?? mapped.thumbnailLandscapeUrl ?? '',
+      thumbnailPortraitUrl: saved.thumbnailPortraitUrl ?? mapped.thumbnailPortraitUrl ?? '',
       trailerUrl: saved.trailerUrl ?? getMeta(item.metaTags, 'trailerUrl'),
       productionYear: saved.productionYear ?? getMeta(item.metaTags, 'productionYear'),
       contentRating: normalizeContentRating(saved.contentRating ?? mapped.contentRating),
@@ -551,7 +550,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       // 1. Prepare the updated metadata
       // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds', 'featuredinbanner', 'banner'];
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'thumbnaillandscapeurl', 'thumbnailportraiturl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'ispremium', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds', 'featuredinbanner', 'banner'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
@@ -665,7 +664,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ...item,
       title: o.title || item.title,
       metaTags: [
-        ...(item.metaTags || []).filter(t => !['category','author','genre','description','thumbnailUrl','trailerUrl','productionYear','isPremium','tags'].includes(t.property.toLowerCase())),
+        ...(item.metaTags || []).filter(tag => !Object.keys(o).some(key => key.toLowerCase() === tag.property.toLowerCase())),
         ...(Object.entries(o).map(([k, v]) => ({ property: k, value: String(v) }))),
       ],
     } as BunnyVideoItem;
@@ -898,7 +897,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="flex items-center gap-3">
                         <div className="relative w-20 h-12 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
                           <img 
-                            src={o?.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName)} 
+                            src={getMeta(item.metaTags, 'thumbnailLandscapeUrl') || getMeta(item.metaTags, 'thumbnailUrl') || getThumbnailUrl(item.guid, item.thumbnailFileName)}
                             loading="lazy"
                             decoding="async"
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform bg-zinc-800" 

@@ -5,6 +5,7 @@ import type { Video } from '../types';
 import CatalogueArtwork from './CatalogueArtwork';
 import SeriesCarousel from './SeriesCarousel';
 import VideoCard from './VideoCard';
+import VideoCarousel from './VideoCarousel';
 
 const episode = (format: 'standard' | 'micro-drama'): Video => ({ id: format, title: 'Episode one', seriesTitle: 'A real series', category: format === 'micro-drama' ? 'Micro Dramas' : 'Series', seriesFormat: format, thumbnail: '/episode.jpg', author: 'Producer', views: 0, duration: '10:00', isPremium: false, episode: 1 });
 const renderSeries = (video: Video) => renderToStaticMarkup(<SeriesCarousel videos={[video]} watchLaterIds={[]} onToggleWatchLater={() => {}} onPlay={() => {}} />);
@@ -19,10 +20,26 @@ describe('catalogue artwork presentation', () => {
     expect(html).not.toContain('cinema-poster-title');
   });
   it('keeps actual micro drama episodes in a vertical frame', () => {
-    const html = renderSeries(episode('micro-drama'));
+    const html = renderSeries({ ...episode('micro-drama'), thumbnailPortraitUrl: '/portrait.webp' });
     expect(html).toContain('cinema-series-vertical');
     expect(html).toContain('aspect-[9/16]');
+    expect(html).toContain('src="/portrait.webp"');
     expect(html).toContain('Watch A real series from episode 1');
+  });
+  it('uses landscape artwork for micro dramas in a general video row', () => {
+    const video = {
+      ...episode('micro-drama'),
+      thumbnailLandscapeUrl: '/landscape.webp',
+      thumbnailPortraitUrl: '/portrait.webp',
+    };
+    const html = renderToStaticMarkup(
+      <VideoCarousel title="Recently added" videos={[video, episode('standard')]} watchLaterIds={[]}
+        onToggleWatchLater={() => {}} isAuthenticated={false} />,
+    );
+    expect(html).toContain('src="/landscape.webp"');
+    expect(html).toContain('src="/episode.jpg"');
+    expect(html).not.toContain('/portrait.webp');
+    expect(html).not.toContain('aspect-[9/16]');
   });
   it('uses a stable branded fallback when no thumbnail exists', () => {
     const html = renderToStaticMarkup(<CatalogueArtwork src="" className="h-full w-full" />);

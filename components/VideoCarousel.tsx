@@ -57,6 +57,7 @@ const VideoCarousel: React.FC<VideoCarouselProps> = ({
             <div key={video.id} className="landing-video-slot min-w-[280px] md:min-w-[320px] w-[280px] md:w-[320px]">
               <VideoCard 
                 video={video}
+                thumbnailOrientation="landscape"
                 isWatchLater={watchLaterIds.includes(video.id)}
                 onToggleWatchLater={onToggleWatchLater}
                 onOpenDetails={onOpenDetails}

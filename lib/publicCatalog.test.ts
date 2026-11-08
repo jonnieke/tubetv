@@ -37,4 +37,11 @@ describe('public catalogue projection', () => {
       {property:'introEndSeconds',value:'45'}, {property:'outroStartSeconds',value:'700'},
     ]));
   });
+  it('exposes both thumbnail variants to viewers', () => {
+    const metaTags = [
+      { property: 'thumbnailLandscapeUrl', value: 'https://example.com/landscape.webp' },
+      { property: 'thumbnailPortraitUrl', value: 'https://example.com/portrait.webp' },
+    ];
+    expect(publicItem(item({ metaTags }))?.metaTags).toEqual(metaTags);
+  });
 });
