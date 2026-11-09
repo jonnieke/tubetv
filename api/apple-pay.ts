@@ -11,3 +11,4 @@ export default function handler(_req: IncomingMessage, res: ServerResponse) {
   });
   res.end(ASSOCIATION_DATA);
 }
+
