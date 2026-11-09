@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
   ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star
@@ -135,6 +135,17 @@ const EditModal = ({
   const [isUploadingPoster, setIsUploadingPoster] = useState(false);
   const thumbSrc = form.thumbnailUrl || getThumbnailUrl(item.guid, item.thumbnailFileName);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !saving) {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, saving]);
+
   const handleThumbUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -210,7 +221,7 @@ const EditModal = ({
       {/* Backdrop - Removed onClick to prevent accidental closure */}
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
       
-      <div className="relative w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div role="dialog" aria-modal="true" aria-label="Edit Content" className="relative w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-zinc-800 sticky top-0 bg-zinc-950 z-10">
           <div className="flex items-center gap-3">
@@ -500,10 +511,10 @@ const EditModal = ({
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUploadComplete,
-  creatorName,
-  currentNavItems,
-  onAddCategory,
-  onRemoveCategory,
+  creatorName = 'Admin',
+  currentNavItems = [],
+  onAddCategory = () => {},
+  onRemoveCategory = () => {},
 }) => {
   const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics'>('content');
   const [items, setItems] = useState<BunnyVideoItem[]>([]);
@@ -517,10 +528,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [editingItem, setEditingItem] = useState<BunnyVideoItem | null>(null);
   const [editForm, setEditForm] = useState<EditForm>(EMPTY_FORM);
+  const hasEditedRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [visibilitySavingIds, setVisibilitySavingIds] = useState<Set<string>>(new Set());
   const [tierSavingIds, setTierSavingIds] = useState<Set<string>>(new Set());
+
+  const handleEditFormChange: React.Dispatch<React.SetStateAction<EditForm>> = useCallback((updater) => {
+    hasEditedRef.current = true;
+    setEditForm(updater);
+  }, []);
 
   // Load overrides from localStorage
   const getOverrides = useCallback((): Record<string, Partial<EditForm>> => {
@@ -551,7 +568,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => { load(); }, []);
 
   useEffect(() => {
-    if (!editingItem) return;
+    if (!editingItem || !hasEditedRef.current) return;
     persistEditDraft(editingItem.guid, editForm);
   }, [editForm, editingItem, persistEditDraft]);
 
@@ -559,6 +576,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const mapped = bunnyVideoToVideo(item);
     const overrides = getOverrides();
     const saved = overrides[item.guid] || {};
+    hasEditedRef.current = false;
     setEditForm({
       title: saved.title ?? item.title,
       seriesTitle: saved.seriesTitle ?? getMeta(item.metaTags, 'seriesTitle'),
@@ -744,9 +762,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     )));
 
     try {
-      await updateVideoMetadata(item.guid, { metaTags: newMetaTags });
+      const updated = await updateVideoMetadata(item.guid, { metaTags: newMetaTags });
+      if (!updated) {
+        setItems((current) => current.map((video) => (
+          video.guid === item.guid ? { ...video, metaTags: item.metaTags } : video
+        )));
+        alert('Failed to update access tier. Please try again.');
+        return;
+      }
+      window.dispatchEvent(new Event('tube-catalogue-change'));
     } catch (err) {
       console.error('Failed to toggle access tier:', err);
+      setItems((current) => current.map((video) => (
+        video.guid === item.guid ? { ...video, metaTags: item.metaTags } : video
+      )));
+      alert('Failed to update access tier. Please try again.');
     } finally {
       setTierSavingIds((current) => {
         const next = new Set(current);
@@ -853,7 +883,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {activeTab === 'upload' && (
         <div className="animate-in fade-in duration-500">
-          <UploadSection onUploadComplete={onUploadComplete!} creatorName={creatorName!} />
+          <UploadSection onUploadComplete={onUploadComplete} creatorName={creatorName} />
         </div>
       )}
 
@@ -1121,13 +1151,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <EditModal
           item={editingItem}
           form={editForm}
-          setForm={setEditForm}
+          setForm={handleEditFormChange}
           saving={saving}
           existingSeries={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'seriesTitle')).filter(Boolean))) as string[]).sort()}
           seriesDetails={seriesDetailsFor(items)}
           existingAuthors={(Array.from(new Set(enriched.map(v => getMeta(v.metaTags, 'author') || getMeta(v.metaTags, 'creator') || 'Tube Creator').filter(Boolean))) as string[]).sort()}
           onSave={saveEdit}
-          onClose={() => setEditingItem(null)}
+          onClose={() => {
+            clearEditDraft(editingItem.guid);
+            hasEditedRef.current = false;
+            setEditingItem(null);
+          }}
         />
       )}
         </div>

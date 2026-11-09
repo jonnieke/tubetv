@@ -145,7 +145,9 @@ export const setVideoMuted = async (
 };
 
 /**
- * Uploads a video file using XMLHttpRequest so we can track progress.
+ * Uploads a video file directly to Bunny Stream via resumable TUS 1.0.0 chunks (16 MB)
+ * using short-lived server-issued credentials, falling back to proxied PUT for smaller files
+ * if the TUS handshake cannot be negotiated.
  */
 export const uploadVideoFile = async (
   file: File,
@@ -153,6 +155,85 @@ export const uploadVideoFile = async (
   onProgress: (percent: number) => void
 ): Promise<void> => {
   const headers = await getHeaders();
+
+  // Attempt Direct Bunny TUS Upload first so large studio masters (>150 MB) never hit Edge body limits
+  try {
+    const sigRes = await fetch(`${BASE_URL}/${videoId}/tus-signature`, {
+      method: 'POST',
+      headers,
+    });
+    if (sigRes.ok) {
+      const creds = (await sigRes.json()) as {
+        endpoint: string;
+        authorizationSignature: string;
+        authorizationExpire: number;
+        libraryId: string;
+        videoId: string;
+      };
+
+      const metadataPairs = [
+        `filetype ${btoa(file.type || 'video/mp4')}`,
+        `title ${btoa(unescape(encodeURIComponent(file.name)))}`,
+      ].join(',');
+
+      const tusAuthHeaders: Record<string, string> = {
+        AuthorizationSignature: creds.authorizationSignature,
+        AuthorizationExpire: String(creds.authorizationExpire),
+        VideoId: creds.videoId,
+        LibraryId: String(creds.libraryId),
+        'Tus-Resumable': '1.0.0',
+      };
+
+      const createRes = await fetch(creds.endpoint, {
+        method: 'POST',
+        headers: {
+          ...tusAuthHeaders,
+          'Upload-Length': String(file.size),
+          'Upload-Metadata': metadataPairs,
+        },
+      });
+
+      const locationHeader = createRes.headers.get('Location');
+      if ((createRes.status === 201 || createRes.ok) && locationHeader) {
+        const uploadUrl = new URL(locationHeader, creds.endpoint).toString();
+        const chunkSize = 16 * 1024 * 1024; // 16 MB chunks
+        let offset = 0;
+
+        while (offset < file.size) {
+          const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
+          offset = await new Promise<number>((resolveChunk, rejectChunk) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PATCH', uploadUrl, true);
+            for (const [k, v] of Object.entries(tusAuthHeaders)) {
+              xhr.setRequestHeader(k, v);
+            }
+            xhr.setRequestHeader('Content-Type', 'application/offset+octet-stream');
+            xhr.setRequestHeader('Upload-Offset', String(offset));
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) {
+                onProgress(Math.min(100, ((offset + e.loaded) / file.size) * 100));
+              }
+            };
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                const nextOffset = Number(xhr.getResponseHeader('Upload-Offset'));
+                resolveChunk(Number.isFinite(nextOffset) && nextOffset > offset ? nextOffset : offset + chunk.size);
+              } else {
+                rejectChunk(new Error(`TUS chunk upload failed: ${xhr.status}`));
+              }
+            };
+            xhr.onerror = () => rejectChunk(new Error('Network error during TUS upload'));
+            xhr.send(chunk);
+          });
+          onProgress(Math.min(100, (offset / file.size) * 100));
+        }
+        return;
+      }
+    }
+  } catch (tusError) {
+    console.warn('Direct TUS upload unavailable, falling back to proxy PUT:', tusError);
+  }
+
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', `${BASE_URL}/${videoId}`, true);
@@ -173,15 +254,17 @@ export const uploadVideoFile = async (
 
 /** Constructs the HLS playlist URL for a video GUID. */
 export const getStreamUrl = (videoId: string): string => {
-  const host = PULL_ZONE.replace(/\/$/, '');
+  const host = PULL_ZONE.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  if (!host) return '';
   return `https://${host}/${videoId}/playlist.m3u8`;
 };
 
 /** Constructs the CDN thumbnail URL for a video GUID. */
 export const getThumbnailUrl = (videoId: string, filename?: string): string => {
-  const host = PULL_ZONE ? PULL_ZONE.replace(/\/$/, '') : 'vz-0fe79b1a-8ad.b-cdn.net';
+  const host = PULL_ZONE.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  if (!host) return '';
   const name = filename || 'thumbnail.jpg';
-  // Add a cache-busting random string to the end so when we upload a new one, it updates instantly
+  // Add a cache-busting hourly version key so newly uploaded artwork refreshes promptly
   return `https://${host}/${videoId}/${name}?v=${Math.floor(Date.now() / 3600000)}`;
 };
 
@@ -207,9 +290,9 @@ export const uploadCustomThumbnail = async (videoId: string, file: File): Promis
       await new Promise((resolve) => setTimeout(resolve, 600));
     }
 
-    if (!response?.ok) {
-      const errText = await response.text();
-      console.error('Thumbnail upload failed:', response.status, errText);
+    if (!response || !response.ok) {
+      const errText = response ? await response.text() : 'No response received';
+      console.error('Thumbnail upload failed:', response?.status, errText);
       return null;
     }
 
@@ -252,15 +335,24 @@ export const getVideoStatus = async (videoId: string): Promise<{ status: number;
  * Fetches ALL finished (status=4) videos from the Bunny video library.
  * Auto-paginates in batches of 100 until all videos are retrieved.
  */
-export const fetchBunnyVideos = async (admin = false): Promise<BunnyVideoItem[]> => {
+export const fetchBunnyVideos = async (admin = false, fresh = false): Promise<BunnyVideoItem[]> => {
   if (!PUBLIC_URL || !ANON_KEY) throw new Error('Catalogue configuration is missing.');
 
   try {
-    const headers = await getHeaders();
+    const headers = admin
+      ? await getHeaders()
+      : {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+        };
+    const bypassCache = admin || fresh;
     const fetchPage = async (page: number): Promise<BunnyVideoListResponse> => {
+      const freshParam = !admin && fresh ? '&fresh=1' : '';
       const res = await fetch(
-        `${admin ? BASE_URL : PUBLIC_URL}?page=${page}&itemsPerPage=100&orderBy=date`,
-        { headers, cache: 'no-store' }
+        `${admin ? BASE_URL : PUBLIC_URL}?page=${page}&itemsPerPage=100&orderBy=date${freshParam}`,
+        { headers, cache: bypassCache ? 'no-store' : 'default' }
       );
       if (!res.ok) throw new Error(`Catalogue request failed: ${res.status}`);
       return await res.json();
@@ -276,7 +368,6 @@ export const fetchBunnyVideos = async (admin = false): Promise<BunnyVideoItem[]>
     // Deduplicate by GUID in case of overlapping pages or CDN sync issues
     const uniqueAll = Array.from(new Map(all.map(item => [item.guid, item])).values());
 
-    console.log(`✅ Loaded ${uniqueAll.length} unique videos from Bunny library`);
     return uniqueAll;
   } catch (error) {
     console.error('fetchBunnyVideos failed:', error);
@@ -287,11 +378,19 @@ export const fetchBunnyVideos = async (admin = false): Promise<BunnyVideoItem[]>
 /**
  * Fetches a single video by its GUID from the public catalogue endpoint.
  */
-export const fetchBunnyVideoById = async (id: string): Promise<BunnyVideoItem | null> => {
+export const fetchBunnyVideoById = async (id: string, fresh = false): Promise<BunnyVideoItem | null> => {
   if (!PUBLIC_URL || !ANON_KEY || !id) return null;
   try {
-    const headers = await getHeaders();
-    const res = await fetch(`${PUBLIC_URL}?id=${encodeURIComponent(id)}`, { headers, cache: 'no-store' });
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${ANON_KEY}`,
+    };
+    const res = await fetch(
+      `${PUBLIC_URL}?id=${encodeURIComponent(id)}${fresh ? '&fresh=1' : ''}`,
+      { headers, cache: fresh ? 'no-store' : 'default' }
+    );
     if (!res.ok) return null;
     const data = await res.json();
     return data.item || null;
@@ -338,7 +437,17 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   };
 
   const normalized = rawCategory.toLowerCase().trim();
-  const category = categoryMap[normalized] || (normalized.charAt(0).toUpperCase() + normalized.slice(1));
+  const rawTags = getMeta(activeItem.metaTags, 'tags').toLowerCase();
+  const rawGenre = getMeta(activeItem.metaTags, 'genre').toLowerCase();
+  const parsedRating = normalizeContentRating(getMeta(activeItem.metaTags, 'contentRating'));
+  let category = categoryMap[normalized] || (normalized.charAt(0).toUpperCase() + normalized.slice(1));
+  if (
+    (category === 'Uncategorized' || !rawCategory) &&
+    (parsedRating === 'GE' || parsedRating === 'UNRATED') &&
+    (/\b(kids?|watoto)\b/i.test(rawTags) || /\b(kids?|watoto)\b/i.test(rawGenre))
+  ) {
+    category = 'Kids';
+  }
 
   // Parse season/episode from metaTags or from title pattern "S01E03 Title"
   const rawSeason = getMeta(activeItem.metaTags, 'season');

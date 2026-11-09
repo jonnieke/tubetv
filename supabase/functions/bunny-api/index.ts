@@ -1,36 +1,23 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { verifiedAdminId } from '../_shared/admin.ts';
-import { recordAdminMutation } from '../_shared/audit.ts';
+import { verifiedAdminId } from "../_shared/admin.ts";
+import { recordAdminMutation } from "../_shared/audit.ts";
+import { corsHeaders, isOriginAllowed, jsonReply } from "../_shared/cors.ts";
+import { buildBunnyTusUploadSignature } from "../_shared/bunnyToken.ts";
 
 const BUNNY_ACCESS_KEY = Deno.env.get("BUNNY_ACCESS_KEY");
 const LIBRARY_ID = Deno.env.get("BUNNY_LIBRARY_ID");
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "")
-  .split(",").map((origin) => origin.trim()).filter(Boolean);
-
-function corsHeaders(req: Request) {
-  const origin = req.headers.get("Origin") || "";
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0] || "";
-  return {
-    ...(allowedOrigin ? { "Access-Control-Allow-Origin": allowedOrigin } : {}),
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Vary": "Origin",
-  };
-}
-
-function jsonResponse(req: Request, body: Record<string, unknown>, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders(req), "Content-Type": "application/json" },
-  });
-}
+const METHODS = "GET, POST, PUT, OPTIONS";
+const ALLOWED_QUERY_KEYS = new Set(["page", "itemsPerPage", "orderBy", "search", "collection"]);
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders(req) });
+    return new Response(null, { status: 204, headers: corsHeaders(req, METHODS) });
+  }
+  if (!isOriginAllowed(req)) {
+    return jsonReply(req, { error: "Origin not allowed." }, 403, METHODS);
   }
   if (!BUNNY_ACCESS_KEY || !LIBRARY_ID) {
-    return jsonResponse(req, { error: "Bunny.net configuration is missing." }, 503);
+    return jsonReply(req, { error: "Bunny.net configuration is missing." }, 503, METHODS);
   }
 
   try {
@@ -40,15 +27,35 @@ serve(async (req: Request) => {
     const subPath = bunnyApiIndex >= 0 ? pathParts.slice(bunnyApiIndex + 1).join("/") : "";
 
     const adminId = await verifiedAdminId(req);
-    if (!adminId) return jsonResponse(req, { error: "Verified admin access is required." }, 403);
-    if (subPath && !/^[0-9a-f-]{36}(?:\/thumbnail)?$/i.test(subPath)) {
-      return jsonResponse(req, { error: "Invalid content path." }, 400);
+    if (!adminId) {
+      return jsonReply(req, { error: "Verified admin access is required." }, 403, METHODS);
     }
-    if (!["GET", "POST", "PUT"].includes(req.method)) return jsonResponse(req, { error: "Method not allowed." }, 405);
+
+    // Issue short-lived Direct TUS upload credentials so browsers upload directly to Bunny Stream
+    const tusMatch = subPath.match(/^([0-9a-f-]{36})\/tus-signature$/i);
+    if (tusMatch && req.method === "POST") {
+      const videoId = tusMatch[1];
+      const tusCredentials = await buildBunnyTusUploadSignature(LIBRARY_ID, BUNNY_ACCESS_KEY, videoId);
+      await recordAdminMutation(adminId, "bunny_tus_signature", videoId, true);
+      return jsonReply(req, tusCredentials, 200, METHODS, { "Cache-Control": "no-store" });
+    }
+
+    if (subPath && !/^[0-9a-f-]{36}(?:\/thumbnail)?$/i.test(subPath)) {
+      return jsonReply(req, { error: "Invalid content path." }, 400, METHODS);
+    }
+    if (!["GET", "POST", "PUT"].includes(req.method)) {
+      return jsonReply(req, { error: "Method not allowed." }, 405, METHODS);
+    }
 
     let bunnyUrl = `https://video.bunnycdn.com/library/${LIBRARY_ID}/videos`;
     if (subPath) bunnyUrl += `/${subPath}`;
-    if (url.search) bunnyUrl += url.search;
+
+    const safeParams = new URLSearchParams();
+    for (const [key, value] of url.searchParams.entries()) {
+      if (ALLOWED_QUERY_KEYS.has(key)) safeParams.set(key, value);
+    }
+    const qs = safeParams.toString();
+    if (qs) bunnyUrl += `?${qs}`;
 
     const isThumbnailUpload = req.method === "POST" && /\/thumbnail$/i.test(subPath);
     const bunnyResponse = await fetch(bunnyUrl, {
@@ -60,22 +67,22 @@ serve(async (req: Request) => {
           : req.headers.get("Content-Type") || "application/json",
         Accept: "application/json",
       },
-      // Pass the incoming stream through instead of holding a second full copy
-      // of uploaded media inside the memory-limited Edge Function worker.
-      body: req.method === "GET" || req.method === "HEAD" ? null : req.body,
+      body: req.method === "GET" ? null : req.body,
     });
 
-    if (req.method !== 'GET') await recordAdminMutation(adminId, `bunny_${req.method.toLowerCase()}`, subPath || null, bunnyResponse.ok);
+    if (req.method !== "GET") {
+      await recordAdminMutation(adminId, `bunny_${req.method.toLowerCase()}`, subPath || null, bunnyResponse.ok);
+    }
 
     return new Response(await bunnyResponse.text(), {
       status: bunnyResponse.status,
       headers: {
-        ...corsHeaders(req),
+        ...corsHeaders(req, METHODS),
         "Content-Type": bunnyResponse.headers.get("Content-Type") || "application/json",
       },
     });
   } catch (error: unknown) {
     console.error("Bunny proxy error", error);
-    return jsonResponse(req, { error: "Unable to process the content request." }, 500);
+    return jsonReply(req, { error: "Unable to process the content request." }, 500, METHODS);
   }
 });

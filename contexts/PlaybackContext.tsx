@@ -1,4 +1,5 @@
-import React, { createContext, useContext } from 'react';
+import { createContext, useContext } from 'react';
+import type { Video } from '../types';
 import type { PlaybackPreferences, WatchProgress } from '../lib/viewerState';
 import { DEFAULT_PLAYBACK_PREFERENCES } from '../lib/viewerState';
 
@@ -7,6 +8,9 @@ interface PlaybackContextValue {
   getProgress: (videoId: string) => WatchProgress | undefined;
   onProgress: (videoId: string, progress: WatchProgress) => void;
   onEnded: (videoId: string) => void;
+  isLocked?: (video: Video) => boolean;
+  onRequireUnlock?: (video: Video) => void;
+  onOpenSettings?: () => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue>({
@@ -14,6 +18,9 @@ const PlaybackContext = createContext<PlaybackContextValue>({
   getProgress: () => undefined,
   onProgress: () => undefined,
   onEnded: () => undefined,
+  isLocked: undefined,
+  onRequireUnlock: undefined,
+  onOpenSettings: undefined,
 });
 
 export const PlaybackProvider = PlaybackContext.Provider;

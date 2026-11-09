@@ -27,4 +27,10 @@ describe('Shorts viewing surface', () => {
     expect(html).toContain('More moments are on the way.');
     expect(html).toContain('Back to Discover');
   });
+
+  it('renders targeting the initialShortId without throwing', () => {
+    const html = renderToStaticMarkup(<ShortsPlayer shorts={[short, { ...short, id: 'short-2', description: 'Second short' }]} initialShortId="short-2" onExit={() => {}} />);
+    expect(html).toContain('data-id="short-2"');
+    expect(html).toContain('Second short');
+  });
 });

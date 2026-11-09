@@ -14,76 +14,174 @@ export interface ActiveSubscription {
   tier: string;
   end_date: string | null;
   is_active: boolean;
+  mpesa_ref?: string | null;
 }
 
-const GUEST_PASS_KEY = 'tube_guest_pass';
-const GUEST_UNLOCKED_KEY = 'tube_unlocked_episodes';
+export interface StoredPass {
+  token: string;
+  tier: string;
+  expiresAt: number;
+  mpesaReceipt?: string;
+}
 
-export function getLocalUnlockedVideoIds(): string[] {
+const SIGNED_PASS_KEY = 'tube_pass_token';
+const LEGACY_GUEST_PASS_KEY = 'tube_guest_pass';
+const LEGACY_UNLOCKED_KEY = 'tube_unlocked_episodes';
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) || '';
+const ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
+
+function purgeLegacyUnsignedKeys() {
+  if (typeof window === 'undefined') return;
   try {
-    const raw = localStorage.getItem(GUEST_UNLOCKED_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
+    localStorage.removeItem(LEGACY_GUEST_PASS_KEY);
+    localStorage.removeItem(LEGACY_UNLOCKED_KEY);
   } catch {
-    return [];
+    // Ignore storage restriction
   }
 }
 
-export function saveLocalUnlockedVideoId(videoId: string) {
+function isPlausibleSignedToken(token: unknown): token is string {
+  if (typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 2 || parts[0].length < 16 || parts[1].length < 32) return false;
   try {
-    const current = getLocalUnlockedVideoIds();
-    if (!current.includes(videoId)) {
-      localStorage.setItem(GUEST_UNLOCKED_KEY, JSON.stringify([...current, videoId]));
+    const padded = parts[0].replace(/-/g, '+').replace(/_/g, '/');
+    const json = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4));
+    const parsed = JSON.parse(json) as { subId?: string; exp?: number };
+    return Boolean(parsed.subId && typeof parsed.exp === 'number' && parsed.exp > Date.now());
+  } catch {
+    return false;
+  }
+}
+
+export function getStoredPass(): StoredPass | null {
+  if (typeof window === 'undefined') return null;
+  purgeLegacyUnsignedKeys();
+  try {
+    const raw = localStorage.getItem(SIGNED_PASS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredPass>;
+    if (
+      !isPlausibleSignedToken(parsed.token) ||
+      typeof parsed.tier !== 'string' ||
+      typeof parsed.expiresAt !== 'number' ||
+      parsed.expiresAt <= Date.now()
+    ) {
+      localStorage.removeItem(SIGNED_PASS_KEY);
+      return null;
     }
+    return {
+      token: parsed.token,
+      tier: parsed.tier,
+      expiresAt: parsed.expiresAt,
+      mpesaReceipt: typeof parsed.mpesaReceipt === 'string' ? parsed.mpesaReceipt : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveStoredPass(pass: StoredPass) {
+  if (typeof window === 'undefined' || !isPlausibleSignedToken(pass.token)) return;
+  purgeLegacyUnsignedKeys();
+  try {
+    localStorage.setItem(SIGNED_PASS_KEY, JSON.stringify(pass));
+    window.dispatchEvent(new CustomEvent('tubetv:pass-updated', { detail: pass }));
   } catch {
     // Best-effort local storage
   }
 }
 
-export function getLocalGuestPass(): { tier: string; expiresAt: number } | null {
+export function clearStoredPass() {
+  if (typeof window === 'undefined') return;
+  purgeLegacyUnsignedKeys();
   try {
-    const raw = localStorage.getItem(GUEST_PASS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed.expiresAt && parsed.expiresAt > Date.now()) {
-      return parsed;
-    }
-    localStorage.removeItem(GUEST_PASS_KEY);
-    return null;
+    localStorage.removeItem(SIGNED_PASS_KEY);
+    window.dispatchEvent(new CustomEvent('tubetv:pass-updated', { detail: null }));
   } catch {
-    return null;
+    // Best-effort local storage
   }
 }
 
-export function saveLocalGuestPass(tier: string, durationHours = 24) {
-  try {
-    const pass = {
-      tier,
-      expiresAt: Date.now() + durationHours * 3600 * 1000,
+/**
+ * Verifies the locally stored HMAC-signed pass token against the server ledger.
+ * Immediately clears forged, revoked, or expired tokens.
+ */
+export async function verifyStoredPass(): Promise<ActiveSubscription | null> {
+  const stored = getStoredPass();
+  if (!stored) return null;
+
+  if (!isSupabaseConfigured) {
+    return {
+      id: 'signed-pass',
+      tier: stored.tier,
+      end_date: new Date(stored.expiresAt).toISOString(),
+      is_active: true,
+      mpesa_ref: stored.mpesaReceipt || null,
     };
-    localStorage.setItem(GUEST_PASS_KEY, JSON.stringify(pass));
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+      body: { action: 'verify', passToken: stored.token },
+      headers: { 'X-Pass-Token': stored.token },
+    });
+
+    if (!error && data && data.valid === false) {
+      clearStoredPass();
+      return null;
+    }
+
+    if (!error && data?.valid && data.pass) {
+      const updated: StoredPass = {
+        token: stored.token,
+        tier: data.pass.tier || stored.tier,
+        expiresAt: Number(data.pass.expiresAt) || stored.expiresAt,
+        mpesaReceipt: data.pass.mpesaReceipt || stored.mpesaReceipt,
+      };
+      try {
+        localStorage.setItem(SIGNED_PASS_KEY, JSON.stringify(updated));
+      } catch {
+        // Ignore storage error
+      }
+      return {
+        id: 'signed-pass',
+        tier: updated.tier,
+        end_date: new Date(updated.expiresAt).toISOString(),
+        is_active: true,
+        mpesa_ref: updated.mpesaReceipt || null,
+      };
+    }
+
+    // Transient network error while offline: keep signed token until expiry or next online check
+    return {
+      id: 'signed-pass',
+      tier: stored.tier,
+      end_date: new Date(stored.expiresAt).toISOString(),
+      is_active: true,
+      mpesa_ref: stored.mpesaReceipt || null,
+    };
   } catch {
-    // Best effort
+    return {
+      id: 'signed-pass',
+      tier: stored.tier,
+      end_date: new Date(stored.expiresAt).toISOString(),
+      is_active: true,
+      mpesa_ref: stored.mpesaReceipt || null,
+    };
   }
 }
 
 export async function fetchActiveSubscription(userId?: string | null): Promise<ActiveSubscription | null> {
-  // Check guest pass first
-  const guestPass = getLocalGuestPass();
-  if (guestPass) {
-    return {
-      id: 'guest-pass',
-      tier: guestPass.tier,
-      end_date: new Date(guestPass.expiresAt).toISOString(),
-      is_active: true,
-    };
-  }
+  const verifiedPass = await verifyStoredPass();
+  if (verifiedPass) return verifiedPass;
 
   if (!userId || isLocalAuthUserId(userId) || !isSupabaseConfigured) return null;
 
   try {
     const { data, error } = await supabase
       .from('subscriptions')
-      .select('id, tier, end_date, is_active')
+      .select('id, tier, end_date, is_active, mpesa_ref')
       .eq('user_id', userId)
       .eq('is_active', true)
       .or(`end_date.is.null,end_date.gt.${new Date().toISOString()}`)
@@ -101,31 +199,223 @@ export async function fetchActiveSubscription(userId?: string | null): Promise<A
   }
 }
 
-export async function startMpesaPayment(planCode: SubscriptionPlanCode, phone: string) {
+export interface PaystackInitiateResponse {
+  id: string;
+  status: string;
+  reference: string;
+  accessCode: string;
+  authorizationUrl: string;
+  checkoutToken: string;
+  publicKey?: string;
+}
+
+export async function startPaystackPayment(
+  planCode: SubscriptionPlanCode,
+  options: { email?: string; phone?: string } = {},
+): Promise<PaystackInitiateResponse> {
+  if (!isSupabaseConfigured) {
+    throw new Error('Paystack payments are not configured in this environment.');
+  }
   const idempotencyKey = crypto.randomUUID();
-  const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
-    body: { planCode, phone },
+  const { data, error } = await supabase.functions.invoke('paystack-checkout', {
+    body: { action: 'initiate', planCode, email: options.email, phone: options.phone },
     headers: { 'Idempotency-Key': idempotencyKey },
   });
 
-  if (error) throw error;
+  if (error) {
+    throw new Error(data?.error || error.message || 'Could not initiate Paystack checkout.');
+  }
+  if (data?.error) throw new Error(data.error);
+
+  return data.transaction as PaystackInitiateResponse;
+}
+
+export async function fetchPaystackStatus(reference: string, checkoutToken: string, transactionId?: string) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Payment status verification is unavailable.');
+  }
+  const { data, error } = await supabase.functions.invoke('paystack-checkout', {
+    body: { action: 'status', reference, checkoutToken, transactionId },
+  });
+
+  if (error) {
+    throw new Error(data?.error || error.message || 'Unable to verify payment status.');
+  }
+  if (data?.error) throw new Error(data.error);
+
+  if (data?.pass?.token) {
+    saveStoredPass({
+      token: data.pass.token,
+      tier: data.pass.tier,
+      expiresAt: Number(data.pass.expiresAt),
+      mpesaReceipt: data.pass.reference,
+    });
+  }
+
+  return data as {
+    transaction: {
+      id: string;
+      status: 'pending' | 'submitted' | 'succeeded' | 'failed' | string;
+      reference: string;
+      result_description?: string;
+    };
+    pass?: StoredPass;
+  };
+}
+
+export async function restorePaystackPass(reference: string, emailOrPhone?: string): Promise<StoredPass> {
+  if (!isSupabaseConfigured) {
+    throw new Error('Pass restoration requires a live payment connection.');
+  }
+  const { data, error } = await supabase.functions.invoke('paystack-checkout', {
+    body: { action: 'restore', reference: reference.trim().toUpperCase(), emailOrPhone: emailOrPhone?.trim() },
+  });
+
+  if (error) {
+    throw new Error(data?.error || error.message || 'Could not restore pass with those details.');
+  }
+  if (data?.error || !data?.pass?.token) {
+    throw new Error(data?.error || 'No active pass matched that reference.');
+  }
+
+  const stored: StoredPass = {
+    token: data.pass.token,
+    tier: data.pass.tier,
+    expiresAt: Number(data.pass.expiresAt),
+    mpesaReceipt: data.pass.reference,
+  };
+  saveStoredPass(stored);
+  return stored;
+}
+
+export async function startMpesaPayment(planCode: SubscriptionPlanCode, phone: string) {
+  if (!isSupabaseConfigured) {
+    throw new Error('M-Pesa payments are not configured in this environment.');
+  }
+  const idempotencyKey = crypto.randomUUID();
+  const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+    body: { action: 'initiate', planCode, phone },
+    headers: { 'Idempotency-Key': idempotencyKey },
+  });
+
+  if (error) {
+    throw new Error(data?.error || error.message || 'Could not initiate M-Pesa payment.');
+  }
   if (data?.error) throw new Error(data.error);
 
   return data.transaction as {
     id: string;
     status: string;
+    checkoutToken: string;
     checkoutRequestId?: string;
     message?: string;
   };
 }
 
-export async function fetchPaymentStatus(transactionId: string) {
-  const { data, error } = await supabase
-    .from('payment_transactions')
-    .select('id, status, result_description')
-    .eq('id', transactionId)
-    .single();
+export async function fetchPaymentStatus(transactionId: string, checkoutToken: string) {
+  if (!isSupabaseConfigured) {
+    throw new Error('M-Pesa payments are not configured in this environment.');
+  }
+  const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+    body: { action: 'status', transactionId, checkoutToken },
+  });
 
-  if (error) throw error;
-  return data as { id: string; status: string; result_description: string | null };
+  if (error) {
+    throw new Error(data?.error || error.message || 'Unable to verify payment status.');
+  }
+  if (data?.error) throw new Error(data.error);
+
+  if (data?.pass?.token) {
+    saveStoredPass({
+      token: data.pass.token,
+      tier: data.pass.tier,
+      expiresAt: Number(data.pass.expiresAt),
+      mpesaReceipt: data.pass.mpesaReceipt,
+    });
+  }
+
+  return data as {
+    transaction: {
+      id: string;
+      status: 'pending' | 'submitted' | 'succeeded' | 'failed' | 'cancelled' | string;
+      result_description: string | null;
+      mpesa_receipt?: string | null;
+    };
+    pass?: StoredPass;
+  };
+}
+
+export async function restoreMpesaPass(mpesaReceipt: string, phone: string): Promise<StoredPass> {
+  if (!isSupabaseConfigured) {
+    throw new Error('Pass restoration requires a live payment connection.');
+  }
+  const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+    body: { action: 'restore', mpesaReceipt: mpesaReceipt.trim().toUpperCase(), phone: phone.trim() },
+  });
+
+  if (error) {
+    throw new Error(data?.error || error.message || 'Could not restore pass with those details.');
+  }
+  if (data?.error || !data?.pass?.token) {
+    throw new Error(data?.error || 'No active pass matched that M-Pesa receipt and phone number.');
+  }
+
+  const stored: StoredPass = {
+    token: data.pass.token,
+    tier: data.pass.tier,
+    expiresAt: Number(data.pass.expiresAt),
+    mpesaReceipt: data.pass.mpesaReceipt,
+  };
+  saveStoredPass(stored);
+  return stored;
+}
+
+export async function resolveAuthorizedPlaybackUrl(
+  videoId: string,
+  fallbackUrl?: string,
+): Promise<{ locked: boolean; url: string }> {
+  const safeFallback = fallbackUrl || '';
+  if (
+    !isSupabaseConfigured ||
+    !SUPABASE_URL ||
+    !ANON_KEY ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(videoId)
+  ) {
+    return { locked: false, url: safeFallback };
+  }
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const storedPass = getStoredPass();
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${session?.access_token || ANON_KEY}`,
+    };
+    if (storedPass?.token) {
+      headers['X-Pass-Token'] = storedPass.token;
+    }
+
+    const res = await fetch(
+      `${SUPABASE_URL}/functions/v1/playback-access?id=${encodeURIComponent(videoId)}`,
+      { headers, cache: 'no-store' },
+    );
+
+    if (res.status === 402) {
+      if (storedPass) clearStoredPass();
+      return { locked: true, url: '' };
+    }
+
+    if (res.ok) {
+      const payload = await res.json();
+      if (payload?.locked) return { locked: true, url: '' };
+      if (typeof payload?.playbackUrl === 'string' && payload.playbackUrl) {
+        return { locked: false, url: payload.playbackUrl };
+      }
+    }
+
+    return { locked: false, url: safeFallback };
+  } catch {
+    return { locked: false, url: safeFallback };
+  }
 }

@@ -67,3 +67,46 @@ export function recommendVideos(
   }).slice(0, 12).map(({ video }) => video);
   return { continueWatching: continueWatching.slice(0, 6), forYou };
 }
+
+/** Find related recommendations for a specific finished video (movie or series). */
+export function getRelatedVideos(video: Video, allVideos: Video[], limit = 6): Video[] {
+  const currentKey = seriesKey(video);
+  const currentTags = new Set((video.tags || []).map((t) => t.toLowerCase()));
+  const currentGenre = (video.genre || '').toLowerCase();
+  const seenSeries = new Set<string>();
+  const firstEpisodeBySeries = new Map<string, Video>();
+
+  for (const candidate of [...allVideos].sort(compareEpisodes)) {
+    const key = seriesKey(candidate);
+    if (key && !firstEpisodeBySeries.has(key)) {
+      firstEpisodeBySeries.set(key, candidate);
+    }
+  }
+
+  return allVideos
+    .filter((v) => v.id !== video.id && (!currentKey || seriesKey(v) !== currentKey))
+    .map((v) => {
+      let score = 0;
+      if (v.category === video.category) score += 3;
+      if (currentGenre && (v.genre || '').toLowerCase().includes(currentGenre)) score += 4;
+      const vTags = (v.tags || []).map((t) => t.toLowerCase());
+      for (const t of vTags) {
+        if (currentTags.has(t)) score += 2;
+      }
+      if (isMicroDrama(v) === isMicroDrama(video)) score += 2;
+      return { video: v, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || b.video.views - a.video.views)
+    .filter((item) => {
+      const key = seriesKey(item.video);
+      if (key && seenSeries.has(key)) return false;
+      if (key) seenSeries.add(key);
+      return true;
+    })
+    .slice(0, limit)
+    .map((item) => {
+      const key = seriesKey(item.video);
+      return key ? firstEpisodeBySeries.get(key) || item.video : item.video;
+    });
+}

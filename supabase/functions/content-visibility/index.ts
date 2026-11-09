@@ -1,51 +1,28 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { verifiedAdminId } from '../_shared/admin.ts';
-import { recordAdminMutation } from '../_shared/audit.ts';
+import { verifiedAdminId } from "../_shared/admin.ts";
+import { recordAdminMutation } from "../_shared/audit.ts";
+import { corsHeaders, isOriginAllowed, jsonReply } from "../_shared/cors.ts";
 
 const BUNNY_ACCESS_KEY = Deno.env.get("BUNNY_ACCESS_KEY");
 const LIBRARY_ID = Deno.env.get("BUNNY_LIBRARY_ID");
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-function corsHeaders(req: Request) {
-  const origin = req.headers.get("Origin") || "";
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0] || "";
-  return {
-    ...(allowedOrigin ? { "Access-Control-Allow-Origin": allowedOrigin } : {}),
-    "Access-Control-Allow-Headers": "authorization, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Vary": "Origin",
-  };
-}
-
-function jsonResponse(req: Request, body: Record<string, unknown>, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders(req), "Content-Type": "application/json" },
-  });
-}
-
-function isAllowedBrowserOrigin(req: Request) {
-  const origin = req.headers.get("Origin");
-  return !origin || ALLOWED_ORIGINS.includes(origin);
-}
+const METHODS = "POST, OPTIONS";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders(req) });
+    return new Response(null, { status: 204, headers: corsHeaders(req, METHODS) });
   }
   if (req.method !== "POST") {
-    return jsonResponse(req, { error: "Method not allowed." }, 405);
+    return jsonReply(req, { error: "Method not allowed." }, 405, METHODS);
   }
-  if (!isAllowedBrowserOrigin(req)) {
-    return jsonResponse(req, { error: "Origin not allowed." }, 403);
+  if (!isOriginAllowed(req)) {
+    return jsonReply(req, { error: "Origin not allowed." }, 403, METHODS);
   }
   const adminId = await verifiedAdminId(req);
-  if (!adminId) return jsonResponse(req, { error: "Verified admin access is required." }, 403);
+  if (!adminId) {
+    return jsonReply(req, { error: "Verified admin access is required." }, 403, METHODS);
+  }
   if (!BUNNY_ACCESS_KEY || !LIBRARY_ID) {
-    return jsonResponse(req, { error: "Bunny.net configuration is missing." }, 503);
+    return jsonReply(req, { error: "Bunny.net configuration is missing." }, 503, METHODS);
   }
 
   try {
@@ -53,7 +30,7 @@ serve(async (req: Request) => {
     const videoId = typeof body.videoId === "string" ? body.videoId.trim() : "";
     const hidden = body.hidden;
     if (!/^[0-9a-f-]{36}$/i.test(videoId) || typeof hidden !== "boolean") {
-      return jsonResponse(req, { error: "A valid videoId and hidden flag are required." }, 400);
+      return jsonReply(req, { error: "A valid videoId and hidden flag are required." }, 400, METHODS);
     }
 
     const bunnyUrl = `https://video.bunnycdn.com/library/${LIBRARY_ID}/videos/${videoId}`;
@@ -63,9 +40,9 @@ serve(async (req: Request) => {
       Accept: "application/json",
     };
 
-    const currentResponse = await fetch(bunnyUrl, { headers });
+    const currentResponse = await fetch(bunnyUrl, { headers, signal: AbortSignal.timeout(8_000) });
     if (!currentResponse.ok) {
-      return jsonResponse(req, { error: "Unable to load the video." }, currentResponse.status);
+      return jsonReply(req, { error: "Unable to load the video." }, currentResponse.status, METHODS);
     }
 
     const currentVideo = await currentResponse.json();
@@ -79,15 +56,16 @@ serve(async (req: Request) => {
       method: "POST",
       headers,
       body: JSON.stringify({ metaTags }),
+      signal: AbortSignal.timeout(8_000),
     });
     if (!updateResponse.ok) {
-      return jsonResponse(req, { error: "Unable to update video visibility." }, updateResponse.status);
+      return jsonReply(req, { error: "Unable to update video visibility." }, updateResponse.status, METHODS);
     }
-    await recordAdminMutation(adminId, hidden ? 'hide_video' : 'show_video', videoId, true);
+    await recordAdminMutation(adminId, hidden ? "hide_video" : "show_video", videoId, true);
 
-    return jsonResponse(req, { videoId, hidden }, 200);
+    return jsonReply(req, { videoId, hidden }, 200, METHODS, { "Cache-Control": "no-store" });
   } catch (error: unknown) {
     console.error("Content visibility error", error);
-    return jsonResponse(req, { error: "Unable to update video visibility." }, 500);
+    return jsonReply(req, { error: "Unable to update video visibility." }, 500, METHODS);
   }
 });

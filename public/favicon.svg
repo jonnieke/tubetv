@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TubeTV">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#14191b" />
+      <stop offset="100%" stop-color="#080c0d" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f3243c" />
+      <stop offset="100%" stop-color="#c90620" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <rect x="44" y="44" width="424" height="424" rx="88" fill="none" stroke="#f4ecdd" stroke-opacity="0.12" stroke-width="6" />
+  <rect x="96" y="132" width="320" height="248" rx="56" fill="url(#accent)" />
+  <polygon points="222,198 222,314 322,256" fill="#f4ecdd" />
+</svg>
+

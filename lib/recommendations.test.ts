@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Video } from '../types';
-import { recommendVideos } from './recommendations';
+import { recommendVideos, getRelatedVideos } from './recommendations';
 
 const video = (id: string, overrides: Partial<Video> = {}): Video => ({
   id, title: id, category: 'Movies', author: 'TubeTV', thumbnail: '', duration: '5:00', views: 0, isPremium: false, ...overrides,
@@ -38,5 +38,18 @@ describe('viewer recommendations', () => {
   it('shows a series only once in discovery', () => {
     const library = [video('saved', { category: 'Series' }), video('one', { category: 'Series', seriesId: 'new', episode: 1 }), video('two', { category: 'Series', seriesId: 'new', episode: 2 })];
     expect(recommendVideos(library, {}, ['saved']).forYou.map(item => item.id)).toEqual(['one']);
+  });
+
+  it('provides related recommendations for a finished movie or series', () => {
+    const current = video('main', { category: 'Movies', genre: 'Drama', tags: ['Crime', 'Nairobi'] });
+    const library = [
+      current,
+      video('rel1', { category: 'Movies', genre: 'Drama', tags: ['Nairobi'], views: 100 }),
+      video('rel2', { category: 'Movies', genre: 'Comedy', views: 50 }),
+      video('other', { category: 'Education', genre: 'Science', views: 10 }),
+    ];
+    const related = getRelatedVideos(current, library, 3);
+    expect(related.map(v => v.id)).toEqual(['rel1', 'rel2', 'other']);
+    expect(related.map(v => v.id)).not.toContain('main');
   });
 });

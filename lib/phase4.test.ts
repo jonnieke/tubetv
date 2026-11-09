@@ -21,13 +21,14 @@ describe('phase 4 performance policy', () => {
     expect(result.nested).toBeUndefined();
   });
 
-  it('keeps the analytics collector anonymous and allowlisted', () => {
+  it('keeps the analytics collector anonymous, allowlisted, and CORS-hardened', () => {
     const source = readFileSync(new URL('../supabase/functions/analytics-event/index.ts', import.meta.url), 'utf8');
+    const corsSource = readFileSync(new URL('../supabase/functions/_shared/cors.ts', import.meta.url), 'utf8');
     expect(source).toContain('const EVENTS = new Set');
-    expect(source).toContain('ALLOWED_ORIGINS');
+    expect(source).toContain('isOriginAllowed');
     expect(source).not.toContain('user_id');
-    expect(source).toContain('Access-Control-Allow-Credentials');
     expect(source).not.toContain('phone');
+    expect(corsSource).toContain('ALLOWED_ORIGINS');
+    expect(corsSource).not.toContain('Access-Control-Allow-Credentials');
   });
-
 });

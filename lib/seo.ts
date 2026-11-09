@@ -1,20 +1,24 @@
 import type { Video } from '../types';
+import { isVideoLocked } from './monetization';
 
-const SITE_URL = (import.meta.env.VITE_SITE_URL as string) || 'https://www.tube.co.ke';
+const SITE_URL = ((import.meta.env.VITE_SITE_URL as string) || 'https://www.tube.co.ke').replace(/\/$/, '');
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og-default.png`;
 
 export function videoPath(videoId: string) {
   return `/watch/${encodeURIComponent(videoId)}`;
 }
 
 export function videoStructuredData(video: Video) {
+  const locked = isVideoLocked(video, false);
   return {
     '@context': 'https://schema.org',
     '@type': 'VideoObject',
     name: video.title,
     description: video.description || `Watch ${video.title} on TubeTV.`,
-    thumbnailUrl: [video.thumbnail],
+    thumbnailUrl: [video.thumbnail || DEFAULT_OG_IMAGE],
     uploadDate: video.uploadDate,
-    contentUrl: video.url,
+    ...(locked || !video.url ? {} : { contentUrl: video.url }),
+    isAccessibleForFree: !locked,
     url: `${SITE_URL}${videoPath(video.id)}`,
     isFamilyFriendly: video.contentRating === 'GE' || video.contentRating === 'PG',
     inLanguage: ['en-KE', 'sw-KE'],
@@ -22,35 +26,69 @@ export function videoStructuredData(video: Video) {
   };
 }
 
-export function setVideoMetadata(video?: Video) {
-  const title = video ? `${video.title} | TubeTV` : 'TubeTV | Kenyan videos, news, comedy and education';
-  const description = video?.description || "Kenya's home for original content, education, farming, faith and live streams.";
-  const path = video ? videoPath(video.id) : '/';
-  document.title = title;
+function upsertMeta(selector: string, attribute: 'name' | 'property', value: string) {
+  if (typeof document === 'undefined') return;
+  let element = document.head.querySelector<HTMLMetaElement>(selector);
+  if (!element) {
+    element = document.createElement('meta');
+    const key = selector.match(/"(.+)"/)?.[1];
+    if (key) element.setAttribute(attribute, key);
+    document.head.appendChild(element);
+  }
+  element.content = value;
+}
 
-  const setMeta = (selector: string, attribute: string, value: string) => {
-    let element = document.head.querySelector<HTMLMetaElement>(selector);
-    if (!element) {
-      element = document.createElement('meta');
-      const [name, key] = attribute === 'property' ? ['property', selector.match(/"(.+)"/)?.[1]] : ['name', selector.match(/"(.+)"/)?.[1]];
-      if (key) element.setAttribute(name, key);
-      document.head.appendChild(element);
-    }
-    element.content = value;
-  };
-
-  setMeta('meta[name="description"]', 'name', description);
-  setMeta('meta[property="og:title"]', 'property', title);
-  setMeta('meta[property="og:description"]', 'property', description);
-  if (video?.thumbnail) setMeta('meta[property="og:image"]', 'property', video.thumbnail);
-
+function upsertCanonical(path: string) {
+  if (typeof document === 'undefined') return;
   let canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
   if (!canonical) {
     canonical = document.createElement('link');
     canonical.rel = 'canonical';
     document.head.appendChild(canonical);
   }
-  canonical.href = `${SITE_URL}${path}`;
+  canonical.href = `${SITE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+export function setPageMetadata({
+  title,
+  description,
+  path,
+  image,
+}: {
+  title: string;
+  description: string;
+  path: string;
+  image?: string;
+}) {
+  if (typeof document === 'undefined') return;
+  const fullUrl = `${SITE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  const ogImage = image || DEFAULT_OG_IMAGE;
+
+  document.title = title;
+  upsertMeta('meta[name="description"]', 'name', description);
+  upsertMeta('meta[property="og:title"]', 'property', title);
+  upsertMeta('meta[property="og:description"]', 'property', description);
+  upsertMeta('meta[property="og:url"]', 'property', fullUrl);
+  upsertMeta('meta[property="og:image"]', 'property', ogImage);
+  upsertMeta('meta[name="twitter:title"]', 'name', title);
+  upsertMeta('meta[name="twitter:description"]', 'name', description);
+  upsertMeta('meta[name="twitter:image"]', 'name', ogImage);
+  upsertCanonical(path);
+}
+
+export function setVideoMetadata(video?: Video) {
+  if (typeof document === 'undefined') return;
+  const title = video ? `${video.title} | TubeTV` : 'TubeTV | Kenyan videos, news, comedy and education';
+  const description =
+    video?.description || "Kenya's home for original content, education, farming, faith and live streams.";
+  const path = video ? videoPath(video.id) : '/';
+
+  setPageMetadata({
+    title,
+    description,
+    path,
+    image: video?.thumbnail || DEFAULT_OG_IMAGE,
+  });
 
   let schema = document.getElementById('tubetv-video-schema');
   if (!video) {

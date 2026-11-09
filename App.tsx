@@ -1,4 +1,3 @@
-
 import React, { Suspense, lazy, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import CinemaNavigation from './components/CinemaNavigation';
 import LandingHero from './components/LandingHero';
@@ -11,7 +10,33 @@ import CatalogueEmptyState from './components/CatalogueEmptyState';
 import ShortsShelf from './components/ShortsShelf';
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS } from './constants';
-import { Menu, Search, Bell, X, LogIn, Loader2, GraduationCap, Sprout, Heart, Globe, PlayCircle, Home, Clapperboard, Smartphone, Clock, UploadCloud, BarChart2, Star, Music, Gamepad2, Utensils, Cpu, BookOpen, Coffee, Briefcase, Anchor, Zap, Film } from 'lucide-react';
+import {
+  X,
+  Loader2,
+  GraduationCap,
+  Sprout,
+  Heart,
+  Globe,
+  PlayCircle,
+  Home,
+  Clapperboard,
+  Smartphone,
+  Clock,
+  UploadCloud,
+  BarChart2,
+  Star,
+  Music,
+  Gamepad2,
+  Utensils,
+  Cpu,
+  BookOpen,
+  Coffee,
+  Briefcase,
+  Anchor,
+  Zap,
+  Film,
+  type LucideIcon,
+} from 'lucide-react';
 import { fetchBunnyVideos, fetchBunnyVideoById, bunnyVideoToVideo } from './services/bunnyService';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useLanguage } from './contexts/LanguageContext';
@@ -21,18 +46,28 @@ import { clearLocalAuthSession } from './lib/localAuth';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { verifiedActiveAdminUser } from './lib/adminSession';
 import { PlaybackProvider } from './contexts/PlaybackContext';
-import { DEFAULT_PLAYBACK_PREFERENCES, loadPreferences, loadProgress, loadWatchList, savePreferences, saveProgress, setWatchLater as persistWatchLater, type PlaybackPreferences, type WatchProgress } from './lib/viewerState';
+import {
+  DEFAULT_PLAYBACK_PREFERENCES,
+  loadPreferences,
+  loadProgress,
+  loadWatchList,
+  savePreferences,
+  saveProgress,
+  setWatchLater as persistWatchLater,
+  type PlaybackPreferences,
+  type WatchProgress,
+} from './lib/viewerState';
 import { setVideoMetadata, videoPath } from './lib/seo';
 import LegalPage from './components/LegalPage';
 import { trackEvent } from './lib/analytics';
 import { compareEpisodes, isMicroDrama, nextEpisode, seriesKey } from './lib/series';
-import { filterDiscoveryVideos } from './lib/discovery';
-import { recommendVideos } from './lib/recommendations';
+import { filterDiscoveryVideos, filterVideosByRating, isKidsVideo } from './lib/discovery';
+import { recommendVideos, getRelatedVideos } from './lib/recommendations';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
 import { shouldSaveData } from './lib/network';
 import { isVideoLocked } from './lib/monetization';
-import { fetchActiveSubscription, getLocalGuestPass, getLocalUnlockedVideoIds } from './lib/subscriptions';
-
+import { clearStoredPass, fetchActiveSubscription, getStoredPass, restorePaystackPass } from './lib/subscriptions';
+import type { SettingsTabId } from './components/SettingsSection';
 import { TranslationKey } from './translations';
 
 const VideoCard = lazy(() => import('./components/VideoCard'));
@@ -47,6 +82,7 @@ const AuthModal = lazy(() => import('./components/AuthModal'));
 const PaywallModal = lazy(() => import('./components/PaywallModal'));
 const SettingsSection = lazy(() => import('./components/SettingsSection'));
 const LiveSection = lazy(() => import('./components/LiveSection'));
+
 const DEMO_VIDEO_URL = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
 const DEMO_VIDEOS = MOCK_VIDEOS.map((video) => ({
   ...video,
@@ -54,19 +90,37 @@ const DEMO_VIDEOS = MOCK_VIDEOS.map((video) => ({
   contentRating: (['Kids', 'Education', 'Farmers', 'Faith'].includes(video.category) ? 'GE' : 'PG') as Video['contentRating'],
 }));
 
-
-// Admin emails/phones — add yours here
-
-// Icon Map for Dynamic Rendering
-const ICON_MAP: Record<string, any> = {
-  Home, Clapperboard, Smartphone, GraduationCap, Sprout, Heart, Baby: PlayCircle, Globe, Radio: PlayCircle, Clock, UploadCloud, BarChart2,
-  Star, Music, Game: Gamepad2, Food: Utensils, Tech: Cpu, News: BookOpen, Lifestyle: Coffee, Business: Briefcase, Travel: Anchor, Trending: Zap, Movie: Film
+const ICON_MAP: Record<string, LucideIcon> = {
+  Home,
+  Clapperboard,
+  Smartphone,
+  GraduationCap,
+  Sprout,
+  Heart,
+  Baby: PlayCircle,
+  Globe,
+  Radio: PlayCircle,
+  Clock,
+  UploadCloud,
+  BarChart2,
+  Star,
+  Music,
+  Game: Gamepad2,
+  Food: Utensils,
+  Tech: Cpu,
+  News: BookOpen,
+  Lifestyle: Coffee,
+  Business: Briefcase,
+  Travel: Anchor,
+  Trending: Zap,
+  Movie: Film,
 };
 
 const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.HOME, label: 'Home', labelKey: 'nav.home', iconName: 'Home', icon: Home },
-  { id: ViewState.MICRO_DRAMAS, label: 'Micro Dramas', iconName: 'Smartphone', icon: Smartphone },
+  { id: ViewState.MICRO_DRAMAS, label: 'Micro Dramas', labelKey: 'nav.microDramas', iconName: 'Smartphone', icon: Smartphone },
   { id: ViewState.ORIGINALS, label: 'Originals', labelKey: 'nav.originals', iconName: 'Clapperboard', icon: Clapperboard },
+  { id: ViewState.GENRES, label: 'Genres', labelKey: 'nav.genres', iconName: 'Movie', icon: Film },
   { id: ViewState.SHORTS, label: 'Shorts', labelKey: 'nav.shorts', iconName: 'Smartphone', icon: Smartphone },
   { id: ViewState.EDUCATION, label: 'Education', labelKey: 'nav.education', iconName: 'GraduationCap', icon: GraduationCap },
   { id: ViewState.FARMERS, label: 'Farmers', labelKey: 'nav.farmers', iconName: 'Sprout', icon: Sprout },
@@ -77,6 +131,8 @@ const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.WATCH_LATER, label: 'Watch List', labelKey: 'nav.watchlist', iconName: 'Clock', icon: Clock },
 ];
 
+const BASE_GENRES = ['Drama', 'Comedy', 'Action', 'Romance', 'Animation', 'Swahili', 'Education', 'Kids', 'Documentary'];
+
 const LoadingPanel = ({ label = 'Loading...' }: { label?: string }) => (
   <div className="min-h-[320px] w-full flex flex-col items-center justify-center text-zinc-500">
     <Loader2 className="w-8 h-8 text-red-600 animate-spin mb-3" />
@@ -85,12 +141,24 @@ const LoadingPanel = ({ label = 'Loading...' }: { label?: string }) => (
 );
 
 const App: React.FC = () => {
-  const { t } = useLanguage();
-  const [currentView, setCurrentView] = useState<ViewStateOrString>(ViewState.HOME);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'account' | 'privacy'>('general');
+  const { t, language } = useLanguage();
+  const [currentView, setCurrentView] = useState<ViewStateOrString>(() => {
+    if (typeof window === 'undefined') return ViewState.HOME;
+    const params = new URLSearchParams(window.location.search);
+    const requestedView = params.get('view');
+    if (requestedView && Object.values(ViewState).includes(requestedView as ViewState)) {
+      return requestedView as ViewState;
+    }
+    return ViewState.HOME;
+  });
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>('general');
+  const [selectedShortId, setSelectedShortId] = useState<string | undefined>(() => {
+    if (typeof window === 'undefined') return undefined;
+    return new URLSearchParams(window.location.search).get('short') || undefined;
+  });
+  const [isVideoFinished, setIsVideoFinished] = useState(false);
+  const [replayNonce, setReplayNonce] = useState(0);
 
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [watchLater, setWatchLater] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('tube_watch_later');
@@ -101,27 +169,39 @@ const App: React.FC = () => {
   });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Admin identity comes from Supabase Auth; retired local PIN sessions are cleared.
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const playerDialogRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  // Restore a server-verifiable user and refresh it on auth changes.
+
   useEffect(() => {
     clearLocalAuthSession();
-    if (!isSupabaseConfigured) { setIsAuthLoading(false); return; }
-    let active = true;
-    void verifiedActiveAdminUser().then((user) => {
-      if (!active) return;
-      setCurrentUser(user);
-      setIsAuthenticated(Boolean(user));
+    if (!isSupabaseConfigured) {
       setIsAuthLoading(false);
-    }).catch(() => { if (active) setIsAuthLoading(false); });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      return;
+    }
+    let active = true;
+    void verifiedActiveAdminUser()
+      .then((user) => {
+        if (!active) return;
+        setCurrentUser(user);
+        setIsAuthenticated(Boolean(user));
+        setIsAuthLoading(false);
+      })
+      .catch(() => {
+        if (active) setIsAuthLoading(false);
+      });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
-      if (!session) { setCurrentUser(null); setIsAuthenticated(false); return; }
+      if (!session) {
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        return;
+      }
       setTimeout(() => {
         if (!active) return;
         void verifiedActiveAdminUser().then((user) => {
@@ -131,42 +211,66 @@ const App: React.FC = () => {
         });
       }, 0);
     });
-    return () => { active = false; subscription.unsubscribe(); };
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, []);
+
   const [preferences, setPreferences] = useState<PlaybackPreferences>(DEFAULT_PLAYBACK_PREFERENCES);
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
-  const [hasActivePass, setHasActivePass] = useState(false);
-  const [unlockedVideoIds, setUnlockedVideoIds] = useState<string[]>([]);
+  const [hasActivePass, setHasActivePass] = useState<boolean>(() => Boolean(getStoredPass()));
   const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
 
   const refreshAccessState = useCallback(async () => {
     try {
       const sub = await fetchActiveSubscription(currentUser?.id);
-      const guestPass = getLocalGuestPass();
-      setHasActivePass(Boolean(sub?.is_active || guestPass));
-      setUnlockedVideoIds(getLocalUnlockedVideoIds());
+      setHasActivePass(Boolean(sub?.is_active));
     } catch {
-      // Ignore background check failure
+      setHasActivePass(Boolean(getStoredPass()));
     }
   }, [currentUser?.id]);
 
   useEffect(() => {
     void refreshAccessState();
+    const handlePassUpdate = () => {
+      setHasActivePass(Boolean(getStoredPass()));
+      void refreshAccessState();
+    };
+    window.addEventListener('tubetv:pass-updated', handlePassUpdate);
+
+    // Auto-restore pass if returning from a Paystack redirect callback
+    const searchParams = new URLSearchParams(window.location.search);
+    const paystackRef = searchParams.get('paystack_ref') || searchParams.get('reference');
+    if (paystackRef && /^TUBE_[A-Z0-9_-]+$/i.test(paystackRef)) {
+      restorePaystackPass(paystackRef)
+        .then(() => {
+          searchParams.delete('paystack_ref');
+          searchParams.delete('reference');
+          const cleanSearch = searchParams.toString() ? `?${searchParams.toString()}` : '';
+          window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
+          setHasActivePass(true);
+        })
+        .catch(() => {});
+    }
+
+    return () => window.removeEventListener('tubetv:pass-updated', handlePassUpdate);
   }, [refreshAccessState]);
+
   useEffect(() => {
     let cancelled = false;
     const userId = currentUser?.id;
-    Promise.all([
-      loadPreferences(userId),
-      loadWatchList(userId),
-      loadProgress(userId),
-    ]).then(([nextPreferences, nextWatchLater, nextProgress]) => {
-      if (cancelled) return;
-      setPreferences(nextPreferences);
-      setWatchLater(nextWatchLater);
-      setWatchProgress(nextProgress);
-    });
-    return () => { cancelled = true; };
+    Promise.all([loadPreferences(userId), loadWatchList(userId), loadProgress(userId)]).then(
+      ([nextPreferences, nextWatchLater, nextProgress]) => {
+        if (cancelled) return;
+        setPreferences(nextPreferences);
+        setWatchLater(nextWatchLater);
+        setWatchProgress(nextProgress);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
   }, [currentUser?.id]);
 
   const handlePreferencesChange = (nextPreferences: PlaybackPreferences) => {
@@ -179,16 +283,8 @@ const App: React.FC = () => {
     void saveProgress(currentUser?.id, videoId, progress);
   };
 
-  const handleVideoEnded = (videoId: string) => {
-    if (!preferences.autoplay || shouldSaveData(preferences.dataSaver)) return;
-    const nextVideo = nextEpisode(videos, videoId);
-    if (nextVideo) { trackEvent('episode_next', { fromVideoId: videoId, toVideoId: nextVideo.id, automatic: true }); openVideo(nextVideo); }
-  };
-
-  // ─── Detect admin ───────────────────────────────────────────────────────────
   const isAdmin = isAdminUser(currentUser);
 
-  // ─── Videos: load from Bunny CDN on mount ─────────────────────────────────
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(true);
   const [isRealContent, setIsRealContent] = useState(false);
@@ -196,7 +292,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const loadVideos = async () => {
+    const loadVideos = async (fresh = false) => {
       if (!isSupabaseConfigured && import.meta.env.DEV) {
         setVideos(DEMO_VIDEOS);
         setIsRealContent(false);
@@ -206,8 +302,7 @@ const App: React.FC = () => {
       setIsLoadingVideos(true);
       setCatalogueError('');
       try {
-        const bunnyItems = await fetchBunnyVideos();
-        console.log('Bunny Items Fetched:', bunnyItems.length);
+        const bunnyItems = await fetchBunnyVideos(false, fresh);
         if (cancelled) return;
         if (bunnyItems.length > 0) {
           const mapped = bunnyItems.map(bunnyVideoToVideo) as Video[];
@@ -215,14 +310,8 @@ const App: React.FC = () => {
           const visible = CONTENT_RATING_ENFORCED
             ? publicItems.filter((video) => PUBLIC_CONTENT_RATINGS.includes(normalizeContentRating(video.contentRating)))
             : publicItems.filter((video) => normalizeContentRating(video.contentRating) !== '18');
-          console.log('Mapped Videos (first 2):', mapped.slice(0, 2));
-          if (visible.length > 0) {
-            setVideos(visible);
-            setIsRealContent(true);
-          } else {
-            setVideos([]);
-            setIsRealContent(true);
-          }
+          setVideos(visible.length > 0 ? visible : []);
+          setIsRealContent(true);
         } else {
           setVideos([]);
           setIsRealContent(true);
@@ -238,124 +327,186 @@ const App: React.FC = () => {
         if (!cancelled) setIsLoadingVideos(false);
       }
     };
-    loadVideos();
+
+    void loadVideos(false);
+
     const onVisibilityChange = (event: Event) => {
       const { videoId, hidden } = (event as CustomEvent<{ videoId: string; hidden: boolean }>).detail;
       if (hidden) {
         setVideos((current) => current.filter((video) => video.id !== videoId));
       } else {
-        void loadVideos();
+        void loadVideos(true);
       }
     };
+    const onCatalogueChange = () => {
+      void loadVideos(true);
+    };
+
     window.addEventListener('tube-visibility-change', onVisibilityChange);
-    window.addEventListener('tube-catalogue-change', loadVideos);
+    window.addEventListener('tube-catalogue-change', onCatalogueChange);
     return () => {
       cancelled = true;
       window.removeEventListener('tube-visibility-change', onVisibilityChange);
-      window.removeEventListener('tube-catalogue-change', loadVideos);
+      window.removeEventListener('tube-catalogue-change', onCatalogueChange);
     };
   }, []);
 
-  // Derive real shorts from the videos library (tagged with 'Shorts' category)
+  // Enforce viewer maximumRating across discovery shelves, hero, recommendations, and Shorts
+  const ratingFilteredVideos = useMemo(
+    () => filterVideosByRating(videos, preferences.maximumRating, CONTENT_RATING_ENFORCED),
+    [videos, preferences.maximumRating],
+  );
+
   const realShorts = useMemo(() => {
-    const fromVideos = videos
-      .filter(v => v.category === 'Shorts')
-      .map(v => ({
+    const fromVideos = ratingFilteredVideos
+      .filter((v) => v.category === 'Shorts')
+      .map((v) => ({
         id: v.id,
         thumbnail: v.thumbnail,
         author: v.author,
         description: v.description || v.title,
         likes: 0,
         comments: 0,
-        videoUrl: v.url || ''
+        videoUrl: v.url || '',
       }));
-    
-    // Only fall back to MOCK_SHORTS if we are not loading AND have no real shorts
+
     if (isLoadingVideos) return [];
-    return fromVideos.length > 0 ? fromVideos : (isRealContent ? [] : MOCK_SHORTS);
-  }, [videos, isLoadingVideos, isRealContent]);
+    return fromVideos.length > 0 ? fromVideos : isRealContent ? [] : MOCK_SHORTS;
+  }, [ratingFilteredVideos, isLoadingVideos, isRealContent]);
 
   useEffect(() => {
     if (isLoadingVideos) return;
-    trackEvent('catalogue_view', { videoCount: videos.length, source: isRealContent ? 'bunny' : 'demo' });
-  }, [isLoadingVideos, isRealContent, videos.length]);
+    trackEvent('catalogue_view', { videoCount: ratingFilteredVideos.length, source: isRealContent ? 'bunny' : 'demo' });
+  }, [isLoadingVideos, isRealContent, ratingFilteredVideos.length]);
 
-
-  // Dynamic Navigation State
   const [navItems, setNavItems] = useState<NavItem[]>(() => {
     try {
       const saved = localStorage.getItem('tube_nav_items');
       if (saved) {
-        const parsed = JSON.parse(saved);
-        
-        // Fix for the 'multiple Gaming icons' glitch:
-        // If more than one item has the 'nav.gaming' key, it's corrupted state from the old version.
-        const gamingCount = parsed.filter((item: any) => item.labelKey === 'nav.gaming').length;
+        const parsed = JSON.parse(saved) as NavItem[];
+        const gamingCount = parsed.filter((item) => item.labelKey === 'nav.gaming').length;
         if (gamingCount > 1) {
           localStorage.removeItem('tube_nav_items');
           return INITIAL_NAV_ITEMS;
         }
 
-        // Re-attach icon components based on iconName string
-        if (!parsed.some((item: NavItem) => item.id === ViewState.MICRO_DRAMAS)) parsed.splice(1, 0, INITIAL_NAV_ITEMS[1]);
-        return parsed.map((item: NavItem) => ({
+        if (!parsed.some((item) => item.id === ViewState.MICRO_DRAMAS)) {
+          parsed.splice(1, 0, INITIAL_NAV_ITEMS[1]);
+        } else {
+          const micro = parsed.find((item) => item.id === ViewState.MICRO_DRAMAS);
+          if (micro && !micro.labelKey) micro.labelKey = 'nav.microDramas';
+        }
+
+        if (!parsed.some((item) => item.id === ViewState.GENRES)) {
+          const originalsIdx = parsed.findIndex((item) => item.id === ViewState.ORIGINALS);
+          parsed.splice(originalsIdx >= 0 ? originalsIdx + 1 : 3, 0, INITIAL_NAV_ITEMS[3]);
+        }
+
+        return parsed.map((item) => ({
           ...item,
-          icon: ICON_MAP[item.iconName || 'PlayCircle'] || PlayCircle
+          icon: ICON_MAP[item.iconName || 'PlayCircle'] || PlayCircle,
         }));
       }
     } catch {
-      // Ignore
+      // Ignore storage error
     }
     return INITIAL_NAV_ITEMS;
   });
 
-  // Sync nav items to local storage
   useEffect(() => {
-    // Strip out the React component 'icon' before saving to avoid JSON circular errors
     const serializable = navItems.map(({ icon, ...rest }) => rest);
     try {
       localStorage.setItem('tube_nav_items', JSON.stringify(serializable));
-    } catch { }
+    } catch {
+      // Ignore storage error
+    }
   }, [navItems]);
 
-  // Hero spotlight: viewers select featured titles explicitly.
   const [heroIndex, setHeroIndex] = useState(0);
-  const heroMovies = useMemo(() => featuredMovies(videos), [videos]);
+  const heroMovies = useMemo(() => featuredMovies(ratingFilteredVideos), [ratingFilteredVideos]);
   const [activeHeroVideo, setActiveHeroVideo] = useState<Video | null>(null);
+
   useEffect(() => {
     if (!activeHeroVideo) return;
     const previous = document.activeElement as HTMLElement | null;
     const close = playerDialogRef.current?.querySelector<HTMLButtonElement>('[aria-label="Close player"]');
     close?.focus();
     const trap = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') return;
-      const controls = playerDialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), [tabindex="0"]');
+      if (paywallVideo || event.key !== 'Tab') return;
+      const controls = playerDialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), [tabindex="0"]',
+      );
       if (!controls?.length) return;
-      const first = controls[0], last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', trap);
-    return () => { document.removeEventListener('keydown', trap); previous?.focus(); };
-  }, [activeHeroVideo?.id]);
+    return () => {
+      document.removeEventListener('keydown', trap);
+      previous?.focus();
+    };
+  }, [activeHeroVideo?.id, paywallVideo]);
 
+  const openVideo = useCallback(
+    (video: Video) => {
+      if (isVideoLocked(video, hasActivePass)) {
+        setPaywallVideo(video);
+        return;
+      }
+      setIsVideoFinished(false);
+      window.history.pushState({}, '', videoPath(video.id));
+      setActiveHeroVideo(video);
+    },
+    [hasActivePass],
+  );
 
-  const openVideo = (video: Video) => {
-    if (isVideoLocked(video, hasActivePass, unlockedVideoIds)) {
-      setPaywallVideo(video);
-      return;
+  const closeVideo = useCallback(() => {
+    setIsVideoFinished(false);
+    if (window.location.pathname.startsWith('/watch/')) {
+      window.history.pushState({}, '', '/');
     }
-    window.history.pushState({}, '', videoPath(video.id));
-    setActiveHeroVideo(video);
-  };
-  const closeVideo = () => {
-    window.history.pushState({}, '', '/');
     setActiveHeroVideo(null);
+  }, []);
+
+  const handleVideoEnded = (videoId: string) => {
+    // Only auto-advance modal playback, never hijack screen when an inline browse card ends
+    if (!activeHeroVideo || activeHeroVideo.id !== videoId) return;
+    setIsVideoFinished(true);
+    if (!preferences.autoplay || shouldSaveData(preferences.dataSaver)) return;
+    const nextVideo = nextEpisode(ratingFilteredVideos, videoId);
+    if (nextVideo) {
+      if (isVideoLocked(nextVideo, hasActivePass)) {
+        setPaywallVideo(nextVideo);
+      } else {
+        trackEvent('episode_next', { fromVideoId: videoId, toVideoId: nextVideo.id, automatic: true });
+        openVideo(nextVideo);
+      }
+    }
   };
+
+  const playerRecommendations = useMemo(() => {
+    if (!activeHeroVideo) return [];
+    return getRelatedVideos(activeHeroVideo, ratingFilteredVideos, 8);
+  }, [activeHeroVideo, ratingFilteredVideos]);
 
   useEffect(() => {
     let active = true;
     const syncRoute = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const viewParam = params.get('view');
+      const shortParam = params.get('short');
+      if (viewParam === ViewState.SHORTS) {
+        setCurrentView(ViewState.SHORTS);
+        setSelectedShortId(shortParam || undefined);
+      }
+
       const match = window.location.pathname.match(/^\/watch\/([^/]+)$/);
       if (!match) {
         setActiveHeroVideo(null);
@@ -364,19 +515,20 @@ const App: React.FC = () => {
       const id = decodeURIComponent(match[1]);
       const video = videos.find((item) => item.id === id);
       if (video) {
-        if (isVideoLocked(video, hasActivePass, unlockedVideoIds)) {
+        if (isVideoLocked(video, hasActivePass)) {
           setPaywallVideo(video);
         } else {
           setActiveHeroVideo(video);
         }
         return;
       }
-      // If not yet loaded in catalogue array, attempt direct single lookup
+
       try {
         const item = await fetchBunnyVideoById(id);
         if (active && item) {
           const directVideo = bunnyVideoToVideo(item) as Video;
-          if (isVideoLocked(directVideo, hasActivePass, unlockedVideoIds)) {
+          if (directVideo.muted || normalizeContentRating(directVideo.contentRating) === '18') return;
+          if (isVideoLocked(directVideo, hasActivePass)) {
             setPaywallVideo(directVideo);
           } else {
             setActiveHeroVideo(directVideo);
@@ -392,34 +544,54 @@ const App: React.FC = () => {
       active = false;
       window.removeEventListener('popstate', syncRoute);
     };
-  }, [videos, hasActivePass, unlockedVideoIds]);
+  }, [videos, hasActivePass]);
 
   useEffect(() => {
+    const pathname = window.location.pathname;
+    if (pathname === '/privacy' || pathname === '/terms') return;
     setVideoMetadata(activeHeroVideo || undefined);
   }, [activeHeroVideo]);
+
   useEffect(() => {
     if (!activeHeroVideo) return;
     const closeOnEscape = (event: KeyboardEvent) => {
+      if (paywallVideo) return;
       if (event.key === 'Escape') closeVideo();
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [activeHeroVideo]);
+  }, [activeHeroVideo, paywallVideo, closeVideo]);
 
+  const recommendations = useMemo(
+    () => recommendVideos(ratingFilteredVideos, watchProgress, watchLater),
+    [ratingFilteredVideos, watchProgress, watchLater],
+  );
 
-  const recommendations = useMemo(() => recommendVideos(videos, watchProgress, watchLater), [videos, watchProgress, watchLater]);
+  const availableGenres = useMemo(() => {
+    const seen = new Set(BASE_GENRES.map((g) => g.toLowerCase()));
+    const dynamic: string[] = [...BASE_GENRES];
+    for (const v of ratingFilteredVideos) {
+      const raw = v.genre?.trim();
+      if (!raw) continue;
+      for (const part of raw.split(/[,/&]/).map((s) => s.trim()).filter(Boolean)) {
+        const lower = part.toLowerCase();
+        if (!seen.has(lower)) {
+          seen.add(lower);
+          dynamic.push(part.charAt(0).toUpperCase() + part.slice(1));
+        }
+      }
+    }
+    return dynamic;
+  }, [ratingFilteredVideos]);
 
-  // Translate Nav Items
-  const translatedNavItems = navItems.map(item => ({
+  const translatedNavItems = navItems.map((item) => ({
     ...item,
-    label: item.labelKey ? t(item.labelKey as TranslationKey) : item.label
+    label: item.labelKey ? t(item.labelKey as TranslationKey) : item.label,
   }));
 
-  // Dynamic Sub-Categories based on view
   const [activeSubCategory, setActiveSubCategory] = useState('Trending');
 
   const getSubCategories = (view: ViewStateOrString) => {
-    // System Views
     switch (view) {
       case ViewState.EDUCATION:
         return ['All', 'CBC', 'High School', 'Revision', 'AI Learning', 'Teachers'];
@@ -432,9 +604,11 @@ const App: React.FC = () => {
       case ViewState.KIDS:
         return ['All', 'Cartoons', 'Learning', 'Songs', 'Stories'];
       case ViewState.ORIGINALS:
-        return ['All', 'Micro Dramas', 'Series', 'Movies'];
+        return ['All', 'Series', 'Movies', 'Micro Dramas', 'Drama', 'Comedy', 'Action', 'Romance', 'Animation', 'Swahili'];
+      case ViewState.GENRES:
+        return ['All', ...availableGenres];
       case ViewState.LIVE:
-        return ['Sports', 'News', 'Events'];
+        return ['All', 'Sports', 'News', 'Events'];
       case ViewState.HOME:
         return ['Trending', 'New Releases', 'Most Watched'];
       case ViewState.MICRO_DRAMAS:
@@ -446,28 +620,22 @@ const App: React.FC = () => {
 
   const currentSubCategories = getSubCategories(currentView);
 
-  // Reset sub-category when view changes
-  // Navigation sets the category atomically, so Series/Movies links keep their selection.
-
-  // Handle new uploads from the UploadSection
   const handleUploadComplete = (newVideo: Video) => {
-    setVideos(prev => [newVideo, ...prev.filter(video => video.id !== newVideo.id)]);
+    setVideos((prev) => [newVideo, ...prev.filter((video) => video.id !== newVideo.id)]);
   };
 
-  // Admin: Add Category Logic
   const handleAddCategory = (name: string, iconName: string) => {
     const newId = `CAT_${name.toUpperCase().replace(/\s+/g, '_')}`;
     const newItem: NavItem = {
       id: newId,
       label: name,
-      iconName: iconName,
-      icon: ICON_MAP[iconName] || Star, // Default to Star if not found
-      isCustom: true
+      iconName,
+      icon: ICON_MAP[iconName] || Star,
+      isCustom: true,
     };
 
-    // Insert before Watch List (index 9 in initial list, but safer to find index)
-    setNavItems(prev => {
-      const watchListIndex = prev.findIndex(i => i.id === ViewState.WATCH_LATER);
+    setNavItems((prev) => {
+      const watchListIndex = prev.findIndex((i) => i.id === ViewState.WATCH_LATER);
       const newItems = [...prev];
       if (watchListIndex !== -1) {
         newItems.splice(watchListIndex, 0, newItem);
@@ -478,22 +646,26 @@ const App: React.FC = () => {
     });
   };
 
-  // Admin: Remove Category Logic
   const handleRemoveCategory = (id: string) => {
-    setNavItems(prev => prev.filter(item => item.id !== id));
+    setNavItems((prev) => prev.filter((item) => item.id !== id));
     if (currentView === id) {
       setCurrentView(ViewState.HOME);
     }
   };
 
-  const customCategory = navItems.find(item => item.id === currentView && item.isCustom)?.label;
-  const filteredVideos = filterDiscoveryVideos(videos, currentView, activeSubCategory, searchQuery, customCategory);
+  const customCategory = navItems.find((item) => item.id === currentView && item.isCustom)?.label;
+  const filteredVideos = useMemo(
+    () => filterDiscoveryVideos(ratingFilteredVideos, currentView, activeSubCategory, searchQuery, customCategory),
+    [ratingFilteredVideos, currentView, activeSubCategory, searchQuery, customCategory],
+  );
 
-  useEffect(() => { if (mainRef.current) mainRef.current.scrollTop = 0; }, [currentView, activeSubCategory]);
+  useEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+  }, [currentView, activeSubCategory]);
 
   const toggleWatchLater = (id: string) => {
     const shouldSave = !watchLater.includes(id);
-    setWatchLater((current) => shouldSave ? [...current, id] : current.filter((videoId) => videoId !== id));
+    setWatchLater((current) => (shouldSave ? [...current, id] : current.filter((videoId) => videoId !== id)));
     void persistWatchLater(currentUser?.id, id, shouldSave);
   };
 
@@ -509,37 +681,57 @@ const App: React.FC = () => {
     setSearchQuery('');
   };
 
-
   const handleNavigate = (view: ViewStateOrString, category?: string) => {
-    // Local playback settings are available to viewers; admin screens keep their own guards.
-    if (view === ViewState.SETTINGS) setSettingsInitialTab('general');
+    if (view === ViewState.SETTINGS) {
+      const validTabs: SettingsTabId[] = ['general', 'pass', 'account', 'privacy'];
+      setSettingsInitialTab(validTabs.includes(category as SettingsTabId) ? (category as SettingsTabId) : 'general');
+    }
     if (view === ViewState.ADMIN && !isAdmin) {
       return;
     }
-    // Guard: restricted nav items (Upload, Analytics) require auth
-    const item = navItems.find(i => i.id === view);
+    if (view !== ViewState.SHORTS) {
+      setSelectedShortId(undefined);
+    }
+    const item = navItems.find((i) => i.id === view);
     if (item?.restricted && !isAuthenticated) {
       setShowLogin(true);
     } else {
-      setActiveSubCategory(category || getSubCategories(view)[0]);
+      if (view !== ViewState.SETTINGS) {
+        setActiveSubCategory(category || getSubCategories(view)[0]);
+      }
       setSearchQuery('');
       setCurrentView(view);
-      setIsMobileMenuOpen(false);
+      if (window.location.search) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     }
   };
 
   const handleLogout = async () => {
     clearLocalAuthSession();
+    clearStoredPass();
     if (isSupabaseConfigured) await supabase.auth.signOut();
     setIsAuthenticated(false);
     setCurrentUser(null);
+    setHasActivePass(false);
     setCurrentView(ViewState.HOME);
   };
 
-  // Derive phone for display from the current local session
   const userPhone = currentUser?.phone || null;
 
-  // Show a brief loading state while local auth hydrates
+  // Render statutory legal pages immediately without blocking on auth or catalogue network calls
+  const legalKind =
+    typeof window !== 'undefined'
+      ? window.location.pathname === '/privacy'
+        ? 'privacy'
+        : window.location.pathname === '/terms'
+          ? 'terms'
+          : null
+      : null;
+  if (legalKind) {
+    return <LegalPage kind={legalKind} />;
+  }
+
   if (isAuthLoading) {
     return (
       <div className="bg-zinc-950 h-screen w-full flex items-center justify-center">
@@ -548,21 +740,47 @@ const App: React.FC = () => {
     );
   }
 
+  const hasMicroDramas = ratingFilteredVideos.some(isMicroDrama);
+
   const renderContent = () => {
-    if (catalogueError) return <div role="alert" className="mx-auto max-w-lg p-12 text-center"><h1 className="font-serif text-3xl">Catalogue unavailable</h1><p className="mt-4 text-zinc-400">{catalogueError}</p><button className="cinema-primary mt-6" onClick={() => window.dispatchEvent(new Event('tube-catalogue-change'))}>Try again</button></div>;
+    if (catalogueError) {
+      return (
+        <div role="alert" className="mx-auto max-w-lg p-12 text-center">
+          <h1 className="font-serif text-3xl">Catalogue unavailable</h1>
+          <p className="mt-4 text-zinc-400">{catalogueError}</p>
+          <button
+            type="button"
+            className="cinema-primary mt-6"
+            onClick={() => window.dispatchEvent(new Event('tube-catalogue-change'))}
+          >
+            {t('common.tryAgain')}
+          </button>
+        </div>
+      );
+    }
+
     switch (currentView) {
       case ViewState.SHORTS:
         if (isLoadingVideos) {
           return (
             <div className="h-screen w-full flex flex-col items-center justify-center bg-black">
               <Loader2 className="w-12 h-12 text-red-600 animate-spin mb-4" />
-              <p className="text-zinc-400 font-medium">Loading Shorts...</p>
+              <p className="text-zinc-400 font-medium">{t('common.loading')}</p>
             </div>
           );
         }
-        return <ShortsPlayer shorts={realShorts} onExit={() => handleNavigate(ViewState.HOME)} />;
+        return (
+          <ShortsPlayer
+            shorts={realShorts}
+            initialShortId={selectedShortId}
+            onExit={() => {
+              setSelectedShortId(undefined);
+              handleNavigate(ViewState.HOME);
+            }}
+          />
+        );
       case ViewState.LIVE:
-        return <LiveSection videos={isRealContent ? videos : []} />;
+        return <LiveSection videos={isRealContent ? ratingFilteredVideos : []} />;
       case ViewState.SETTINGS:
         return (
           <SettingsSection
@@ -570,10 +788,13 @@ const App: React.FC = () => {
             currentUser={currentUser}
             userPhone={userPhone}
             onLogout={handleLogout}
+            onLocalDataCleared={() => {
+              setWatchLater([]);
+              setWatchProgress({});
+              setHasActivePass(false);
+            }}
             preferences={preferences}
             onPreferencesChange={handlePreferencesChange}
-
-
           />
         );
       case ViewState.UPLOAD:
@@ -583,10 +804,11 @@ const App: React.FC = () => {
               <UploadCloud className="w-12 h-12 text-zinc-600 mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Sign in to access creator tools</h2>
               <button
+                type="button"
                 onClick={() => setShowLogin(true)}
                 className="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2.5 rounded-lg transition-colors"
               >
-                Login
+                {t('nav.login')}
               </button>
             </div>
           );
@@ -597,7 +819,8 @@ const App: React.FC = () => {
               <UploadCloud className="w-12 h-12 text-zinc-600 mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Creator uploads are invite-only</h2>
               <p className="text-zinc-400 max-w-md">
-                TubeTV is approving creators before opening uploads. This keeps the library trusted while creator tools are finalized.
+                TubeTV is approving creators before opening uploads. This keeps the library trusted while creator tools
+                are finalized.
               </p>
             </div>
           );
@@ -610,10 +833,11 @@ const App: React.FC = () => {
               <BarChart2 className="w-12 h-12 text-zinc-600 mb-4" />
               <h2 className="text-2xl font-bold text-white mb-2">Sign in to access Studio</h2>
               <button
+                type="button"
                 onClick={() => setShowLogin(true)}
                 className="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2.5 rounded-lg transition-colors"
               >
-                Login
+                {t('nav.login')}
               </button>
             </div>
           );
@@ -639,7 +863,7 @@ const App: React.FC = () => {
       case ViewState.ADMIN:
         if (!isAdmin) return null;
         return (
-          <AdminDashboard 
+          <AdminDashboard
             onUploadComplete={handleUploadComplete}
             creatorName={userPhone || 'Admin'}
             currentNavItems={navItems}
@@ -650,79 +874,161 @@ const App: React.FC = () => {
       case ViewState.WATCH_LATER:
         return (
           <WatchLaterSection
-            videos={videos}
+            videos={ratingFilteredVideos}
             watchLaterIds={watchLater}
             onToggleWatchLater={toggleWatchLater}
           />
         );
 
-      // Default / Generic Grid View for Home and all Categories (System + Custom)
-      default:
+      default: {
+        const genreCarousels =
+          currentView === ViewState.GENRES && activeSubCategory === 'All'
+            ? availableGenres
+                .map((genre) => {
+                  const genreVideos =
+                    genre === 'Kids'
+                      ? ratingFilteredVideos.filter(isKidsVideo)
+                      : ratingFilteredVideos.filter(
+                          (v) =>
+                            (v.genre || '').toLowerCase().includes(genre.toLowerCase()) ||
+                            (v.tags || []).some((tag) => tag.toLowerCase().includes(genre.toLowerCase())),
+                        );
+                  return { genre, videos: genreVideos };
+                })
+                .filter((g) => g.videos.length > 0)
+            : [];
+
         return (
-          <div className={currentView === ViewState.HOME && !searchQuery ? 'catalogue-page landing-page p-4 md:p-8 pb-24' : 'catalogue-page p-4 md:p-8 pb-24'}>
-            {/* Hero Section - Only on HOME and not searching */}
-            {currentView === ViewState.HOME && !searchQuery && (() => {
-              const featuredVideos = heroMovies.length ? heroMovies : !isRealContent ? videos.slice(0, 5) : [];
-              const hero = featuredVideos[heroIndex % featuredVideos.length];
-              if (!hero) return null;
-              return (
-                <LandingHero video={hero} real={isRealContent} saved={watchLater.includes(hero.id)} onPlay={() => openVideo(hero)} onSave={() => toggleWatchLater(hero.id)} count={featuredVideos.length} index={heroIndex % featuredVideos.length} onSelect={setHeroIndex} />
-              );
-            })()}
+          <div
+            className={
+              currentView === ViewState.HOME && !searchQuery
+                ? 'catalogue-page landing-page p-4 md:p-8 pb-24'
+                : 'catalogue-page p-4 md:p-8 pb-24'
+            }
+          >
+            {currentView === ViewState.HOME &&
+              !searchQuery &&
+              (() => {
+                const featuredVideos = heroMovies.length ? heroMovies : !isRealContent ? ratingFilteredVideos.slice(0, 5) : [];
+                const hero = featuredVideos.length ? featuredVideos[heroIndex % featuredVideos.length] : null;
+                if (!hero) return null;
+                return (
+                  <LandingHero
+                    video={hero}
+                    real={isRealContent}
+                    saved={watchLater.includes(hero.id)}
+                    onPlay={() => openVideo(hero)}
+                    onSave={() => toggleWatchLater(hero.id)}
+                    count={featuredVideos.length}
+                    index={heroIndex % featuredVideos.length}
+                    onSelect={setHeroIndex}
+                  />
+                );
+              })()}
 
-            {(currentView !== ViewState.HOME || searchQuery) && <BrowseIntro
-              view={currentView} subcategory={activeSubCategory} customLabel={customCategory}
-              search={searchQuery} resultCount={filteredVideos.length} loading={isLoadingVideos}
-              onClearSearch={clearSearch}
-            />}
-
-            {/* Sub-Category Pills */}
-            {!searchQuery && <div className="flex gap-3 overflow-x-auto pb-4 mb-6 no-scrollbar sticky top-0 z-10 bg-zinc-950/90 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
-              {currentSubCategories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveSubCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors border border-transparent
-                            ${activeSubCategory === cat
-                      ? 'bg-white text-black'
-                      : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-white'}`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>}
-
-            {/* Micro dramas lead discovery only when published titles exist. */}
-            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && !videos.some(isMicroDrama) && <MicroDramaComingSoon compact onExplore={() => handleNavigate(ViewState.MICRO_DRAMAS)} />}
-            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && videos.some(isMicroDrama) && (
-              <SeriesCarousel title="Micro Dramas · Small episodes. Big stories." videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} onPlay={openVideo} />
-            )}
-
-            {currentView === ViewState.HOME && !searchQuery && recommendations.continueWatching.length > 0 && (
-              <VideoCarousel title="Continue watching" videos={recommendations.continueWatching} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} />
-            )}
-            {currentView === ViewState.HOME && !searchQuery && recommendations.forYou.length > 0 && (
-              <VideoCarousel title="Picked for you" videos={recommendations.forYou} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} />
-            )}
-
-            {/* Shorts Shelf (Vertical Video Carousel) - Only on Home */}
-            {currentView === ViewState.HOME && !searchQuery && realShorts.length > 0 && (
-              <ShortsShelf
-                shorts={realShorts}
-                onShortClick={() => setCurrentView(ViewState.SHORTS)}
+            {(currentView !== ViewState.HOME || searchQuery) && (
+              <BrowseIntro
+                view={currentView}
+                subcategory={activeSubCategory}
+                customLabel={customCategory}
+                search={searchQuery}
+                resultCount={filteredVideos.length}
+                loading={isLoadingVideos}
+                onClearSearch={clearSearch}
               />
             )}
 
-            {/* Main Grid */}
-            {(searchQuery || (currentView === ViewState.HOME && activeSubCategory !== 'Trending') || (currentView === ViewState.ORIGINALS && activeSubCategory === 'All') || (!Object.values(ViewState).includes(currentView as ViewState) && !searchQuery) || ([ViewState.EDUCATION, ViewState.FARMERS, ViewState.FAITH, ViewState.KIDS, ViewState.DIASPORA].includes(currentView as ViewState) && !searchQuery)) && (
+            {!searchQuery && (
+              <div className="flex gap-3 overflow-x-auto pb-4 mb-6 no-scrollbar sticky top-0 z-10 bg-zinc-950/90 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
+                {currentSubCategories.map((cat) => (
+                  <button
+                    type="button"
+                    key={cat}
+                    onClick={() => setActiveSubCategory(cat)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors border border-transparent ${
+                      activeSubCategory === cat
+                        ? 'bg-white text-black'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-white'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && !hasMicroDramas && (
+              <MicroDramaComingSoon compact onExplore={() => handleNavigate(ViewState.MICRO_DRAMAS)} />
+            )}
+            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && hasMicroDramas && (
+              <SeriesCarousel
+                title={t('shelf.microDramas')}
+                videos={ratingFilteredVideos.filter(isMicroDrama)}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={isAuthenticated}
+                onPlay={openVideo}
+              />
+            )}
+
+            {currentView === ViewState.HOME && !searchQuery && recommendations.continueWatching.length > 0 && (
+              <VideoCarousel
+                title={t('shelf.continueWatching')}
+                videos={recommendations.continueWatching}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={isAuthenticated}
+              />
+            )}
+            {currentView === ViewState.HOME && !searchQuery && recommendations.forYou.length > 0 && (
+              <VideoCarousel
+                title={t('shelf.forYou')}
+                videos={recommendations.forYou}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={isAuthenticated}
+              />
+            )}
+
+            {currentView === ViewState.HOME && !searchQuery && realShorts.length > 0 && (
+              <ShortsShelf
+                shorts={realShorts}
+                onShortClick={(shortId) => {
+                  setSelectedShortId(shortId);
+                  setCurrentView(ViewState.SHORTS);
+                }}
+              />
+            )}
+
+            {(searchQuery ||
+              (currentView === ViewState.HOME && activeSubCategory !== 'Trending') ||
+              (currentView === ViewState.ORIGINALS && activeSubCategory === 'All') ||
+              (!Object.values(ViewState).includes(currentView as ViewState) && !searchQuery) ||
+              ([ViewState.EDUCATION, ViewState.FARMERS, ViewState.FAITH, ViewState.KIDS, ViewState.DIASPORA].includes(
+                currentView as ViewState,
+              ) &&
+                !searchQuery)) && (
               <div className="catalogue-section-heading">
-                <h2>{searchQuery ? 'Matching titles' : currentView === ViewState.ORIGINALS ? 'The complete collection' : activeSubCategory === 'All' ? 'All titles' : activeSubCategory}</h2>
+                <h2>
+                  {searchQuery
+                    ? language === 'sw'
+                      ? 'Matokeo yanayolingana'
+                      : 'Matching titles'
+                    : currentView === ViewState.ORIGINALS
+                      ? language === 'sw'
+                        ? 'Mkusanyiko kamili'
+                        : 'The complete collection'
+                      : activeSubCategory === 'All'
+                        ? language === 'sw'
+                          ? 'Video zote'
+                          : 'All titles'
+                        : activeSubCategory}
+                </h2>
                 {!isRealContent && !isLoadingVideos && <span className="catalogue-demo-label">DEMO</span>}
               </div>
             )}
 
-            {/* Skeleton loader while fetching from Bunny */}
-            {(isLoadingVideos || (!isRealContent && videos.length === 0)) ? (
+            {isLoadingVideos || (!isRealContent && ratingFilteredVideos.length === 0) ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} className="bg-zinc-900 rounded-lg overflow-hidden animate-pulse">
@@ -735,32 +1041,49 @@ const App: React.FC = () => {
                 ))}
               </div>
             ) : currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Trending' ? (
-              // Netflix-style category carousels
               <div className="space-y-2 animate-in fade-in duration-500">
-                {/* 🔥 Trending — sorted by real view count */}
                 <VideoCarousel
                   key="Trending"
-                  title="Trending Now"
-                  videos={[...videos].sort((a, b) => b.views - a.views).slice(0, 20)}
+                  title={t('shelf.trendingNow')}
+                  videos={[...ratingFilteredVideos].sort((a, b) => b.views - a.views).slice(0, 20)}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
                   isAuthenticated={isAuthenticated}
                 />
 
-                {/* 📺 Series Carousel — groups episodes by seriesTitle/season */}
-                {videos.some(v => (v.category === 'Series' || (v.category === 'Originals' && Boolean(seriesKey(v)))) && !isMicroDrama(v)) && <SeriesCarousel
-                  onPlay={openVideo}
-                  videos={videos.filter(v => (v.category === 'Series' || (v.category === 'Originals' && Boolean(seriesKey(v)))) && !isMicroDrama(v))}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={isAuthenticated}
-                />}
+                {ratingFilteredVideos.some(
+                  (v) => (v.category === 'Series' || (v.category === 'Originals' && Boolean(seriesKey(v)))) && !isMicroDrama(v),
+                ) && (
+                  <SeriesCarousel
+                    title={t('nav.series')}
+                    onPlay={openVideo}
+                    videos={ratingFilteredVideos.filter(
+                      (v) => (v.category === 'Series' || (v.category === 'Originals' && Boolean(seriesKey(v)))) && !isMicroDrama(v),
+                    )}
+                    watchLaterIds={watchLater}
+                    onToggleWatchLater={toggleWatchLater}
+                    isAuthenticated={isAuthenticated}
+                  />
+                )}
 
-                {/* Standard category carousels */}
-                {['Movies', 'Farmers', 'Education', 'Faith', 'Kids', 'Diaspora'].map(cat => {
-                  // Fallback for old "Originals" tag until all content is migrated
-                  const catVideos = videos.filter(v => v.category === cat || (cat === 'Movies' && v.category === 'Originals'));
-                  const label = cat === 'Movies' ? 'Kenyan Movies' : cat;
+                {['Movies', 'Farmers', 'Education', 'Faith', 'Kids', 'Diaspora'].map((cat) => {
+                  const catVideos =
+                    cat === 'Kids'
+                      ? ratingFilteredVideos.filter(isKidsVideo)
+                      : ratingFilteredVideos.filter((v) => v.category === cat || (cat === 'Movies' && v.category === 'Originals'));
+                  const label =
+                    cat === 'Movies'
+                      ? t('shelf.kenyanMovies')
+                      : cat === 'Kids'
+                        ? t('shelf.watotoKids')
+                        : cat === 'Farmers'
+                          ? t('nav.farmers')
+                          : cat === 'Education'
+                            ? t('nav.education')
+                            : cat === 'Faith'
+                              ? t('nav.faith')
+                              : t('nav.diaspora');
+                  if (catVideos.length === 0) return null;
                   return (
                     <VideoCarousel
                       key={cat}
@@ -774,30 +1097,79 @@ const App: React.FC = () => {
                 })}
               </div>
             ) : currentView === ViewState.MICRO_DRAMAS && !searchQuery ? (
-              videos.some(isMicroDrama) ? <SeriesCarousel title="Micro Dramas" videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} onPlay={openVideo} /> : <MicroDramaComingSoon onMovies={() => handleNavigate(ViewState.ORIGINALS, 'Movies')} onSeries={() => handleNavigate(ViewState.ORIGINALS, 'Series')} />
+              hasMicroDramas ? (
+                <SeriesCarousel
+                  title={t('nav.microDramas')}
+                  videos={ratingFilteredVideos.filter(isMicroDrama)}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                  onPlay={openVideo}
+                />
+              ) : (
+                <MicroDramaComingSoon
+                  onMovies={() => handleNavigate(ViewState.ORIGINALS, 'Movies')}
+                  onSeries={() => handleNavigate(ViewState.ORIGINALS, 'Series')}
+                />
+              )
             ) : currentView === ViewState.ORIGINALS && !searchQuery ? (
-              // Nested Originals View
               <div className="space-y-2 animate-in fade-in duration-500">
                 {activeSubCategory === 'All' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {filteredVideos.map(video => <div key={video.id}><VideoCard video={video} isWatchLater={watchLater.includes(video.id)} onToggleWatchLater={toggleWatchLater} /></div>)}
+                    {filteredVideos.map((video) => (
+                      <div key={video.id}>
+                        <VideoCard
+                          video={video}
+                          isWatchLater={watchLater.includes(video.id)}
+                          onToggleWatchLater={toggleWatchLater}
+                        />
+                      </div>
+                    ))}
                   </div>
-                ) : activeSubCategory === 'Micro Dramas' ? (videos.some(isMicroDrama) ? <SeriesCarousel title="Micro Dramas" videos={videos.filter(isMicroDrama)} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} onPlay={openVideo} /> : <MicroDramaComingSoon onMovies={() => handleNavigate(ViewState.ORIGINALS, 'Movies')} onSeries={() => handleNavigate(ViewState.ORIGINALS, 'Series')} />) : activeSubCategory === 'Series' ? (
-                  <>
-                    {filteredVideos.length > 0 && <SeriesCarousel
-                      title="All Series"
-                      videos={filteredVideos}
+                ) : activeSubCategory === 'Micro Dramas' ? (
+                  hasMicroDramas ? (
+                    <SeriesCarousel
+                      title={t('nav.microDramas')}
+                      videos={ratingFilteredVideos.filter(isMicroDrama)}
                       watchLaterIds={watchLater}
                       onToggleWatchLater={toggleWatchLater}
+                      isAuthenticated={isAuthenticated}
                       onPlay={openVideo}
-                    />}
-                  </>
-                ) : (
+                    />
+                  ) : (
+                    <MicroDramaComingSoon
+                      onMovies={() => handleNavigate(ViewState.ORIGINALS, 'Movies')}
+                      onSeries={() => handleNavigate(ViewState.ORIGINALS, 'Series')}
+                    />
+                  )
+                ) : activeSubCategory === 'Series' ? (
                   <>
-                    {filteredVideos.length > 0 && <VideoCarousel title="All Movies" videos={filteredVideos} watchLaterIds={watchLater} onToggleWatchLater={toggleWatchLater} isAuthenticated={isAuthenticated} />}
-                    {/* Movies Carousels */}
-                    {['Swahili', 'Drama', 'Comedy', 'Documentary', 'Action'].map(genre => {
-                      const genreVideos = filteredVideos.filter(v => v.genre?.includes(genre) || v.tags?.includes(genre));
+                    {filteredVideos.length > 0 && (
+                      <SeriesCarousel
+                        title={t('nav.series')}
+                        videos={filteredVideos}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        onPlay={openVideo}
+                      />
+                    )}
+                  </>
+                ) : activeSubCategory === 'Movies' ? (
+                  <>
+                    {filteredVideos.length > 0 && (
+                      <VideoCarousel
+                        title={t('nav.movies')}
+                        videos={filteredVideos}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        isAuthenticated={isAuthenticated}
+                      />
+                    )}
+                    {availableGenres.map((genre) => {
+                      const genreVideos = filteredVideos.filter(
+                        (v) =>
+                          (v.genre || '').toLowerCase().includes(genre.toLowerCase()) ||
+                          (v.tags || []).some((tag) => tag.toLowerCase().includes(genre.toLowerCase())),
+                      );
                       if (genreVideos.length === 0) return null;
                       return (
                         <VideoCarousel
@@ -811,222 +1183,490 @@ const App: React.FC = () => {
                       );
                     })}
                   </>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {filteredVideos.map((video) => (
+                      <div key={video.id}>
+                        <VideoCard
+                          video={video}
+                          isWatchLater={watchLater.includes(video.id)}
+                          onToggleWatchLater={toggleWatchLater}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : currentView === ViewState.GENRES && !searchQuery ? (
+              <div className="space-y-4 animate-in fade-in duration-500">
+                {activeSubCategory === 'All' ? (
+                  genreCarousels.length > 0 ? (
+                    genreCarousels.map(({ genre, videos: genreVideos }) => (
+                      <VideoCarousel
+                        key={genre}
+                        title={`${genre} Stories`}
+                        videos={genreVideos}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        isAuthenticated={isAuthenticated}
+                      />
+                    ))
+                  ) : null
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {filteredVideos.map((video) => (
+                      <div id={`video-${video.id}`} key={video.id}>
+                        <VideoCard
+                          video={video}
+                          isWatchLater={watchLater.includes(video.id)}
+                          onToggleWatchLater={toggleWatchLater}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4 duration-500">
-                  {filteredVideos.map((video) => (
-                    <div id={`video-${video.id}`} key={video.id}>
-                      <VideoCard
-                        video={video}
-                        isWatchLater={watchLater.includes(video.id)}
-                        onToggleWatchLater={toggleWatchLater}
-
-
-                      />
-                    </div>
-                  ))}
-                </div>
-
-              </>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4 duration-500">
+                {filteredVideos.map((video) => (
+                  <div id={`video-${video.id}`} key={video.id}>
+                    <VideoCard
+                      video={video}
+                      isWatchLater={watchLater.includes(video.id)}
+                      onToggleWatchLater={toggleWatchLater}
+                    />
+                  </div>
+                ))}
+              </div>
             )}
 
-            {/* Empty state — only if not loading and no results */}
-            {!isLoadingVideos && !(currentView === ViewState.MICRO_DRAMAS && !searchQuery) && !(currentView === ViewState.ORIGINALS && activeSubCategory === 'Micro Dramas' && !searchQuery) && (currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Trending' ? videos.length === 0 : filteredVideos.length === 0) && (
-              <CatalogueEmptyState search={searchQuery} subcategory={activeSubCategory}
-                onClearSearch={clearSearch} onShowAll={() => setActiveSubCategory('All')}
-                onBrowse={() => handleNavigate(ViewState.HOME)} />
+            {!isLoadingVideos &&
+              !(currentView === ViewState.MICRO_DRAMAS && !searchQuery) &&
+              !(currentView === ViewState.ORIGINALS && activeSubCategory === 'Micro Dramas' && !searchQuery) &&
+              (currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Trending'
+                ? ratingFilteredVideos.length === 0
+                : currentView === ViewState.GENRES && !searchQuery && activeSubCategory === 'All'
+                  ? genreCarousels.length === 0
+                  : filteredVideos.length === 0) && (
+                <CatalogueEmptyState
+                  search={searchQuery}
+                  subcategory={activeSubCategory}
+                  onClearSearch={clearSearch}
+                  onShowAll={() => setActiveSubCategory('All')}
+                  onBrowse={() => handleNavigate(ViewState.HOME)}
+                />
+              )}
+
+            {currentView === ViewState.HOME && !searchQuery && (
+              <ViewerWelcome navigate={handleNavigate} hasMicroDramas={hasMicroDramas} />
             )}
-
-            {currentView === ViewState.HOME && !searchQuery && <ViewerWelcome navigate={handleNavigate} />}
-
           </div>
         );
+      }
     }
   };
 
-  const legalKind = window.location.pathname === '/privacy' ? 'privacy' : window.location.pathname === '/terms' ? 'terms' : null;
-  if (legalKind) {
-    return <LegalPage kind={legalKind} />;
-  }
-
   return (
-    <PlaybackProvider value={{
-      preferences,
-      getProgress: (videoId) => watchProgress[videoId],
-      onEnded: handleVideoEnded,
-      onProgress: handleWatchProgress,
-    }}>
+    <PlaybackProvider
+      value={{
+        preferences,
+        getProgress: (videoId) => watchProgress[videoId],
+        onEnded: handleVideoEnded,
+        onProgress: handleWatchProgress,
+        isLocked: (video) => isVideoLocked(video, hasActivePass),
+        onRequireUnlock: (video) => setPaywallVideo(video),
+        onOpenSettings: () => {
+          closeVideo();
+          handleNavigate(ViewState.SETTINGS, 'general');
+        },
+      }}
+    >
       <div className="flex h-screen bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">
-      {/* Verified phone authentication modal */}
-      {showLogin && !isAuthenticated && (
-        <Suspense fallback={<LoadingPanel label="Opening login..." />}>
-          <AuthModal
-            onSuccess={(user) => {
-              setCurrentUser(user);
-              setIsAuthenticated(true);
-              setShowLogin(false);
-              setCurrentView(ViewState.HOME);
-            }}
-            onCancel={() => setShowLogin(false)}
-          />
-        </Suspense>
-      )}
+        {showLogin && !isAuthenticated && (
+          <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+            <AuthModal
+              onSuccess={(user) => {
+                setCurrentUser(user);
+                setIsAuthenticated(true);
+                setShowLogin(false);
+                setCurrentView(ViewState.HOME);
+              }}
+              onCancel={() => setShowLogin(false)}
+            />
+          </Suspense>
+        )}
 
-      {/* Instant M-Pesa Paywall Modal */}
-      {paywallVideo && (
-        <Suspense fallback={<LoadingPanel label="Opening pass..." />}>
-          <PaywallModal
-            video={paywallVideo}
-            onSuccess={() => {
-              const target = paywallVideo;
-              setPaywallVideo(null);
-              void refreshAccessState().then(() => {
-                window.history.pushState({}, '', videoPath(target.id));
-                setActiveHeroVideo(target);
-              });
-            }}
-            onClose={() => setPaywallVideo(null)}
-          />
-        </Suspense>
-      )}
+        {paywallVideo && (
+          <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+            <PaywallModal
+              video={paywallVideo}
+              onSuccess={() => {
+                const target = paywallVideo;
+                setPaywallVideo(null);
+                setHasActivePass(true);
+                void refreshAccessState().then(() => {
+                  window.history.pushState({}, '', videoPath(target.id));
+                  setActiveHeroVideo(target);
+                });
+              }}
+              onClose={() => setPaywallVideo(null)}
+            />
+          </Suspense>
+        )}
 
-      {activeHeroVideo && (
-        <div
-          ref={playerDialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Playing ${activeHeroVideo.title}`}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-3 md:p-8"
-          onClick={closeVideo}
-        >
-          <div className={`cinema-player relative w-full max-h-[90vh] overflow-y-auto ${isMicroDrama(activeHeroVideo) ? "cinema-player-vertical max-w-sm" : "max-w-5xl"}`} onClick={(event) => event.stopPropagation()}>
-            <div className="cinema-player-header"><button aria-label="Back to browsing" onClick={closeVideo}>←</button><span className="cinema-logo">Tube<span>TV</span></span><span /></div>
-            <button
-              type="button"
-              aria-label="Close player"
-              onClick={closeVideo}
-              className="absolute top-3 right-3 z-50 rounded-full p-2 text-white hover:bg-zinc-700"
+        {activeHeroVideo && (
+          <div
+            ref={playerDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Playing ${activeHeroVideo.title}`}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-3 md:p-8"
+            onClick={closeVideo}
+          >
+            <div
+              className={`cinema-player relative w-full max-h-[90vh] overflow-y-auto ${
+                isMicroDrama(activeHeroVideo) ? 'cinema-player-vertical max-w-sm' : 'max-w-5xl'
+              }`}
+              onClick={(event) => event.stopPropagation()}
             >
-              <X className="h-5 w-5" />
-            </button>
-            <Suspense fallback={<LoadingPanel label="Opening player..." />}>
-              <VideoCard
-                key={activeHeroVideo.id}
-                video={activeHeroVideo}
-                autoPlay
-                playerOnly
-                nextEpisode={nextEpisode(videos, activeHeroVideo.id)}
-                onNextEpisode={() => {
-                  const next = nextEpisode(videos, activeHeroVideo.id);
-                  if (next) {
-                    if (isVideoLocked(next, hasActivePass, unlockedVideoIds)) {
-                      setPaywallVideo(next);
-                    } else {
-                      trackEvent('episode_next', { fromVideoId: activeHeroVideo.id, toVideoId: next.id, automatic: false });
-                      openVideo(next);
-                    }
-                  }
-                }}
-              />
-            <div className="cinema-player-info bg-zinc-950 p-5">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                <span className="rounded border border-zinc-700 px-2 py-1">{activeHeroVideo.contentRating || 'UNRATED'}</span>
-                <span className={`rounded border px-2 py-0.5 font-bold ${activeHeroVideo.accessTier === 'premium' ? 'border-amber-500/40 bg-amber-500/20 text-amber-300' : 'border-emerald-500/40 bg-emerald-500/20 text-emerald-300'}`}>
-                  {activeHeroVideo.accessTier === 'premium' ? 'PREMIUM' : 'FREE'}
+              <div className="cinema-player-header">
+                <button type="button" aria-label={t('player.backToBrowsing')} onClick={closeVideo}>
+                  ←
+                </button>
+                <span className="cinema-logo">
+                  Tube<span>TV</span>
                 </span>
-                <span>{activeHeroVideo.category}</span>
-                <span>{activeHeroVideo.author}</span>
+                <span />
               </div>
-              <h1 className="mt-3 text-xl font-bold">{activeHeroVideo.seriesTitle || activeHeroVideo.title}</h1>
-              {seriesKey(activeHeroVideo) && <p className="mt-1 text-sm text-zinc-300">Season {activeHeroVideo.season || 1} · Episode {activeHeroVideo.episode || 1}</p>}
-              {(activeHeroVideo.episodeSynopsis || activeHeroVideo.description) && <p className="mt-2 text-sm leading-6 text-zinc-300">{activeHeroVideo.episodeSynopsis || activeHeroVideo.description}</p>}
-              {nextEpisode(videos, activeHeroVideo.id) && (
-                <button
-                  className="cinema-primary mt-4 w-full"
-                  onClick={() => {
-                    const next = nextEpisode(videos, activeHeroVideo.id);
+              <button
+                type="button"
+                aria-label="Close player"
+                onClick={closeVideo}
+                className="absolute top-3 right-3 z-50 rounded-full p-2 text-white hover:bg-zinc-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+                <VideoCard
+                  key={`${activeHeroVideo.id}:${replayNonce}`}
+                  video={activeHeroVideo}
+                  autoPlay
+                  playerOnly
+                  nextEpisode={nextEpisode(ratingFilteredVideos, activeHeroVideo.id)}
+                  onNextEpisode={() => {
+                    const next = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
                     if (next) {
-                      if (isVideoLocked(next, hasActivePass, unlockedVideoIds)) {
+                      if (isVideoLocked(next, hasActivePass)) {
                         setPaywallVideo(next);
                       } else {
-                        trackEvent('episode_next', { fromVideoId: activeHeroVideo.id, toVideoId: next.id, automatic: false });
+                        trackEvent('episode_next', {
+                          fromVideoId: activeHeroVideo.id,
+                          toVideoId: next.id,
+                          automatic: false,
+                        });
                         openVideo(next);
                       }
                     }
                   }}
-                >
-                  ▶ Next episode {isVideoLocked(nextEpisode(videos, activeHeroVideo.id)!, hasActivePass, unlockedVideoIds) ? '🔒' : ''}
-                </button>
-              )}
-              {activeHeroVideo.transcript && (
-                <details className="mt-4 border-t border-zinc-800 pt-4">
-                  <summary className="cursor-pointer font-medium">Transcript</summary>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{activeHeroVideo.transcript}</p>
-                </details>
-              )}
-            </div>
-            {seriesKey(activeHeroVideo) && <details className="cinema-player-episodes">
-              <summary>Episodes <span>See all</span></summary>
-              {activeHeroVideo.seriesSynopsis && <p>{activeHeroVideo.seriesSynopsis}</p>}
-              {videos.filter(video => seriesKey(video) === seriesKey(activeHeroVideo)).sort(compareEpisodes).map(video => {
-                const isLocked = isVideoLocked(video, hasActivePass, unlockedVideoIds);
-                return (
-                  <button key={video.id} aria-current={video.id === activeHeroVideo.id ? 'true' : undefined} onClick={() => openVideo(video)}>
-                    <CatalogueArtwork src={video.thumbnail} className={`cinema-player-episode-art ${isMicroDrama(video) ? 'cinema-player-episode-art-vertical' : ''}`} />
-                    <span className="cinema-player-episode-copy">
-                      <span className="flex items-center gap-1.5">
-                        S{video.season || 1} · E{video.episode || 1} — {video.title}
-                        {isLocked && <span className="text-[10px] text-amber-400 font-bold">🔒 LOCKED</span>}
+                />
+                {isVideoFinished && !nextEpisode(ratingFilteredVideos, activeHeroVideo.id) && (
+                  <div className="bg-gradient-to-r from-red-950/80 via-zinc-900 to-zinc-950 border-b border-red-500/40 p-4 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in duration-300">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-red-400 bg-red-950/80 border border-red-500/30 px-2 py-0.5 rounded">
+                        {t('player.storyFinished')}
                       </span>
-                      <small>{video.episodeSynopsis || video.description}</small>
+                      <p className="mt-1 text-sm font-semibold text-white">
+                        {t('player.finishedWatching', { title: activeHeroVideo.seriesTitle || activeHeroVideo.title })}
+                      </p>
+                      <p className="text-xs text-zinc-400">{t('player.finishedHint')}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleWatchProgress(activeHeroVideo.id, {
+                            positionSeconds: 0,
+                            durationSeconds: watchProgress[activeHeroVideo.id]?.durationSeconds || 0,
+                            completed: false,
+                          });
+                          setIsVideoFinished(false);
+                          setReplayNonce((n) => n + 1);
+                        }}
+                        className="cinema-secondary text-xs py-1.5 px-3"
+                      >
+                        ↺ {t('player.replay')}
+                      </button>
+                      {playerRecommendations[0] && (
+                        <button
+                          type="button"
+                          onClick={() => openVideo(playerRecommendations[0])}
+                          className="cinema-primary text-xs py-1.5 px-3.5 whitespace-nowrap"
+                        >
+                          ▶ {t('player.watchNext')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="cinema-player-info bg-zinc-950 p-5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                    <span className="rounded border border-zinc-700 px-2 py-1">
+                      {activeHeroVideo.contentRating || 'UNRATED'}
                     </span>
-                  </button>
-                );
-              })}
-            </details>}
+                    <span
+                      className={`rounded border px-2 py-0.5 font-bold ${
+                        isVideoLocked(activeHeroVideo, false)
+                          ? 'border-amber-500/40 bg-amber-500/20 text-amber-300'
+                          : 'border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
+                      }`}
+                    >
+                      {isVideoLocked(activeHeroVideo, false) ? t('player.premium') : t('player.free')}
+                    </span>
+                    <span>{activeHeroVideo.category}</span>
+                    <span>{activeHeroVideo.author}</span>
+                  </div>
+                  <h1 className="mt-3 text-xl font-bold">{activeHeroVideo.seriesTitle || activeHeroVideo.title}</h1>
+                  {seriesKey(activeHeroVideo) && (
+                    <p className="mt-1 text-sm text-zinc-300">
+                      Season {activeHeroVideo.season || 1} · Episode {activeHeroVideo.episode || 1}
+                    </p>
+                  )}
+                  {(activeHeroVideo.episodeSynopsis || activeHeroVideo.description) && (
+                    <p className="mt-2 text-sm leading-6 text-zinc-300">
+                      {activeHeroVideo.episodeSynopsis || activeHeroVideo.description}
+                    </p>
+                  )}
+                  {nextEpisode(ratingFilteredVideos, activeHeroVideo.id) && (
+                    <button
+                      type="button"
+                      className="cinema-primary mt-4 w-full"
+                      onClick={() => {
+                        const next = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
+                        if (next) {
+                          if (isVideoLocked(next, hasActivePass)) {
+                            setPaywallVideo(next);
+                          } else {
+                            trackEvent('episode_next', {
+                              fromVideoId: activeHeroVideo.id,
+                              toVideoId: next.id,
+                              automatic: false,
+                            });
+                            openVideo(next);
+                          }
+                        }
+                      }}
+                    >
+                      ▶ {t('player.nextEpisode')}{' '}
+                      {isVideoLocked(nextEpisode(ratingFilteredVideos, activeHeroVideo.id)!, hasActivePass) ? '🔒' : ''}
+                    </button>
+                  )}
+                  {activeHeroVideo.transcript && (
+                    <details className="mt-4 border-t border-zinc-800 pt-4">
+                      <summary className="cursor-pointer font-medium">{t('player.transcript')}</summary>
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-300">
+                        {activeHeroVideo.transcript}
+                      </p>
+                    </details>
+                  )}
+                </div>
+                {seriesKey(activeHeroVideo) && (
+                  <details className="cinema-player-episodes">
+                    <summary>
+                      {t('player.episodes')} <span>{t('player.seeAll')}</span>
+                    </summary>
+                    {activeHeroVideo.seriesSynopsis && <p>{activeHeroVideo.seriesSynopsis}</p>}
+                    {ratingFilteredVideos
+                      .filter((video) => seriesKey(video) === seriesKey(activeHeroVideo))
+                      .sort(compareEpisodes)
+                      .map((video) => {
+                        const locked = isVideoLocked(video, hasActivePass);
+                        return (
+                          <button
+                            type="button"
+                            key={video.id}
+                            aria-current={video.id === activeHeroVideo.id ? 'true' : undefined}
+                            onClick={() => openVideo(video)}
+                          >
+                            <CatalogueArtwork
+                              src={video.thumbnail}
+                              className={`cinema-player-episode-art ${
+                                isMicroDrama(video) ? 'cinema-player-episode-art-vertical' : ''
+                              }`}
+                            />
+                            <span className="cinema-player-episode-copy">
+                              <span className="flex items-center gap-1.5">
+                                S{video.season || 1} · E{video.episode || 1} — {video.title}
+                                {locked && (
+                                  <span className="text-[10px] text-amber-400 font-bold">🔒 {t('player.locked')}</span>
+                                )}
+                              </span>
+                              <small>{video.episodeSynopsis || video.description}</small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </details>
+                )}
+
+                {playerRecommendations.length > 0 && (
+                  <div className="cinema-player-recommended bg-zinc-950 p-5 border-t border-zinc-800/80">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <span className="text-red-500">★</span> {t('player.recommended')}
+                      </h3>
+                      <span className="text-xs text-zinc-500">{t('player.moreLikeThis')}</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {playerRecommendations.slice(0, 4).map((rec) => {
+                        const recLocked = isVideoLocked(rec, hasActivePass);
+                        return (
+                          <button
+                            type="button"
+                            key={rec.id}
+                            onClick={() => openVideo(rec)}
+                            className="group flex flex-col text-left overflow-hidden rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition"
+                          >
+                            <div className="aspect-video w-full relative overflow-hidden bg-zinc-800">
+                              <CatalogueArtwork
+                                src={rec.thumbnail}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
+                              <span className="absolute bottom-1 right-1 bg-black/80 px-1.5 py-0.5 rounded text-[10px] text-zinc-300 font-mono">
+                                {rec.duration}
+                              </span>
+                              {recLocked && (
+                                <span className="absolute top-1 left-1 bg-amber-500/90 text-black px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                  {t('player.premium')}
+                                </span>
+                              )}
+                            </div>
+                            <div className="p-2 flex flex-col gap-0.5">
+                              <span className="text-xs font-semibold text-white line-clamp-1 group-hover:text-red-400 transition-colors">
+                                {rec.seriesTitle || rec.title}
+                              </span>
+                              <div className="flex items-center gap-1 text-[10px] text-zinc-400">
+                                <span>{rec.genre || rec.category}</span>
+                                <span>·</span>
+                                <span className="truncate">{rec.author}</span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </Suspense>
+            </div>
+          </div>
+        )}
+
+        <div
+          className={`cinema-shell flex-1 flex flex-col h-screen overflow-hidden relative ${
+            currentView === ViewState.SHORTS ? 'shorts-shell' : ''
+          }`}
+        >
+          <CinemaNavigation
+            view={currentView}
+            subcategory={activeSubCategory}
+            items={translatedNavItems}
+            authenticated={isAuthenticated}
+            admin={isAdmin}
+            search={searchQuery}
+            onSearch={handleSearch}
+            navigate={handleNavigate}
+            login={() => setShowLogin(true)}
+            logout={handleLogout}
+          />
+
+          <main
+            ref={mainRef}
+            className={`flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar ${
+              currentView === ViewState.HOME && !searchQuery ? 'landing-main' : ''
+            } ${currentView === ViewState.SHORTS ? 'shorts-main' : ''}`}
+          >
+            <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+              {renderContent()}
+              {(currentView === ViewState.HOME ||
+                currentView === ViewState.ORIGINALS ||
+                currentView === ViewState.MICRO_DRAMAS ||
+                currentView === ViewState.GENRES ||
+                [
+                  ViewState.EDUCATION,
+                  ViewState.FARMERS,
+                  ViewState.FAITH,
+                  ViewState.KIDS,
+                  ViewState.DIASPORA,
+                  ViewState.LIVE,
+                  ViewState.WATCH_LATER,
+                ].includes(currentView as ViewState) ||
+                navItems.some((item) => item.id === currentView && item.isCustom)) && (
+                <LandingFooter navigate={handleNavigate} />
+              )}
             </Suspense>
-      {/* Sidebar */}
+          </main>
+
+          {/* Mobile Bottom Nav */}
+          <div
+            className={`md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 flex justify-around p-3 z-50 pb-safe ${
+              currentView === ViewState.SHORTS ? 'shorts-hidden-mobile' : ''
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => handleNavigate(ViewState.HOME)}
+              className={`flex flex-col items-center gap-1 ${
+                currentView === ViewState.HOME ? 'text-white' : 'text-zinc-500'
+              }`}
+            >
+              <Home size={20} />
+              <span className="text-[10px]">{t('nav.home')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavigate(ViewState.MICRO_DRAMAS)}
+              className={`flex flex-col items-center gap-1 ${
+                currentView === ViewState.MICRO_DRAMAS ? 'text-red-500' : 'text-zinc-500'
+              }`}
+            >
+              <div className="w-5 h-5 border-2 border-current rounded-sm" />
+              <span className="text-[10px]">{t('nav.microDramas')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavigate(ViewState.SHORTS)}
+              className={`flex flex-col items-center gap-1 ${
+                currentView === ViewState.SHORTS ? 'text-white' : 'text-zinc-500'
+              }`}
+            >
+              <PlayCircle size={20} />
+              <span className="text-[10px]">{t('nav.shorts')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavigate(ViewState.WATCH_LATER)}
+              className={`flex flex-col items-center gap-1 ${
+                currentView === ViewState.WATCH_LATER ? 'text-white' : 'text-zinc-500'
+              }`}
+            >
+              <Clock size={20} />
+              <span className="text-[10px]">{t('nav.myList')}</span>
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => handleNavigate(ViewState.ANALYTICS)}
+                className={`flex flex-col items-center gap-1 ${
+                  currentView === ViewState.ANALYTICS ? 'text-white' : 'text-zinc-500'
+                }`}
+              >
+                <BarChart2 size={20} />
+                <span className="text-[10px]">{t('nav.studioShort')}</span>
+              </button>
+            )}
           </div>
         </div>
-      )}
-      {/* Main Content Area */}
-      <div className={`cinema-shell flex-1 flex flex-col h-screen overflow-hidden relative ${currentView === ViewState.SHORTS ? 'shorts-shell' : ''}`}>
-        <CinemaNavigation view={currentView} subcategory={activeSubCategory} items={translatedNavItems}
-          authenticated={isAuthenticated} admin={isAdmin} search={searchQuery} onSearch={handleSearch}
-          navigate={handleNavigate} login={() => setShowLogin(true)} logout={handleLogout} />
-
-        {/* Scrollable View Content */}
-        <main ref={mainRef} className={`flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar ${currentView === ViewState.HOME && !searchQuery ? 'landing-main' : ''} ${currentView === ViewState.SHORTS ? 'shorts-main' : ''}`}>
-          <Suspense fallback={<LoadingPanel label="Loading Tube TV..." />}>
-            {renderContent()}
-            {(currentView === ViewState.HOME || currentView === ViewState.ORIGINALS || currentView === ViewState.MICRO_DRAMAS || [ViewState.EDUCATION, ViewState.FARMERS, ViewState.FAITH, ViewState.KIDS, ViewState.DIASPORA, ViewState.LIVE, ViewState.WATCH_LATER].includes(currentView as ViewState) || navItems.some(item => item.id === currentView && item.isCustom)) && <LandingFooter navigate={handleNavigate} />}
-          </Suspense>
-        </main>
-
-        {/* Mobile Bottom Nav (Simplified for common tasks) */}
-        <div className={`md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 flex justify-around p-3 z-50 pb-safe ${currentView === ViewState.SHORTS ? 'shorts-hidden-mobile' : ''}`}>
-          <button
-            onClick={() => handleNavigate(ViewState.HOME)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.HOME ? 'text-white' : 'text-zinc-500'}`}
-          >
-            <Home size={20} />
-            <span className="text-[10px]">Home</span>
-          </button>
-          <button
-            onClick={() => handleNavigate(ViewState.MICRO_DRAMAS)}
-            className={`flex flex-col items-center gap-1 ${currentView === ViewState.MICRO_DRAMAS ? 'text-red-500' : 'text-zinc-500'}`}
-          >
-            <div className="w-5 h-5 border-2 border-current rounded-sm"></div>
-            <span className="text-[10px]">Micro Dramas</span>
-          </button>
-          <button onClick={() => handleNavigate(ViewState.SHORTS)} className={`flex flex-col items-center gap-1 ${currentView === ViewState.SHORTS ? 'text-white' : 'text-zinc-500'}`}><PlayCircle size={20} /><span className="text-[10px]">Shorts</span></button>
-          <button onClick={() => handleNavigate(ViewState.WATCH_LATER)} className={`flex flex-col items-center gap-1 ${currentView === ViewState.WATCH_LATER ? 'text-white' : 'text-zinc-500'}`}><Clock size={20} /><span className="text-[10px]">My List</span></button>
-          {isAdmin && <button onClick={() => handleNavigate(ViewState.ANALYTICS)} className={`flex flex-col items-center gap-1 ${currentView === ViewState.ANALYTICS ? 'text-white' : 'text-zinc-500'}`}><BarChart2 size={20} /><span className="text-[10px]">Studio</span></button>}
-        </div>
       </div>
-    </div>
     </PlaybackProvider>
   );
 };

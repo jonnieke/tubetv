@@ -1,18 +1,53 @@
 {
   "name": "TubeTV",
   "short_name": "TubeTV",
-  "description": "Kenya's home for original content, education, farming, faith and live streams.",
+  "description": "Kenya's home for original series, micro dramas, movies, education, farming, faith and live streams.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#dc2626",
+  "background_color": "#080c0d",
+  "theme_color": "#e50923",
   "orientation": "any",
   "lang": "en-KE",
   "scope": "/",
   "categories": ["entertainment", "education", "news"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
   "shortcuts": [
-    { "name": "Watch Live", "short_name": "Live", "url": "/?view=LIVE" },
-    { "name": "Shorts", "short_name": "Shorts", "url": "/?view=SHORTS" },
-    { "name": "Education", "short_name": "Learn", "url": "/?view=EDUCATION" }
+    {
+      "name": "Micro Dramas",
+      "short_name": "Dramas",
+      "url": "/?view=MICRO_DRAMAS",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Watch Live",
+      "short_name": "Live",
+      "url": "/?view=LIVE",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Shorts",
+      "short_name": "Shorts",
+      "url": "/?view=SHORTS",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
   ]
 }

@@ -1,15 +1,38 @@
-﻿import React, { useEffect, useState } from 'react';
-import { Check, Download, Globe, Loader2, LogOut, Monitor, Shield, Smartphone, Trash2, User } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  CheckCircle2,
+  Download,
+  Globe,
+  KeyRound,
+  Loader2,
+  LogOut,
+  Monitor,
+  Shield,
+  Smartphone,
+  Ticket,
+  Trash2,
+  User,
+} from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import type { PlaybackPreferences } from '../lib/viewerState';
+import { clearViewerLocalData, DEFAULT_PLAYBACK_PREFERENCES, type PlaybackPreferences } from '../lib/viewerState';
+import {
+  clearStoredPass,
+  getStoredPass,
+  restoreMpesaPass,
+  type StoredPass,
+} from '../lib/subscriptions';
 import { useLanguage } from '../contexts/LanguageContext';
 import { deleteAccount, exportAccountData } from '../lib/privacy';
+import { trackEvent } from '../lib/analytics';
+
+export type SettingsTabId = 'general' | 'pass' | 'account' | 'privacy';
 
 interface SettingsSectionProps {
   currentUser?: SupabaseUser | null;
-  initialTab?: 'general' | 'account' | 'privacy';
+  initialTab?: SettingsTabId;
   userPhone?: string | null;
   onLogout?: () => void;
+  onLocalDataCleared?: () => void;
   preferences: PlaybackPreferences;
   onPreferencesChange: (preferences: PlaybackPreferences) => void;
 }
@@ -18,26 +41,86 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   currentUser,
   userPhone,
   onLogout,
+  onLocalDataCleared,
   preferences,
   initialTab = 'general',
   onPreferencesChange,
 }) => {
-  const { language, setLanguage } = useLanguage();
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const { language, setLanguage, t } = useLanguage();
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
   const [privacyBusy, setPrivacyBusy] = useState(false);
   const [privacyMessage, setPrivacyMessage] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+
+  // M-Pesa Pass state
+  const [storedPass, setStoredPass] = useState<StoredPass | null>(() => getStoredPass());
+  const [restoreReceipt, setRestoreReceipt] = useState('');
+  const [restorePhone, setRestorePhone] = useState('');
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [passMessage, setPassMessage] = useState('');
+  const [passError, setPassError] = useState('');
 
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
 
+  useEffect(() => {
+    const syncPass = () => setStoredPass(getStoredPass());
+    window.addEventListener('tubetv:pass-updated', syncPass);
+    return () => window.removeEventListener('tubetv:pass-updated', syncPass);
+  }, []);
+
   const updatePreference = <K extends keyof PlaybackPreferences>(key: K, value: PlaybackPreferences[K]) => {
     onPreferencesChange({ ...preferences, [key]: value });
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     onLogout?.();
+  };
+
+  const handleRestoreSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassError('');
+    setPassMessage('');
+
+    const cleanReceipt = restoreReceipt.trim().toUpperCase();
+    const cleanPhone = restorePhone.replace(/[\s()-]/g, '');
+    if (!/^[A-Z0-9]{8,16}$/.test(cleanReceipt)) {
+      setPassError('Enter a valid M-Pesa receipt code (e.g. QKH89X2LMS).');
+      return;
+    }
+    if (!/^(?:254|\+254|0)?([17]\d{8})$/.test(cleanPhone)) {
+      setPassError('Enter a valid Safaricom phone number (e.g. 0712 345 678).');
+      return;
+    }
+
+    try {
+      setRestoreBusy(true);
+      const restored = await restoreMpesaPass(cleanReceipt, cleanPhone);
+      setStoredPass(restored);
+      setRestoreReceipt('');
+      setPassMessage('Your active M-Pesa pass has been restored on this device.');
+      trackEvent('pass_restored', { tier: restored.tier, source: 'settings' });
+    } catch (err) {
+      setPassError(err instanceof Error ? err.message : 'Unable to restore pass with those details.');
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
+  const handleRemoveDevicePass = () => {
+    clearStoredPass();
+    setStoredPass(null);
+    setPassMessage('Pass removed from this device. You can restore it anytime using your M-Pesa receipt.');
+  };
+
+  const handleClearLocalDeviceData = () => {
+    clearViewerLocalData();
+    clearStoredPass();
+    setStoredPass(null);
+    onPreferencesChange(DEFAULT_PLAYBACK_PREFERENCES);
+    onLocalDataCleared?.();
+    setPrivacyMessage('Local watch history, saved titles, and device pass data have been cleared from this browser.');
   };
 
   const handleExport = async () => {
@@ -65,6 +148,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
     try {
       setPrivacyBusy(true);
       await deleteAccount(deleteConfirmation);
+      clearViewerLocalData();
+      clearStoredPass();
+      onLocalDataCleared?.();
       onLogout?.();
     } catch (error) {
       setPrivacyMessage(error instanceof Error ? error.message : 'Could not delete your account.');
@@ -72,46 +158,84 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
     }
   };
 
-  const tabs = [
-    { id: 'general', label: 'Playback', icon: Monitor },
-    { id: 'account', label: 'Account', icon: User },
-    { id: 'privacy', label: 'Privacy', icon: Shield },
+  const tabs: ReadonlyArray<{ id: SettingsTabId; label: string; icon: typeof Monitor; requiresAuth?: boolean }> = [
+    { id: 'general', label: t('settings.tabPlayback'), icon: Monitor },
+    { id: 'pass', label: t('settings.tabPass'), icon: Ticket },
+    { id: 'account', label: t('settings.tabAccount'), icon: User, requiresAuth: true },
+    { id: 'privacy', label: t('settings.tabPrivacy'), icon: Shield },
   ];
 
   return (
-    <div className="h-screen overflow-y-auto bg-zinc-950 p-4 pb-24 text-white md:p-8">
+    <div className="min-h-full bg-zinc-950 p-4 pb-24 text-white md:p-8">
       <div className="mx-auto max-w-5xl">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="mt-2 text-sm text-zinc-400">Choose how TubeTV looks and plays on this device.</p>
+          <h1 className="text-3xl font-bold">{t('settings.title')}</h1>
+          <p className="mt-2 text-sm text-zinc-400">{t('settings.subtitle')}</p>
         </header>
 
         <div className="flex flex-col gap-8 lg:flex-row">
-          <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto lg:w-52 lg:flex-col">
-            {tabs.filter(tab => currentUser || tab.id === 'general').map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex shrink-0 items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? 'bg-white text-black' : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'}`}>
-                <tab.icon size={18} /> {tab.label}
-              </button>
-            ))}
+          <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto lg:w-56 lg:flex-col">
+            {tabs
+              .filter((tab) => !tab.requiresAuth || Boolean(currentUser))
+              .map((tab) => (
+                <button
+                  type="button"
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex shrink-0 items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+                    activeTab === tab.id ? 'bg-white text-black' : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'
+                  }`}
+                >
+                  <tab.icon size={18} /> {tab.label}
+                </button>
+              ))}
           </nav>
 
           <div className="min-w-0 flex-1">
             {activeTab === 'general' && (
               <section aria-labelledby="playback-heading" className="space-y-6">
                 <div>
-                  <h2 id="playback-heading" className="text-xl font-bold">Playback and data</h2>
-                  <p className="mt-1 text-sm text-zinc-400">Changes are saved for this device and applied to the player.</p>
+                  <h2 id="playback-heading" className="text-xl font-bold">
+                    {language === 'sw' ? 'Uchezaji na matumizi ya data' : 'Playback and data'}
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    {language === 'sw'
+                      ? 'Mabadiliko yanahifadhiwa kwenye kifaa hiki.'
+                      : 'Changes are saved for this device and applied to the player.'}
+                  </p>
                 </div>
                 <div className="divide-y divide-zinc-800 border-y border-zinc-800">
-                  <SettingToggle label="Autoplay next video" description="Continue with the next programme when one finishes." checked={preferences.autoplay} onChange={(value) => updatePreference('autoplay', value)} />
-                  <SettingToggle label="Data Saver" description="Prefer 360p and avoid preloading full videos." checked={preferences.dataSaver} onChange={(value) => updatePreference('dataSaver', value)} />
-                  <SettingToggle label="Captions by default" description="Show provided caption tracks automatically." checked={preferences.captions} onChange={(value) => updatePreference('captions', value)} />
+                  <SettingToggle
+                    label={t('settings.autoplay')}
+                    description={t('settings.autoplayDesc')}
+                    checked={preferences.autoplay}
+                    onChange={(value) => updatePreference('autoplay', value)}
+                  />
+                  <SettingToggle
+                    label={t('settings.dataSaver')}
+                    description={t('settings.dataSaverDesc')}
+                    checked={preferences.dataSaver}
+                    onChange={(value) => updatePreference('dataSaver', value)}
+                  />
+                  <SettingToggle
+                    label={t('settings.captions')}
+                    description={t('settings.captionsDesc')}
+                    checked={preferences.captions}
+                    onChange={(value) => updatePreference('captions', value)}
+                  />
                   <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="font-medium">Default quality</p>
-                      <p className="text-sm text-zinc-400">Data Saver overrides this to 360p.</p>
+                      <p className="font-medium">{t('settings.quality')}</p>
+                      <p className="text-sm text-zinc-400">{t('settings.qualityDesc')}</p>
                     </div>
-                    <select value={preferences.quality} onChange={(event) => updatePreference('quality', event.target.value as PlaybackPreferences['quality'])} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white">
+                    <select
+                      aria-label={t('settings.quality')}
+                      value={preferences.quality}
+                      onChange={(event) =>
+                        updatePreference('quality', event.target.value as PlaybackPreferences['quality'])
+                      }
+                      className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                    >
                       <option value="auto">Auto</option>
                       <option value="1080p">1080p</option>
                       <option value="720p">720p</option>
@@ -121,18 +245,40 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                   </div>
                   <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="font-medium">Maximum content rating</p>
-                      <p className="text-sm text-zinc-400">18-rated and unrated content remains unavailable.</p>
+                      <p className="font-medium">{t('settings.maxRating')}</p>
+                      <p className="text-sm text-zinc-400">{t('settings.maxRatingDesc')}</p>
                     </div>
-                    <select aria-label="Maximum content rating" value={preferences.maximumRating} onChange={(event) => updatePreference('maximumRating', event.target.value as PlaybackPreferences['maximumRating'])} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white">
+                    <select
+                      aria-label="Maximum content rating"
+                      value={preferences.maximumRating}
+                      onChange={(event) =>
+                        updatePreference('maximumRating', event.target.value as PlaybackPreferences['maximumRating'])
+                      }
+                      className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                    >
                       <option value="GE">GE, all ages</option>
                       <option value="PG">PG, parental guidance</option>
                       <option value="16">16 and below</option>
                     </select>
                   </div>
                   <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3"><Globe className="text-zinc-500" size={20} /><div><p className="font-medium">Language</p><p className="text-sm text-zinc-400">Interface language for this device.</p></div></div>
-                    <select value={language} onChange={(event) => setLanguage(event.target.value as 'en' | 'sw')} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white">
+                    <div className="flex items-center gap-3">
+                      <Globe className="text-zinc-500" size={20} />
+                      <div>
+                        <p className="font-medium">{t('common.language')}</p>
+                        <p className="text-sm text-zinc-400">
+                          {language === 'sw'
+                            ? 'Lugha ya mfumo kwenye kifaa hiki.'
+                            : 'Interface language for this device.'}
+                        </p>
+                      </div>
+                    </div>
+                    <select
+                      aria-label="Language"
+                      value={language}
+                      onChange={(event) => setLanguage(event.target.value as 'en' | 'sw')}
+                      className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                    >
                       <option value="en">English</option>
                       <option value="sw">Kiswahili</option>
                     </select>
@@ -141,42 +287,213 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
               </section>
             )}
 
-            {activeTab === 'account' && (
+            {activeTab === 'pass' && (
+              <section aria-labelledby="pass-heading" className="space-y-6">
+                <div>
+                  <h2 id="pass-heading" className="text-xl font-bold">
+                    {t('settings.tabPass')}
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    {language === 'sw'
+                      ? 'Angalia hali ya pasi yako ya M-Pesa au irejeshe ukitumia nambari ya risiti.'
+                      : 'View your active M-Pesa pass on this device or restore it using your Safaricom SMS receipt.'}
+                  </p>
+                </div>
+
+                {storedPass ? (
+                  <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/25 p-5 space-y-3">
+                    <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                      <CheckCircle2 size={18} />
+                      <span>Active {storedPass.tier.toUpperCase()} Pass</span>
+                    </div>
+                    <p className="text-sm text-zinc-300">
+                      Valid until{' '}
+                      <strong className="text-white">{new Date(storedPass.expiresAt).toLocaleString()}</strong>
+                      {storedPass.mpesaReceipt ? (
+                        <>
+                          {' '}
+                          · Receipt <code className="font-mono text-emerald-300">{storedPass.mpesaReceipt}</code>
+                        </>
+                      ) : null}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleRemoveDevicePass}
+                      className="text-xs font-semibold text-zinc-400 hover:text-red-400 transition-colors"
+                    >
+                      Remove pass from this shared device
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 text-sm text-zinc-400">
+                    No active M-Pesa pass is saved on this browser right now. Select any locked episode to purchase a
+                    24-Hour (KSh 10), Weekly (KSh 50), or Monthly (KSh 249) pass, or restore an existing pass below.
+                  </div>
+                )}
+
+                <form onSubmit={handleRestoreSubmit} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-4">
+                  <div className="flex items-center gap-2 font-bold text-white">
+                    <KeyRound size={16} className="text-emerald-400" />
+                    <h3>{t('paywall.tabRestore')}</h3>
+                  </div>
+                  <p className="text-xs text-zinc-400">{t('paywall.restoreHint')}</p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="settings-mpesa-receipt" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                        {t('paywall.receiptLabel')}
+                      </label>
+                      <input
+                        id="settings-mpesa-receipt"
+                        type="text"
+                        required
+                        maxLength={16}
+                        placeholder="QKH89X2LMS"
+                        value={restoreReceipt}
+                        onChange={(e) => setRestoreReceipt(e.target.value.toUpperCase())}
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm font-mono uppercase text-white"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="settings-mpesa-phone" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                        {t('paywall.phoneLabel')}
+                      </label>
+                      <input
+                        id="settings-mpesa-phone"
+                        type="tel"
+                        required
+                        placeholder="0712 345 678"
+                        value={restorePhone}
+                        onChange={(e) => setRestorePhone(e.target.value)}
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-white"
+                      />
+                    </div>
+                  </div>
+                  {passError && (
+                    <p role="alert" className="text-xs text-red-300">
+                      {passError}
+                    </p>
+                  )}
+                  {passMessage && (
+                    <p role="status" className="text-xs text-emerald-300">
+                      {passMessage}
+                    </p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={restoreBusy}
+                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    {restoreBusy && <Loader2 size={15} className="animate-spin" />}
+                    {t('paywall.restoreButton')}
+                  </button>
+                </form>
+              </section>
+            )}
+
+            {activeTab === 'account' && currentUser && (
               <section aria-labelledby="account-heading">
-                <h2 id="account-heading" className="text-xl font-bold">Local access</h2>
+                <h2 id="account-heading" className="text-xl font-bold">
+                  Account access
+                </h2>
                 <div className="mt-6 border-y border-zinc-800 py-6">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/15 text-green-400"><Smartphone size={22} /></div>
-                    <div><p className="font-medium">{currentUser?.user_metadata?.display_name || 'TubeTV admin'}</p><p className="text-sm text-zinc-400">{userPhone || 'Not signed in'}</p></div>
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/15 text-green-400">
+                      <Smartphone size={22} />
+                    </div>
+                    <div>
+                      <p className="font-medium">
+                        {currentUser?.user_metadata?.display_name || currentUser?.email || 'TubeTV user'}
+                      </p>
+                      <p className="text-sm text-zinc-400">{userPhone || currentUser?.email || 'Signed in'}</p>
+                    </div>
                   </div>
                 </div>
-                <button onClick={handleSignOut} className="mt-6 flex items-center gap-2 text-sm font-medium text-red-400 hover:text-red-300"><LogOut size={17} /> Sign out</button>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="mt-6 flex items-center gap-2 text-sm font-medium text-red-400 hover:text-red-300"
+                >
+                  <LogOut size={17} /> {t('nav.signOut')}
+                </button>
               </section>
             )}
 
             {activeTab === 'privacy' && (
-              <section aria-labelledby="privacy-heading">
-                <h2 id="privacy-heading" className="text-xl font-bold">Privacy</h2>
-                <p className="mt-2 text-sm text-zinc-400">Access a portable copy of your account or permanently erase it.</p>
+              <section aria-labelledby="privacy-heading" className="space-y-2">
+                <h2 id="privacy-heading" className="text-xl font-bold">
+                  {t('settings.tabPrivacy')}
+                </h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Manage local browser storage under the Kenya Data Protection Act (2019), export account records, or
+                  permanently delete an account.
+                </p>
+
                 <div className="mt-6 border-y border-zinc-800 py-5">
-                  <h3 className="font-medium">Download my data</h3>
-                  <p className="mt-1 text-sm text-zinc-400">Includes profile, watch list, progress and preferences.</p>
-                  <button disabled={privacyBusy || !currentUser} onClick={handleExport} className="mt-4 flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-bold hover:bg-zinc-700 disabled:opacity-50">
-                    {privacyBusy ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />} Download JSON
+                  <h3 className="font-medium">Clear local device data</h3>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Removes saved Watch List items, playback resume positions, and any cached pass token from this
+                    browser.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleClearLocalDeviceData}
+                    className="mt-4 flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-bold hover:bg-zinc-700"
+                  >
+                    <Trash2 size={16} /> Clear browser history &amp; pass
                   </button>
                 </div>
-                <div className="border-b border-zinc-800 py-5">
-                  <h3 className="font-medium text-red-400">Delete account</h3>
-                  <p className="mt-1 text-sm text-zinc-400">This permanently deletes your login and linked TubeTV records. This cannot be undone.</p>
-                  <label htmlFor="delete-confirmation" className="mt-4 block text-sm font-medium">Type DELETE to confirm</label>
-                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                    <input id="delete-confirmation" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
-                    <button disabled={privacyBusy || deleteConfirmation !== 'DELETE' || !currentUser} onClick={handleDeleteAccount} className="flex items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-bold hover:bg-red-600 disabled:opacity-40">
-                      <Trash2 size={16} /> Delete permanently
-                    </button>
-                  </div>
-                </div>
-                {privacyMessage && <p role="status" className="mt-4 text-sm text-zinc-300">{privacyMessage}</p>}
+
+                {currentUser && (
+                  <>
+                    <div className="border-b border-zinc-800 py-5">
+                      <h3 className="font-medium">Download my data</h3>
+                      <p className="mt-1 text-sm text-zinc-400">
+                        Includes profile, watch list, progress, preferences, and M-Pesa transaction references.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={privacyBusy}
+                        onClick={handleExport}
+                        className="mt-4 flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-bold hover:bg-zinc-700 disabled:opacity-50"
+                      >
+                        {privacyBusy ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}{' '}
+                        Download JSON
+                      </button>
+                    </div>
+                    <div className="border-b border-zinc-800 py-5">
+                      <h3 className="font-medium text-red-400">Delete account</h3>
+                      <p className="mt-1 text-sm text-zinc-400">
+                        Permanently deletes your login and personal profile. Statutory anonymised M-Pesa tax ledger
+                        entries are retained per KRA regulations.
+                      </p>
+                      <label htmlFor="delete-confirmation" className="mt-4 block text-sm font-medium">
+                        Type DELETE to confirm
+                      </label>
+                      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                        <input
+                          id="delete-confirmation"
+                          value={deleteConfirmation}
+                          onChange={(event) => setDeleteConfirmation(event.target.value)}
+                          className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          disabled={privacyBusy || deleteConfirmation !== 'DELETE'}
+                          onClick={handleDeleteAccount}
+                          className="flex items-center justify-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-bold hover:bg-red-600 disabled:opacity-40"
+                        >
+                          <Trash2 size={16} /> Delete permanently
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {privacyMessage && (
+                  <p role="status" className="mt-4 text-sm text-emerald-300">
+                    {privacyMessage}
+                  </p>
+                )}
               </section>
             )}
           </div>
@@ -186,11 +503,35 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   );
 };
 
-const SettingToggle = ({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (value: boolean) => void }) => (
+const SettingToggle = ({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) => (
   <div className="flex items-center justify-between gap-5 py-5">
-    <div><p className="font-medium">{label}</p><p className="text-sm text-zinc-400">{description}</p></div>
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? 'bg-green-500' : 'bg-zinc-700'}`}>
-      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+    <div>
+      <p className="font-medium">{label}</p>
+      <p className="text-sm text-zinc-400">{description}</p>
+    </div>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? 'bg-green-500' : 'bg-zinc-700'}`}
+    >
+      <span
+        className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+          checked ? 'translate-x-6' : 'translate-x-1'
+        }`}
+      />
     </button>
   </div>
 );

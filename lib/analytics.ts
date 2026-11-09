@@ -8,7 +8,13 @@ export type AnalyticsEventName =
   | 'episode_next'
   | 'paywall_view'
   | 'paywall_initiated'
-  | 'paywall_completed';
+  | 'paywall_completed'
+  | 'paywall_failed'
+  | 'pass_restored'
+  | 'checkout_start'
+  | 'checkout_submitted'
+  | 'subscription_activated'
+  | 'checkout_failed';
 
 type EventProperties = Record<string, string | number | boolean | undefined>;
 
@@ -24,6 +30,7 @@ export function sanitizeEventProperties(properties: EventProperties = {}) {
 }
 
 export function trackEvent(name: AnalyticsEventName, properties: EventProperties = {}) {
+  if (typeof window === 'undefined') return;
   const event = {
     name,
     properties: sanitizeEventProperties(properties),
@@ -32,6 +39,6 @@ export function trackEvent(name: AnalyticsEventName, properties: EventProperties
   };
 
   window.dispatchEvent(new CustomEvent('tubetv:analytics', { detail: event }));
-  if (!endpoint || !navigator.sendBeacon) return;
+  if (!endpoint || typeof navigator === 'undefined' || !navigator.sendBeacon) return;
   navigator.sendBeacon(endpoint, new Blob([JSON.stringify(event)], { type: 'application/json' }));
 }

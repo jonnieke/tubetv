@@ -31,35 +31,56 @@ self.addEventListener('activate', function(event) {
 });
 
 self.addEventListener('push', function(event) {
-  if (event.data) {
-    const data = event.data.json();
-    let targetUrl = '/';
-    try {
-      const candidate = new URL(data.url || '/', self.location.origin);
-      if (candidate.origin === self.location.origin) targetUrl = candidate.href;
-    } catch {
-      targetUrl = '/';
+  if (!event.data) return;
+
+  let data = { title: 'TubeTV', body: 'New stories are available on TubeTV.', url: '/' };
+  try {
+    const parsed = event.data.json();
+    if (parsed && typeof parsed === 'object') {
+      data = {
+        title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title : 'TubeTV',
+        body: typeof parsed.body === 'string' ? parsed.body : '',
+        url: typeof parsed.url === 'string' ? parsed.url : '/'
+      };
     }
-    const options = {
-      body: data.body,
-      vibrate: [100, 50, 100],
-      data: {
-        dateOfArrival: Date.now(),
-        primaryKey: '2',
-        url: targetUrl
-      }
-    };
-    event.waitUntil(
-      self.registration.showNotification(data.title, options)
-    );
+  } catch {
+    try {
+      const text = event.data.text();
+      if (text) data.body = text;
+    } catch {
+      // Ignore malformed push body
+    }
   }
+
+  let targetUrl = '/';
+  try {
+    const candidate = new URL(data.url || '/', self.location.origin);
+    if (candidate.origin === self.location.origin) targetUrl = candidate.href;
+  } catch {
+    targetUrl = '/';
+  }
+
+  const options = {
+    body: data.body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    vibrate: [100, 50, 100],
+    data: {
+      dateOfArrival: Date.now(),
+      primaryKey: '2',
+      url: targetUrl
+    }
+  };
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
 });
 
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
   event.waitUntil(
-    clients.matchAll({ type: 'window' }).then(function(clientList) {
-      const url = event.notification.data.url;
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      const url = (event.notification.data && event.notification.data.url) || '/';
       for (let i = 0; i < clientList.length; i++) {
         const client = clientList[i];
         if (client.url === url && 'focus' in client) {
