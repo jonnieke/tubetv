@@ -49,7 +49,7 @@
       "destination": "/api/og?id=$1"
     },
     {
-      "source": "/((?!(api/|\\.well-known/)).*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
