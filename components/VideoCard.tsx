@@ -240,8 +240,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
     if (!shouldPlay) {
       videoEl.pause();
-      if (!hasActivatedPlayback && hlsRef.current) {
-        hlsRef.current.stopLoad();
+      if (!hasActivatedPlayback) {
+        if (hlsRef.current) {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        }
+        setIsBuffering(false);
       }
       return;
     }
@@ -378,14 +382,19 @@ const VideoCard: React.FC<VideoCardProps> = ({
       !locked &&
       !effectiveDataSaver
     ) {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = setTimeout(() => {
         setIsHoverPlay(true);
       }, 650);
-    } else if (!isHovering) {
-      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-      if (isHoverPlay) {
+    } else {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
+      if (!isHovering && !hasActivatedPlayback && !isPlaying) {
         setIsHoverPlay(false);
-        if (!hasActivatedPlayback && hlsRef.current) {
+        setIsBuffering(false);
+        if (hlsRef.current) {
           hlsRef.current.destroy();
           hlsRef.current = null;
         }
@@ -393,9 +402,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
 
     return () => {
-      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
     };
-  }, [isHovering, playerOnly, hasActivatedPlayback, isPlaying, isHoverPlay, isRatingLocked, locked, effectiveDataSaver]);
+  }, [isHovering, playerOnly, hasActivatedPlayback, isPlaying, isRatingLocked, locked, effectiveDataSaver]);
 
   useEffect(() => {
     const videoEl = videoRef.current;
@@ -635,8 +647,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
+  const isActivelyPlaying = hasActivatedPlayback || isPlaying;
+  const isActivelyHoveringPreview = isHovering && isHoverPlay;
   const showVideoStage =
-    !isRatingLocked && !locked && (hasActivatedPlayback || isPlaying || isHoverPlay || isBuffering || isAuthorizing);
+    !isRatingLocked && !locked && (isActivelyPlaying || isActivelyHoveringPreview);
 
   return (
     <div
@@ -649,6 +663,27 @@ const VideoCard: React.FC<VideoCardProps> = ({
       onMouseLeave={() => {
         setIsHovering(false);
         setShowSettings(false);
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current);
+          hoverTimerRef.current = null;
+        }
+        if (!hasActivatedPlayback && !isPlaying) {
+          setIsHoverPlay(false);
+          setIsBuffering(false);
+          setIsAuthorizing(false);
+          if (hlsRef.current) {
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+          }
+          if (videoRef.current) {
+            videoRef.current.pause();
+            try {
+              videoRef.current.currentTime = 0;
+            } catch {
+              // Ignore pause/seek error
+            }
+          }
+        }
       }}
     >
       <div
@@ -801,7 +836,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
               }}
               onWaiting={() => {
                 if (firstFrameRef.current && bufferAtRef.current === null) bufferAtRef.current = performance.now();
-                setIsBuffering(true);
+                if (isPlaying || (isHovering && isHoverPlay)) {
+                  setIsBuffering(true);
+                }
               }}
               onPlaying={() => {
                 document.dispatchEvent(new CustomEvent('tubetv:player-start', { detail: playerInstanceRef.current }));
