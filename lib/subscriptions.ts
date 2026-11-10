@@ -290,6 +290,42 @@ export function clearStoredPass() {
   }
 }
 
+export function mergeRemotePassViewerState(viewerState: unknown) {
+  if (typeof window === 'undefined' || !viewerState || typeof viewerState !== 'object') return;
+  const state = viewerState as {
+    progress?: Record<string, { positionSeconds: number; durationSeconds: number; completed: boolean }>;
+    watchLater?: string[];
+    lastWatchedVideoId?: string;
+  };
+  try {
+    let changed = false;
+    if (state.progress && typeof state.progress === 'object' && Object.keys(state.progress).length > 0) {
+      const localRaw = localStorage.getItem('tube_watch_progress_guest');
+      const localProg = localRaw ? JSON.parse(localRaw) : {};
+      const mergedProg = { ...state.progress, ...localProg };
+      localStorage.setItem('tube_watch_progress_guest', JSON.stringify(mergedProg));
+      changed = true;
+    }
+    if (Array.isArray(state.watchLater) && state.watchLater.length > 0) {
+      const localRaw = localStorage.getItem('tube_watch_later_guest');
+      const localWl: string[] = localRaw ? JSON.parse(localRaw) : [];
+      const mergedWl = Array.from(new Set([...state.watchLater, ...localWl]));
+      localStorage.setItem('tube_watch_later_guest', JSON.stringify(mergedWl));
+      changed = true;
+    }
+    if (typeof state.lastWatchedVideoId === 'string' && state.lastWatchedVideoId) {
+      if (!localStorage.getItem('tubetv_last_watched_video_id')) {
+        localStorage.setItem('tubetv_last_watched_video_id', state.lastWatchedVideoId);
+      }
+    }
+    if (changed) {
+      window.dispatchEvent(new CustomEvent('tubetv:viewer-state-synced'));
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 /**
  * Verifies the locally stored HMAC-signed pass token against the server ledger.
  * Immediately clears forged, revoked, or expired tokens.
@@ -343,6 +379,9 @@ export async function verifyStoredPass(): Promise<ActiveSubscription | null> {
         localStorage.setItem(SIGNED_PASS_KEY, JSON.stringify(updated));
       } catch {
         // Ignore storage error
+      }
+      if (data.viewerState) {
+        mergeRemotePassViewerState(data.viewerState);
       }
       return {
         id: 'signed-pass',
@@ -674,6 +713,9 @@ export async function restorePassByPhone(options: RestorePassOptions): Promise<R
         deviceId,
       };
       saveStoredPass(stored);
+      if (data.viewerState) {
+        mergeRemotePassViewerState(data.viewerState);
+      }
       return {
         success: true,
         pass: stored,

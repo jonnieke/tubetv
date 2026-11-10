@@ -21,6 +21,7 @@ import { supabase } from '../lib/supabase';
 import {
   computeShareOfPlayRoyalties,
   exportCreativesCsv,
+  exportPayoutBatchCsv,
   exportContentCsv,
   MINIMUM_PAYOUT_THRESHOLD_KES,
   QUALIFIED_VIEW_SECONDS,
@@ -225,6 +226,21 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           <button
             type="button"
             onClick={() =>
+              exportPayoutBatchCsv(royaltyResult.creators, {
+                periodLabel: selectedPeriod,
+                payoutRail,
+              })
+            }
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black px-4 py-2.5 rounded-xl text-sm font-black shadow-md transition-all hover:scale-[1.02]"
+            title="Download Batch Payout CSV containing only Eligible Creatives (>= KSh 1,000) for M-Pesa B2C / Paystack / Wise upload"
+          >
+            <Download className="w-4 h-4" />
+            <span>Batch Payout CSV ({royaltyResult.eligibleCreatorsCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
               exportCreativesCsv(royaltyResult.creators, {
                 periodLabel: selectedPeriod,
                 grossRevenueKes: royaltyResult.grossRevenueKes,
@@ -233,7 +249,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
               })
             }
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-md transition-all hover:scale-[1.02]"
-            title="Download Creatives Payout Report formatted for Excel and M-Pesa B2C"
+            title="Download full Creatives Payout & Carry-Forward Report"
           >
             <Download className="w-4 h-4" />
             <span>Export Creatives (CSV)</span>
@@ -256,6 +272,24 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           </button>
         </div>
       </div>
+
+      {Object.keys(revenueByRegion).length > 0 && (
+        <div className="bg-zinc-900/75 border border-zinc-800 rounded-xl px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+            30-Day Verified Subscriptions by Market (KES Equivalent)
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {Object.entries(revenueByRegion).map(([region, amount]) => (
+              <span
+                key={region}
+                className="px-2.5 py-1 rounded-full bg-zinc-800 border border-zinc-700 text-xs font-bold text-zinc-200"
+              >
+                {region}: <span className="text-emerald-400">KES {Number(amount).toLocaleString()}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {payoutSuccessMessage && (
         <div className="bg-emerald-950/60 border border-emerald-500/50 text-emerald-200 px-5 py-3.5 rounded-xl text-sm flex items-center justify-between">

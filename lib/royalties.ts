@@ -425,6 +425,53 @@ export function exportContentCsv(
   );
 }
 
+/**
+ * Exports a ready-to-upload Bulk Payout Batch CSV containing only ELIGIBLE creatives (>= KSh 1,000)
+ * formatted for M-Pesa B2C, Paystack Bulk Transfers, East Africa Mobile Money, or Wise Batch Wire.
+ */
+export function exportPayoutBatchCsv(
+  creators: CreatorRoyaltySummary[],
+  options: {
+    periodLabel: string;
+    payoutRail: string;
+  }
+): void {
+  const eligible = creators.filter((c) => c.isEligibleForPayout);
+  const headers = [
+    'Beneficiary Name',
+    'Payout Rail',
+    'Destination / Mobile / Account',
+    'Amount (KES)',
+    'USD Equivalent ($)',
+    'Qualified Views (30s+)',
+    'Share of Play (%)',
+    'Reference',
+    'Narration',
+  ];
+
+  const rows = eligible.map((c, idx) => [
+    c.creator,
+    options.payoutRail,
+    c.mpesaDestination || '2547XXXXXXXX',
+    Math.round(c.netEarningsKes),
+    (c.netEarningsKes / 129).toFixed(2),
+    c.qualifiedViews,
+    `${c.shareOfPlayPercent.toFixed(2)}%`,
+    `TUBE_PAY_${cleanFilename(options.periodLabel)}_${String(idx + 1).padStart(3, '0')}`,
+    `TubeTV 60/40 Creative Royalty (${options.periodLabel})`,
+  ]);
+
+  const csvContent =
+    headers.map(escapeCsv).join(',') +
+    '\r\n' +
+    rows.map((r) => r.map(escapeCsv).join(',')).join('\r\n');
+
+  downloadBlob(
+    csvContent,
+    `TubeTV_Bulk_Payout_Batch_${cleanFilename(options.payoutRail)}_${cleanFilename(options.periodLabel)}.csv`
+  );
+}
+
 function cleanFilename(str: string): string {
   return str.replace(/[^a-zA-Z0-9_-]/g, '_');
 }

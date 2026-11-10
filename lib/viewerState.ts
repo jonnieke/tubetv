@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { isLocalAuthUserId } from './localAuth';
+import { getStoredPass } from './subscriptions';
 
 export interface PlaybackPreferences {
   autoplay: boolean;
@@ -125,11 +126,41 @@ export async function loadWatchList(userId?: string): Promise<string[]> {
   }
 }
 
+let passSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function schedulePassCloudSync(lastWatchedVideoId?: string) {
+  if (!isSupabaseConfigured || typeof window === 'undefined') return;
+  const pass = getStoredPass();
+  if (!pass?.token) return;
+
+  if (passSyncTimer) clearTimeout(passSyncTimer);
+  passSyncTimer = setTimeout(() => {
+    const progress = readLocal<Record<string, WatchProgress>>(progressKey(undefined), {});
+    const watchLater = readLocal<string[]>(watchListKey(undefined), []);
+    void supabase.functions
+      .invoke('mpesa-stk-push', {
+        body: {
+          action: 'sync_state',
+          passToken: pass.token,
+          progress,
+          watchLater,
+          lastWatchedVideoId,
+        },
+        headers: { 'X-Pass-Token': pass.token },
+      })
+      .catch(() => {});
+  }, 1500);
+}
+
 export async function setWatchLater(userId: string | undefined, videoId: string, saved: boolean) {
   const current = readLocal<string[]>(watchListKey(userId), []);
   const next = saved ? Array.from(new Set([...current, videoId])) : current.filter((id) => id !== videoId);
   writeLocal(watchListKey(userId), next);
-  if (!userId || isLocalAuthUserId(userId) || !isSupabaseConfigured) return;
+  if (!userId || isLocalAuthUserId(userId)) {
+    schedulePassCloudSync();
+    return;
+  }
+  if (!isSupabaseConfigured) return;
   try {
     const query = supabase.from('watch_later');
     const { error } = saved
@@ -175,7 +206,11 @@ export async function saveProgress(
 ) {
   const current = readLocal<Record<string, WatchProgress>>(progressKey(userId), {});
   writeLocal(progressKey(userId), { ...current, [videoId]: progress });
-  if (!userId || isLocalAuthUserId(userId) || !isSupabaseConfigured) return;
+  if (!userId || isLocalAuthUserId(userId)) {
+    schedulePassCloudSync(videoId);
+    return;
+  }
+  if (!isSupabaseConfigured) return;
   try {
     const { error } = await supabase.from('watch_progress').upsert({
       user_id: userId,

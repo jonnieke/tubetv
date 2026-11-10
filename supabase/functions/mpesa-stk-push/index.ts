@@ -119,7 +119,7 @@ serve(async (req) => {
     }
     const { data: sub } = await service
       .from("subscriptions")
-      .select("id, tier, end_date, is_active, mpesa_ref, payment_reference, active_device_id")
+      .select("id, tier, end_date, is_active, mpesa_ref, payment_reference, active_device_id, viewer_state")
       .eq("id", verified.subId)
       .maybeSingle();
 
@@ -144,11 +144,71 @@ serve(async (req) => {
           mpesaReceipt: sub.mpesa_ref || sub.payment_reference,
           deviceId: sub.active_device_id || tokenOrClientDevice || undefined,
         },
+        viewerState: sub.viewer_state || {},
       },
       200,
       METHODS,
       { "Cache-Control": "no-store" },
     );
+  }
+
+  // ─── Action: Cross-Device Cloud Sync of Continue Watching & Watch List ──────
+  if (action === "sync_state" || action === "get_state") {
+    const token = String(req.headers.get("X-Pass-Token") || requestBody.passToken || "").trim();
+    const verified = await verifyPassToken(token);
+    if (!verified) {
+      return jsonReply(req, { error: "Valid pass token required." }, 401, METHODS);
+    }
+
+    const { data: sub } = await service
+      .from("subscriptions")
+      .select("id, is_active, end_date, active_device_id, viewer_state")
+      .eq("id", verified.subId)
+      .maybeSingle();
+
+    if (!sub || !sub.is_active || (sub.end_date && Date.parse(sub.end_date) <= Date.now())) {
+      return jsonReply(req, { error: "Pass expired or inactive." }, 403, METHODS);
+    }
+
+    if (action === "get_state") {
+      return jsonReply(req, { viewerState: sub.viewer_state || {} }, 200, METHODS, { "Cache-Control": "no-store" });
+    }
+
+    // Merge incoming watchProgress and watchLater into subscriptions.viewer_state
+    const existingState = (sub.viewer_state && typeof sub.viewer_state === "object" ? sub.viewer_state : {}) as Record<
+      string,
+      unknown
+    >;
+    const existingProgress = (
+      existingState.progress && typeof existingState.progress === "object" ? existingState.progress : {}
+    ) as Record<string, unknown>;
+    const incomingProgress = (
+      requestBody.progress && typeof requestBody.progress === "object" ? requestBody.progress : {}
+    ) as Record<string, unknown>;
+
+    const mergedProgress = { ...existingProgress, ...incomingProgress };
+    const watchLaterArr = Array.isArray(requestBody.watchLater)
+      ? requestBody.watchLater.filter((id) => typeof id === "string").slice(0, 200)
+      : Array.isArray(existingState.watchLater)
+        ? existingState.watchLater
+        : [];
+
+    const nextState = {
+      progress: mergedProgress,
+      watchLater: watchLaterArr,
+      lastWatchedVideoId:
+        typeof requestBody.lastWatchedVideoId === "string"
+          ? requestBody.lastWatchedVideoId
+          : existingState.lastWatchedVideoId || null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await service
+      .from("subscriptions")
+      .update({ viewer_state: nextState })
+      .eq("id", sub.id);
+
+    return jsonReply(req, { ok: true, viewerState: nextState }, 200, METHODS, { "Cache-Control": "no-store" });
   }
 
   // ─── Action: Poll payment status using checkoutToken ────────────────────────
@@ -372,7 +432,7 @@ serve(async (req) => {
     // Query active subscriptions matching this phone (or receipt) directly in SQL before limiting
     let subQuery = service
       .from("subscriptions")
-      .select("id, phone, tier, end_date, is_active, mpesa_ref, payment_reference, active_device_id")
+      .select("id, phone, tier, end_date, is_active, mpesa_ref, payment_reference, active_device_id, viewer_state")
       .eq("is_active", true)
       .gt("end_date", new Date().toISOString());
 
@@ -462,9 +522,10 @@ serve(async (req) => {
           tier: sub.tier,
           expiresAt,
           mpesaReceipt: sub.mpesa_ref || sub.payment_reference || "PASS",
-          phone: parsedPhone.e164,
+          phone: parsedPhone?.e164 || sub.phone || "",
           deviceId: finalDeviceId,
         },
+        viewerState: sub.viewer_state || {},
         switched: Boolean(currentDeviceId && incomingDeviceId && currentDeviceId !== incomingDeviceId),
       },
       200,

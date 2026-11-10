@@ -319,16 +319,21 @@ const App: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     const userId = currentUser?.id;
-    Promise.all([loadPreferences(userId), loadWatchList(userId), loadProgress(userId)]).then(
-      ([nextPreferences, nextWatchLater, nextProgress]) => {
-        if (cancelled) return;
-        setPreferences(nextPreferences);
-        setWatchLater(nextWatchLater);
-        setWatchProgress(nextProgress);
-      },
-    );
+    const reloadLocalViewerState = () => {
+      Promise.all([loadPreferences(userId), loadWatchList(userId), loadProgress(userId)]).then(
+        ([nextPreferences, nextWatchLater, nextProgress]) => {
+          if (cancelled) return;
+          setPreferences(nextPreferences);
+          setWatchLater(nextWatchLater);
+          setWatchProgress(nextProgress);
+        },
+      );
+    };
+    reloadLocalViewerState();
+    window.addEventListener('tubetv:viewer-state-synced', reloadLocalViewerState);
     return () => {
       cancelled = true;
+      window.removeEventListener('tubetv:viewer-state-synced', reloadLocalViewerState);
     };
   }, [currentUser?.id]);
 
