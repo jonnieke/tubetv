@@ -94,19 +94,26 @@ serve(async (req) => {
   // ─── Action: Verify an existing signed pass token ───────────────────────────
   if (action === "verify") {
     const token = String(req.headers.get("X-Pass-Token") || requestBody.passToken || "").trim();
+    const incomingDeviceId = String(requestBody.deviceId || "").trim();
     const verified = await verifyPassToken(token);
     if (!verified) {
       return jsonReply(req, { valid: false }, 200, METHODS, { "Cache-Control": "no-store" });
     }
     const { data: sub } = await service
       .from("subscriptions")
-      .select("id, tier, end_date, is_active, mpesa_ref, payment_reference")
+      .select("id, tier, end_date, is_active, mpesa_ref, payment_reference, active_device_id")
       .eq("id", verified.subId)
       .maybeSingle();
 
     const expiresAt = sub?.end_date ? Date.parse(sub.end_date) : verified.exp;
     if (!sub || !sub.is_active || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
       return jsonReply(req, { valid: false }, 200, METHODS, { "Cache-Control": "no-store" });
+    }
+
+    // 1-Device Concurrency Check: If another device took over this pass, invalidate this device's session
+    const tokenOrClientDevice = verified.deviceId || incomingDeviceId;
+    if (sub.active_device_id && tokenOrClientDevice && sub.active_device_id !== tokenOrClientDevice) {
+      return jsonReply(req, { valid: false, reason: "device_switched" }, 200, METHODS, { "Cache-Control": "no-store" });
     }
 
     return jsonReply(
@@ -117,6 +124,7 @@ serve(async (req) => {
           tier: sub.tier,
           expiresAt,
           mpesaReceipt: sub.mpesa_ref || sub.payment_reference,
+          deviceId: sub.active_device_id || tokenOrClientDevice || undefined,
         },
       },
       200,
@@ -129,6 +137,7 @@ serve(async (req) => {
   if (action === "status") {
     const transactionId = String(requestBody.transactionId || "").trim();
     const checkoutToken = String(requestBody.checkoutToken || "").trim();
+    const incomingDeviceId = String(requestBody.deviceId || "").trim();
     if (!/^[0-9a-f-]{36}$/i.test(transactionId) || checkoutToken.length < 16) {
       return jsonReply(req, { error: "Valid transaction credentials are required." }, 400, METHODS);
     }
@@ -149,7 +158,7 @@ serve(async (req) => {
       const activeRef = tx.mpesa_receipt || tx.paystack_reference;
       const { data: sub } = await service
         .from("subscriptions")
-        .select("id, tier, end_date, is_active, mpesa_ref, payment_reference")
+        .select("id, tier, end_date, is_active, mpesa_ref, payment_reference, active_device_id")
         .or(`mpesa_ref.ilike.${activeRef},payment_reference.ilike.${activeRef}`)
         .eq("is_active", true)
         .order("end_date", { ascending: false })
@@ -158,11 +167,19 @@ serve(async (req) => {
 
       if (sub && sub.is_active && sub.end_date && Date.parse(sub.end_date) > Date.now()) {
         const expiresAt = Date.parse(sub.end_date);
+        const boundDeviceId = incomingDeviceId || sub.active_device_id || undefined;
+        if (incomingDeviceId && sub.active_device_id !== incomingDeviceId) {
+          await service
+            .from("subscriptions")
+            .update({ active_device_id: incomingDeviceId, updated_at: new Date().toISOString() })
+            .eq("id", sub.id);
+        }
         const passToken = await issuePassToken({
           subId: sub.id,
           tier: sub.tier,
           exp: expiresAt,
           ref: sub.mpesa_ref || sub.payment_reference || activeRef || "",
+          deviceId: boundDeviceId,
         });
         return jsonReply(
           req,
@@ -178,6 +195,7 @@ serve(async (req) => {
               tier: sub.tier,
               expiresAt,
               mpesaReceipt: sub.mpesa_ref || sub.payment_reference || activeRef,
+              deviceId: boundDeviceId,
             },
           },
           200,
@@ -215,6 +233,7 @@ serve(async (req) => {
             p_paid_at: pPaidAt,
             p_customer_email: pEmail,
             p_phone: pPhone,
+            p_device_id: incomingDeviceId || null,
           });
 
           if (rpcResult?.ok) {
@@ -226,6 +245,7 @@ serve(async (req) => {
               tier: rpcResult.tier || tx.plan_code,
               exp: expiresAt,
               ref: tx.paystack_reference,
+              deviceId: incomingDeviceId || undefined,
             });
             return jsonReply(
               req,
@@ -241,6 +261,7 @@ serve(async (req) => {
                   tier: rpcResult.tier || tx.plan_code,
                   expiresAt,
                   mpesaReceipt: tx.paystack_reference,
+                  deviceId: incomingDeviceId || undefined,
                 },
               },
               200,
@@ -304,14 +325,22 @@ serve(async (req) => {
     const sub9 = parsedPhone.sub9;
     const incomingDeviceId = String(requestBody.deviceId || "").trim();
     const forceSwitch = Boolean(requestBody.forceSwitch);
-    const receipt = String(requestBody.mpesaReceipt || "").trim().toUpperCase();
+    const receipt = String(requestBody.mpesaReceipt || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
 
-    // Query active subscriptions matching this phone
-    const { data: subs, error: subError } = await service
+    // Query active subscriptions matching this phone (or receipt) directly in SQL before limiting
+    let subQuery = service
       .from("subscriptions")
       .select("id, phone, tier, end_date, is_active, mpesa_ref, payment_reference, active_device_id")
       .eq("is_active", true)
-      .gt("end_date", new Date().toISOString())
+      .gt("end_date", new Date().toISOString());
+
+    if (receipt) {
+      subQuery = subQuery.or(`phone.ilike.%${sub9},mpesa_ref.ilike.${receipt},payment_reference.ilike.${receipt}`);
+    } else {
+      subQuery = subQuery.ilike("phone", `%${sub9}`);
+    }
+
+    const { data: subs, error: subError } = await subQuery
       .order("end_date", { ascending: false })
       .limit(10);
 

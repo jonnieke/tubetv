@@ -48,6 +48,7 @@ async function hasValidEntitlement(req: Request): Promise<boolean> {
 
   // 1. Check HMAC-signed Guest/Receipt Pass Token
   const passToken = (req.headers.get("X-Pass-Token") || "").trim();
+  const queryDeviceId = (new URL(req.url).searchParams.get("deviceId") || "").trim();
   if (passToken) {
     const verified = await verifyPassToken(passToken);
     if (verified) {
@@ -57,8 +58,9 @@ async function hasValidEntitlement(req: Request): Promise<boolean> {
         .eq("id", verified.subId)
         .maybeSingle();
       if (sub?.is_active && (!sub.end_date || Date.parse(sub.end_date) > Date.now())) {
-        // Enforce 1-device concurrency: if pass was transferred to another device, reject older device
-        if (sub.active_device_id && verified.deviceId && sub.active_device_id !== verified.deviceId) {
+        // Enforce 1-device concurrency: if pass is bound to an active device, require matching deviceId
+        const tokenOrQueryDevice = verified.deviceId || queryDeviceId;
+        if (sub.active_device_id && (!tokenOrQueryDevice || sub.active_device_id !== tokenOrQueryDevice)) {
           return false;
         }
         return true;

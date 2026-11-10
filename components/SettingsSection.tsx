@@ -17,8 +17,10 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { clearViewerLocalData, DEFAULT_PLAYBACK_PREFERENCES, type PlaybackPreferences } from '../lib/viewerState';
 import {
   clearStoredPass,
+  getRememberedPhone,
   getStoredPass,
-  restoreMpesaPass,
+  restorePassByPhone,
+  saveRememberedPhone,
   type StoredPass,
 } from '../lib/subscriptions';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -55,8 +57,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   // M-Pesa Pass state
   const [storedPass, setStoredPass] = useState<StoredPass | null>(() => getStoredPass());
   const [restoreReceipt, setRestoreReceipt] = useState('');
-  const [restorePhone, setRestorePhone] = useState('');
+  const [restorePhone, setRestorePhone] = useState(() => getRememberedPhone() || userPhone || '');
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreConflict, setRestoreConflict] = useState<{ message: string; tier?: string } | null>(null);
   const [passMessage, setPassMessage] = useState('');
   const [passError, setPassError] = useState('');
 
@@ -78,29 +81,50 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
     onLogout?.();
   };
 
-  const handleRestoreSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executePassRestore = async (forceSwitch: boolean) => {
     setPassError('');
     setPassMessage('');
 
     const cleanReceipt = restoreReceipt.trim().toUpperCase();
     const cleanPhone = restorePhone.replace(/[\s()-]/g, '');
-    if (!/^[A-Z0-9]{8,16}$/.test(cleanReceipt)) {
-      setPassError('Enter a valid M-Pesa receipt code (e.g. QKH89X2LMS).');
-      return;
-    }
     if (!/^(?:254|\+254|0)?([17]\d{8})$/.test(cleanPhone)) {
-      setPassError('Enter a valid Safaricom phone number (e.g. 0712 345 678).');
+      setPassError('Enter a valid Kenyan phone number (e.g. 0712 345 678).');
       return;
     }
 
     try {
       setRestoreBusy(true);
-      const restored = await restoreMpesaPass(cleanReceipt, cleanPhone);
-      setStoredPass(restored);
+      saveRememberedPhone(cleanPhone);
+      const result = await restorePassByPhone({
+        phone: cleanPhone,
+        mpesaReceipt: cleanReceipt || undefined,
+        forceSwitch,
+      });
+
+      if (result.conflict) {
+        setRestoreConflict({
+          message:
+            result.message ||
+            'Your pass is currently active on another device. Would you like to log out the other device and watch here?',
+          tier: result.tier,
+        });
+        return;
+      }
+
+      if (!result.success || !result.pass) {
+        setPassError(result.message || 'Unable to restore pass with those details.');
+        return;
+      }
+
+      setRestoreConflict(null);
+      setStoredPass(result.pass);
       setRestoreReceipt('');
-      setPassMessage('Your active M-Pesa pass has been restored on this device.');
-      trackEvent('pass_restored', { tier: restored.tier, source: 'settings' });
+      setPassMessage(
+        result.switched
+          ? 'Other device logged out. Your pass is now active on this device!'
+          : 'Your active pass has been restored on this device.',
+      );
+      trackEvent('pass_restored', { tier: result.pass.tier, source: 'settings', switched: Boolean(result.switched) });
     } catch (err) {
       setPassError(err instanceof Error ? err.message : 'Unable to restore pass with those details.');
     } finally {
@@ -108,10 +132,15 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
     }
   };
 
+  const handleRestoreSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await executePassRestore(false);
+  };
+
   const handleRemoveDevicePass = () => {
     clearStoredPass();
     setStoredPass(null);
-    setPassMessage('Pass removed from this device. You can restore it anytime using your M-Pesa receipt.');
+    setPassMessage('Pass removed from this device. You can restore it anytime using your phone number.');
   };
 
   const handleClearLocalDeviceData = () => {
@@ -336,23 +365,10 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                     <KeyRound size={16} className="text-emerald-400" />
                     <h3>{t('paywall.tabRestore')}</h3>
                   </div>
-                  <p className="text-xs text-zinc-400">{t('paywall.restoreHint')}</p>
+                  <p className="text-xs text-zinc-400">
+                    Enter the phone number you paid with to restore your pass on this device (1 active device at a time).
+                  </p>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label htmlFor="settings-mpesa-receipt" className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                        {t('paywall.receiptLabel')}
-                      </label>
-                      <input
-                        id="settings-mpesa-receipt"
-                        type="text"
-                        required
-                        maxLength={16}
-                        placeholder="QKH89X2LMS"
-                        value={restoreReceipt}
-                        onChange={(e) => setRestoreReceipt(e.target.value.toUpperCase())}
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm font-mono uppercase text-white"
-                      />
-                    </div>
                     <div>
                       <label htmlFor="settings-mpesa-phone" className="block text-xs font-semibold text-zinc-300 mb-1.5">
                         {t('paywall.phoneLabel')}
@@ -363,11 +379,51 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                         required
                         placeholder="0712 345 678"
                         value={restorePhone}
-                        onChange={(e) => setRestorePhone(e.target.value)}
+                        onChange={(e) => {
+                          setRestorePhone(e.target.value);
+                          setRestoreConflict(null);
+                        }}
                         className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-white"
                       />
                     </div>
+                    <div>
+                      <label htmlFor="settings-mpesa-receipt" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                        {t('paywall.receiptLabel')} <span className="text-zinc-500 font-normal">(optional)</span>
+                      </label>
+                      <input
+                        id="settings-mpesa-receipt"
+                        type="text"
+                        maxLength={24}
+                        placeholder="Optional M-Pesa / Paystack ref"
+                        value={restoreReceipt}
+                        onChange={(e) => setRestoreReceipt(e.target.value.toUpperCase())}
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm font-mono uppercase text-white"
+                      />
+                    </div>
                   </div>
+                  {restoreConflict && (
+                    <div className="rounded-lg border border-amber-500/40 bg-amber-950/30 p-3.5 space-y-2.5">
+                      <p className="text-xs text-amber-200 font-medium">{restoreConflict.message}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={restoreBusy}
+                          onClick={() => void executePassRestore(true)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3.5 py-2 text-xs font-bold text-black hover:bg-amber-400 disabled:opacity-50"
+                        >
+                          {restoreBusy && <Loader2 size={14} className="animate-spin" />}
+                          Log out other device &amp; watch here
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRestoreConflict(null)}
+                          className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {passError && (
                     <p role="alert" className="text-xs text-red-300">
                       {passError}

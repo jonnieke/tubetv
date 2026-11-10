@@ -342,6 +342,7 @@ serve(async (req) => {
       return jsonReply(req, { error: "Reference or transaction ID is required." }, 400, METHODS);
     }
 
+    const incomingDeviceId = String(requestBody.deviceId || "").trim();
     let tokenHash: string | null = null;
     if (checkoutToken) {
       tokenHash = await sha256Hex(checkoutToken);
@@ -368,18 +369,26 @@ serve(async (req) => {
       const activeRef = tx.paystack_reference || reference;
       const { data: sub } = await service
         .from("subscriptions")
-        .select("id, tier, end_date, is_active, payment_reference, mpesa_ref")
+        .select("id, tier, end_date, is_active, payment_reference, mpesa_ref, active_device_id")
         .or(`payment_reference.ilike.${activeRef},mpesa_ref.ilike.${activeRef}`)
         .eq("is_active", true)
         .maybeSingle();
 
       if (sub && sub.end_date && Date.parse(sub.end_date) > Date.now()) {
         const expiresAt = Date.parse(sub.end_date);
+        const boundDeviceId = incomingDeviceId || sub.active_device_id || undefined;
+        if (incomingDeviceId && sub.active_device_id !== incomingDeviceId) {
+          await service
+            .from("subscriptions")
+            .update({ active_device_id: incomingDeviceId, updated_at: new Date().toISOString() })
+            .eq("id", sub.id);
+        }
         const passToken = await issuePassToken({
           subId: sub.id,
           tier: sub.tier,
           exp: expiresAt,
           ref: sub.payment_reference || sub.mpesa_ref || activeRef,
+          deviceId: boundDeviceId,
         });
         return jsonReply(
           req,
@@ -394,6 +403,7 @@ serve(async (req) => {
               tier: sub.tier,
               expiresAt,
               reference: activeRef,
+              deviceId: boundDeviceId,
             },
           },
           200,
@@ -430,6 +440,7 @@ serve(async (req) => {
           p_paid_at: pPaidAt,
           p_customer_email: pEmail,
           p_phone: pPhone,
+          p_device_id: incomingDeviceId || null,
         });
 
         if (rpcError) {
@@ -438,12 +449,13 @@ serve(async (req) => {
         }
 
         if (rpcResult?.ok) {
-          const expiresAt = Date.parse(rpcResult.end_date);
+          const expiresAt = Date.parse(rpcResult.end_date || rpcResult.expires_at);
           const passToken = await issuePassToken({
             subId: rpcResult.subscription_id,
             tier: rpcResult.tier,
             exp: expiresAt,
             ref: verifyRef,
+            deviceId: incomingDeviceId || undefined,
           });
 
           return jsonReply(
@@ -459,6 +471,7 @@ serve(async (req) => {
                 tier: rpcResult.tier,
                 expiresAt,
                 reference: verifyRef,
+                deviceId: incomingDeviceId || undefined,
               },
             },
             200,
@@ -515,7 +528,7 @@ serve(async (req) => {
       return jsonReply(req, { error: "Too many restore attempts. Please wait a minute." }, 429, METHODS);
     }
 
-    const ref = String(requestBody.reference || "").trim().toUpperCase();
+    const ref = String(requestBody.reference || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
     const contact = String(requestBody.emailOrPhone || requestBody.phone || "").trim();
     const incomingDeviceId = String(requestBody.deviceId || "").trim();
     const forceSwitch = Boolean(requestBody.forceSwitch);
@@ -524,21 +537,25 @@ serve(async (req) => {
       return jsonReply(req, { error: "Please enter your phone number or reference." }, 400, METHODS);
     }
 
-    // Search existing active subscription
+    const cleanPhoneDigits = contact.replace(/\D/g, "");
+    const sub9 = cleanPhoneDigits.length >= 9 ? cleanPhoneDigits.slice(-9) : "";
+
+    // Search existing active subscription directly in SQL before limiting
     let query = service
       .from("subscriptions")
       .select("id, tier, end_date, is_active, payment_reference, mpesa_ref, phone, active_device_id")
       .eq("is_active", true)
-      .gt("end_date", new Date().toISOString())
-      .order("end_date", { ascending: false });
+      .gt("end_date", new Date().toISOString());
 
-    if (ref) {
+    if (ref && sub9) {
+      query = query.or(`payment_reference.ilike.${ref},mpesa_ref.ilike.${ref},phone.ilike.%${sub9}`);
+    } else if (ref) {
       query = query.or(`payment_reference.ilike.${ref},mpesa_ref.ilike.${ref}`);
+    } else if (sub9) {
+      query = query.ilike("phone", `%${sub9}`);
     }
 
-    const { data: subs } = await query.limit(5);
-    const cleanPhoneDigits = contact.replace(/\D/g, "");
-    const sub9 = cleanPhoneDigits.length >= 9 ? cleanPhoneDigits.slice(-9) : "";
+    const { data: subs } = await query.order("end_date", { ascending: false }).limit(10);
 
     const sub = (subs || []).find((s) => {
       if (ref) {

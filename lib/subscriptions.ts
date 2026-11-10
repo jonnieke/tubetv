@@ -43,6 +43,28 @@ export function getOrCreateDeviceId(): string {
   }
 }
 
+const SAVED_PHONE_KEY = 'tubetv_saved_phone';
+
+export function getRememberedPhone(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return localStorage.getItem(SAVED_PHONE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveRememberedPhone(phone: string) {
+  if (typeof window === 'undefined') return;
+  const clean = phone.trim();
+  if (!clean) return;
+  try {
+    localStorage.setItem(SAVED_PHONE_KEY, clean);
+  } catch {
+    // Best-effort local storage
+  }
+}
+
 const SIGNED_PASS_KEY = 'tube_pass_token';
 const LEGACY_GUEST_PASS_KEY = 'tube_guest_pass';
 const LEGACY_UNLOCKED_KEY = 'tube_unlocked_episodes';
@@ -140,9 +162,11 @@ export async function verifyStoredPass(): Promise<ActiveSubscription | null> {
     };
   }
 
+  const deviceId = getOrCreateDeviceId();
+
   try {
     const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
-      body: { action: 'verify', passToken: stored.token },
+      body: { action: 'verify', passToken: stored.token, deviceId },
       headers: { 'X-Pass-Token': stored.token },
     });
 
@@ -157,6 +181,8 @@ export async function verifyStoredPass(): Promise<ActiveSubscription | null> {
         tier: data.pass.tier || stored.tier,
         expiresAt: Number(data.pass.expiresAt) || stored.expiresAt,
         mpesaReceipt: data.pass.mpesaReceipt || stored.mpesaReceipt,
+        phone: stored.phone,
+        deviceId: data.pass.deviceId || stored.deviceId || deviceId,
       };
       try {
         localStorage.setItem(SIGNED_PASS_KEY, JSON.stringify(updated));
@@ -253,8 +279,9 @@ export async function fetchPaystackStatus(reference: string, checkoutToken: stri
   if (!isSupabaseConfigured) {
     throw new Error('Payment status verification is unavailable.');
   }
+  const deviceId = getOrCreateDeviceId();
   const { data, error } = await supabase.functions.invoke('paystack-checkout', {
-    body: { action: 'status', reference, checkoutToken, transactionId },
+    body: { action: 'status', reference, checkoutToken, transactionId, deviceId },
   });
 
   if (error) {
@@ -268,6 +295,7 @@ export async function fetchPaystackStatus(reference: string, checkoutToken: stri
       tier: data.pass.tier,
       expiresAt: Number(data.pass.expiresAt),
       mpesaReceipt: data.pass.reference,
+      deviceId: data.pass.deviceId || deviceId,
     });
   }
 
@@ -362,12 +390,13 @@ export async function fetchPaymentStatus(transactionId: string, checkoutToken: s
     throw new Error('M-Pesa payments are not configured in this environment.');
   }
 
+  const deviceId = getOrCreateDeviceId();
   let data: any;
   let error: any;
 
   try {
     const res = await supabase.functions.invoke('mpesa-stk-push', {
-      body: { action: 'status', transactionId, checkoutToken },
+      body: { action: 'status', transactionId, checkoutToken, deviceId },
     });
     data = res.data;
     error = res.error;
@@ -379,7 +408,7 @@ export async function fetchPaymentStatus(transactionId: string, checkoutToken: s
   if (error || !data?.transaction) {
     try {
       const pRes = await supabase.functions.invoke('paystack-checkout', {
-        body: { action: 'status', transactionId, checkoutToken },
+        body: { action: 'status', transactionId, checkoutToken, deviceId },
       });
       if (!pRes.error && pRes.data?.transaction) {
         data = pRes.data;
@@ -401,6 +430,7 @@ export async function fetchPaymentStatus(transactionId: string, checkoutToken: s
       tier: data.pass.tier,
       expiresAt: Number(data.pass.expiresAt),
       mpesaReceipt: data.pass.mpesaReceipt || data.pass.reference,
+      deviceId: data.pass.deviceId || deviceId,
     });
   }
 
@@ -538,8 +568,9 @@ export async function resolveAuthorizedPlaybackUrl(
       headers['X-Pass-Token'] = storedPass.token;
     }
 
+    const deviceId = getOrCreateDeviceId();
     const res = await fetch(
-      `${SUPABASE_URL}/functions/v1/playback-access?id=${encodeURIComponent(videoId)}`,
+      `${SUPABASE_URL}/functions/v1/playback-access?id=${encodeURIComponent(videoId)}&deviceId=${encodeURIComponent(deviceId)}`,
       { headers, cache: 'no-store', signal: AbortSignal.timeout(5000) },
     );
 
