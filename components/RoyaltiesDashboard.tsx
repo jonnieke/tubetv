@@ -17,6 +17,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { BunnyVideoItem } from '../services/bunnyService';
+import CreatorPayoutDisbursement from './CreatorPayoutDisbursement';
 import { supabase } from '../lib/supabase';
 import {
   computeShareOfPlayRoyalties,
@@ -345,6 +346,12 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
             <Download className="w-4 h-4" />
             <span>Batch Payout CSV ({royaltyResult.eligibleCreatorsCount})</span>
           </button>
+
+          <CreatorPayoutDisbursement
+            creators={royaltyResult.creators}
+            profiles={creatorProfiles}
+            periodLabel={selectedPeriod}
+          />
 
           <button
             type="button"

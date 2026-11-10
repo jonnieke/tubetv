@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star, Coins
+  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star, Coins, Inbox, BellRing
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import RoyaltiesDashboard from './RoyaltiesDashboard';
+import FilmmakerSubmissionsQueue from './FilmmakerSubmissionsQueue';
+import PassNotificationsPanel from './PassNotificationsPanel';
 import { NavItem, Video } from '../types';
 import { normalizeContentRating, ratingDescription, type ContentRating } from '../lib/contentRating';
 import { CONTENT_RATING_ENFORCED } from '../constants';
@@ -57,6 +59,7 @@ const EMPTY_FORM = {
   episode: '',
   introEndSeconds: '',
   outroStartSeconds: '',
+  captionsUrl: '',
   category: '',
   genre: '',
   author: '',
@@ -303,6 +306,24 @@ const EditModal = ({
             {field('Description', 'description', { as: 'textarea', placeholder: 'Short description of the content...' })}
           </div>
 
+          {/* Playback aids: subtitles for every title; skip cue points for non-episodic titles (episodic ones live in Series Organization) */}
+          <div className="grid grid-cols-1 gap-4 p-4 bg-sky-900/10 border border-sky-500/20 rounded-xl md:grid-cols-2">
+            <div className="md:col-span-2 pb-1 border-b border-sky-500/10">
+              <p className="text-xs font-bold text-sky-300 uppercase tracking-wider">Playback aids</p>
+            </div>
+            <div className="md:col-span-2">
+              {field('Subtitles URL (.vtt)', 'captionsUrl', { placeholder: 'https://... public WebVTT file (enables the CC button)' })}
+              <p className="mt-1 text-xs text-zinc-400">Host a .vtt file at a public HTTPS address (e.g. Supabase Storage or your CDN). Viewers get the CC button when this is saved.</p>
+            </div>
+            {form.category !== 'Series' && form.category !== 'Micro Dramas' && (
+              <>
+                {field('Intro ends at (seconds)', 'introEndSeconds', { type: 'number', placeholder: 'Optional, e.g. 45' })}
+                {field('Credits start at (seconds)', 'outroStartSeconds', { type: 'number', placeholder: 'Optional, e.g. 5400' })}
+                <p className="text-xs text-zinc-400 md:col-span-2">Skip Intro and Skip Credits buttons appear only when these times are saved.</p>
+              </>
+            )}
+          </div>
+
           {/* Series Info */}
           {(form.category === 'Series' || form.category === 'Micro Dramas') && (
             <div className="grid grid-cols-3 gap-4 p-4 bg-red-900/10 border border-red-500/20 rounded-xl">
@@ -517,7 +538,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddCategory = () => {},
   onRemoveCategory = () => {},
 }) => {
-  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties' | 'submissions' | 'alerts'>('content');
   const [items, setItems] = useState<BunnyVideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -592,6 +613,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       episode: saved.episode ?? getMeta(item.metaTags, 'episode'),
       introEndSeconds: saved.introEndSeconds ?? getMeta(item.metaTags, 'introEndSeconds'),
       outroStartSeconds: saved.outroStartSeconds ?? getMeta(item.metaTags, 'outroStartSeconds'),
+      captionsUrl: saved.captionsUrl ?? mapped.captionsUrl ?? getMeta(item.metaTags, 'captionsUrl'),
       category: saved.category ?? mapped.category,
       genre: saved.genre ?? getMeta(item.metaTags, 'genre'),
       author: saved.author ?? mapped.author,
@@ -621,7 +643,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     const intro = editForm.introEndSeconds.trim();
     const outro = editForm.outroStartSeconds.trim();
-    if (episodic && ([intro, outro].some(value => value && !/^[1-9]\d*$/.test(value)) || (intro && outro && Number(intro) >= Number(outro)) || [intro, outro].some(value => value && editingItem.length > 0 && Number(value) >= editingItem.length))) {
+    if (editForm.captionsUrl.trim() && !publicMediaUrl(editForm.captionsUrl)) {
+      alert('Use a public HTTPS URL for the subtitles (.vtt) file.');
+      return;
+    }
+    if (([intro, outro].some(value => value && !/^[1-9]\d*$/.test(value)) || (intro && outro && Number(intro) >= Number(outro)) || [intro, outro].some(value => value && editingItem.length > 0 && Number(value) >= editingItem.length))) {
       alert('Use positive whole-second cue points within the video. The intro must end before the outro starts.');
       return;
     }
@@ -645,7 +671,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       seasonSynopsis: episodic ? editForm.seasonSynopsis : '',
       episodeSynopsis: episodic ? editForm.episodeSynopsis : '',
       season: episodic ? editForm.season : '', episode: episodic ? editForm.episode : '',
-      introEndSeconds: episodic ? intro : '', outroStartSeconds: episodic ? outro : '',
+      introEndSeconds: intro, outroStartSeconds: outro,
+      captionsUrl: editForm.captionsUrl.trim(),
       seriesFormat: editForm.category === 'Micro Dramas' ? 'micro-drama' : 'standard',
       accessTier: editForm.accessTier,
       isPremium: String(isPremium),
@@ -658,7 +685,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       // 1. Prepare the updated metadata
       // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'accesstier', 'ispremium', 'freeepisodes', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seriesposterurl', 'seriestrailerurl', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds', 'editorialupdatedat'];
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'accesstier', 'ispremium', 'freeepisodes', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seriesposterurl', 'seriestrailerurl', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds', 'captionsurl', 'editorialupdatedat'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
@@ -854,7 +881,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <p className="text-zinc-400 text-sm mt-1">Manage content, view analytics, and upload new videos</p>
         </div>
         
-        <div className="flex gap-2 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800">
+        <div className="flex flex-wrap gap-2 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800">
           <button
             onClick={() => setActiveTab('content')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
@@ -887,8 +914,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <Coins size={16} /> Royalties & Payouts
           </button>
+          <button
+            onClick={() => setActiveTab('submissions')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              activeTab === 'submissions' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <Inbox size={16} /> Submissions
+          </button>
+          <button
+            onClick={() => setActiveTab('alerts')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              activeTab === 'alerts' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <BellRing size={16} /> Pass Alerts
+          </button>
         </div>
       </div>
+
+      {activeTab === 'submissions' && (
+        <div className="animate-in fade-in duration-500">
+          <FilmmakerSubmissionsQueue />
+        </div>
+      )}
+
+      {activeTab === 'alerts' && (
+        <div className="animate-in fade-in duration-500">
+          <PassNotificationsPanel />
+        </div>
+      )}
+
 
       {activeTab === 'royalties' && (
         <div className="animate-in fade-in duration-500">

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { constantTimeSecretEquals } from "../_shared/passToken.ts";
+import { claimAndSendReceipt } from "../_shared/notify.ts";
 
 function metadataValue(items: Array<{ Name: string; Value?: unknown }> = [], name: string) {
   return items.find((item) => item.Name === name)?.Value;
@@ -160,6 +161,14 @@ serve(async (req) => {
       page_path: "/mpesa/callback",
       occurred_at: new Date().toISOString(),
     });
+    if (rpcResult.subscription_id) {
+      try {
+        await claimAndSendReceipt(service, String(rpcResult.subscription_id));
+      } catch (notifyErr) {
+        // Never fail the Safaricom callback because a courtesy message failed; the scheduled sweep retries.
+        console.warn("pass_receipt_notify_failed", notifyErr);
+      }
+    }
   }
 
   return new Response(JSON.stringify({ ResultCode: 0, ResultDesc: "Accepted" }), {

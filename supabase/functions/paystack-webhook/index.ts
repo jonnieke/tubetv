@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { constantTimeSecretEquals } from "../_shared/passToken.ts";
+import { claimAndSendReceipt } from "../_shared/notify.ts";
 
 async function verifyPaystackSignature(rawBody: string, signature: string, secret: string): Promise<boolean> {
   if (!signature || !secret || !rawBody) return false;
@@ -98,6 +99,41 @@ serve(async (req) => {
           page_path: "/paystack/webhook",
           occurred_at: new Date().toISOString(),
         });
+        if (rpcResult.subscription_id) {
+          try {
+            await claimAndSendReceipt(service, String(rpcResult.subscription_id));
+          } catch (notifyErr) {
+            console.warn("pass_receipt_notify_failed", notifyErr);
+          }
+        }
+      }
+    }
+  }
+
+  // ─── Creator payout transfer lifecycle (Paystack Transfers API) ────────────
+  if (
+    payload.event === "transfer.success" ||
+    payload.event === "transfer.failed" ||
+    payload.event === "transfer.reversed"
+  ) {
+    const data = payload.data || {};
+    const reference = String(data.reference || "").trim().toLowerCase();
+    if (reference) {
+      const nextStatus =
+        payload.event === "transfer.success" ? "success" : payload.event === "transfer.reversed" ? "reversed" : "failed";
+      const { error: transferErr } = await service
+        .from("creator_payouts")
+        .update({
+          status: nextStatus,
+          transfer_code: data.transfer_code ? String(data.transfer_code) : undefined,
+          failure_reason:
+            nextStatus === "success" ? null : String(data.reason || data.gateway_response || payload.event).slice(0, 300),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("reference", reference);
+      if (transferErr) {
+        console.error("paystack_webhook_transfer_update_error", transferErr);
+        return new Response("Retry webhook", { status: 500 });
       }
     }
   }

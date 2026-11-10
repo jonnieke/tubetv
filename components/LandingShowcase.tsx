@@ -184,12 +184,14 @@ interface CreatorSpotlightProps {
   videos: Video[];
   onSelectVideo: (video: Video, options?: { autoPlay?: boolean }) => void;
   onOpenCreatorPortal: () => void;
+  onApplyToPublish?: () => void;
 }
 
 export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
   videos,
   onSelectVideo,
   onOpenCreatorPortal,
+  onApplyToPublish,
 }) => {
   const { language } = useLanguage();
 
@@ -223,6 +225,16 @@ export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
               : 'Every TubeTV Pass directly funds African filmmakers and storytellers — with 70% net revenue share and automated M-Pesa & bank royalty payouts.'}
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-1">
+            {onApplyToPublish && (
+              <button
+                type="button"
+                onClick={onApplyToPublish}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 hover:bg-red-500 text-white px-4 py-2.5 text-xs font-bold transition cursor-pointer"
+              >
+                <Play size={14} fill="currentColor" />
+                {language === 'sw' ? 'Omba Kuchapisha Filamu Yako' : 'Apply to Publish Your Film'}
+              </button>
+            )}
             <button
               type="button"
               onClick={onOpenCreatorPortal}

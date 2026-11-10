@@ -94,6 +94,7 @@ const AuthModal = lazy(() => import('./components/AuthModal'));
 const PaywallModal = lazy(() => import('./components/PaywallModal'));
 const SettingsSection = lazy(() => import('./components/SettingsSection'));
 const LiveSection = lazy(() => import('./components/LiveSection'));
+const FilmmakerSubmissionModal = lazy(() => import('./components/FilmmakerSubmissionModal'));
 
 const DEMO_VIDEO_URL = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
 const DEMO_VIDEOS = MOCK_VIDEOS.map((video) => ({
@@ -180,6 +181,7 @@ const App: React.FC = () => {
   const [isVideoFinished, setIsVideoFinished] = useState(false);
   const [replayNonce, setReplayNonce] = useState(0);
   const [modalAutoPlay, setModalAutoPlay] = useState<boolean>(true);
+  const [showFilmmakerForm, setShowFilmmakerForm] = useState(false);
 
   const [watchLater, setWatchLater] = useState<string[]>(() => {
     try {
@@ -1222,6 +1224,7 @@ const App: React.FC = () => {
                   videos={ratingFilteredVideos}
                   onSelectVideo={openVideo}
                   onOpenCreatorPortal={() => handleNavigate(ViewState.SETTINGS, 'creator')}
+                  onApplyToPublish={() => setShowFilmmakerForm(true)}
                 />
 
                 {['Movies', 'Farmers', 'Education', 'Faith', 'Kids', 'Diaspora'].map((cat) => {
@@ -1453,6 +1456,12 @@ const App: React.FC = () => {
               }}
               onCancel={() => setShowLogin(false)}
             />
+          </Suspense>
+        )}
+
+        {showFilmmakerForm && (
+          <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+            <FilmmakerSubmissionModal onClose={() => setShowFilmmakerForm(false)} />
           </Suspense>
         )}
 
