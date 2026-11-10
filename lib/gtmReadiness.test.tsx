@@ -34,7 +34,7 @@ describe('GTM readiness guardrails', () => {
     );
     expect(html).toContain('KSh 10');
     expect(html).toContain('KSh 50');
-    expect(html).toContain('KSh 249');
+    expect(html).toContain('KSh 149');
     expect(html).toContain('Restore Pass');
     expect(html).toContain('Paystack');
     expect(html).toContain('Card, Apple Pay, M-Pesa');

@@ -10,6 +10,10 @@ import {
   KeyRound,
   CreditCard,
   ExternalLink,
+  Laptop,
+  LogOut,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Video } from '../types';
 import { isMicroDrama } from '../lib/series';
@@ -22,6 +26,7 @@ import {
   startPaystackPayment,
   fetchPaystackStatus,
   restorePaystackPass,
+  restorePassByPhone,
 } from '../lib/subscriptions';
 import { trackEvent } from '../lib/analytics';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -91,6 +96,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const [errorMessage, setErrorMessage] = useState('');
   const [paystackAuthUrl, setPaystackAuthUrl] = useState('');
   const [paystackRef, setPaystackRef] = useState('');
+  const [deviceConflict, setDeviceConflict] = useState(false);
+  const [showAdvancedRef, setShowAdvancedRef] = useState(false);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -432,35 +439,44 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     return handleMpesaCheckout();
   };
 
-  const handleRestore = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRestore = async (e?: React.FormEvent, forceSwitch = false) => {
+    if (e) e.preventDefault();
+    const cleanPhone = phone.trim();
     const cleanRef = receipt.trim().toUpperCase();
-    const cleanContact = phone.trim() || email.trim();
 
-    if (!cleanRef || cleanRef.length < 6) {
-      setErrorMessage('Please enter your Paystack reference (e.g. TUBE_...) or M-Pesa receipt code.');
+    if (!cleanPhone && !cleanRef) {
+      setErrorMessage('Please enter your phone number to restore your pass.');
       return;
     }
 
     setErrorMessage('');
+    setDeviceConflict(false);
     setStatus('restoring');
 
     try {
-      let restored;
-      if (cleanRef.startsWith('TUBE_') || cleanRef.length > 12) {
-        restored = await restorePaystackPass(cleanRef, cleanContact);
-      } else {
-        try {
-          restored = await restoreMpesaPass(cleanRef, cleanContact);
-        } catch {
-          restored = await restorePaystackPass(cleanRef, cleanContact);
-        }
+      const result = await restorePassByPhone({
+        phone: cleanPhone,
+        forceSwitch,
+        mpesaReceipt: cleanRef,
+        reference: cleanRef,
+      });
+
+      if (result.conflict) {
+        setStatus('idle');
+        setDeviceConflict(true);
+        return;
+      }
+
+      if (!result.success || !result.pass) {
+        setStatus('error');
+        setErrorMessage(result.message || 'No active pass matched that phone number.');
+        return;
       }
 
       setStatus('completed');
       trackEvent('pass_restored', {
         videoId: video.id,
-        tier: restored.tier,
+        tier: result.pass.tier,
       });
       completeTimerRef.current = setTimeout(() => {
         onSuccess();
@@ -469,7 +485,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       const message =
         err instanceof Error && err.message
           ? err.message
-          : 'Could not restore pass. Please check your reference and contact details.';
+          : 'Could not restore pass. Please check your phone number.';
       setStatus('error');
       setErrorMessage(message);
     }
@@ -832,45 +848,97 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                   )}
                 </button>
               </form>
-            ) : (
-              <form onSubmit={handleRestore} className="space-y-4">
-                <p className="text-xs text-zinc-400 leading-relaxed">{t('paywall.restoreHint')}</p>
-
-                <div>
-                  <label htmlFor="restore-reference" className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    {t('paywall.restoreRefLabel')}
-                  </label>
-                  <input
-                    id="restore-reference"
-                    type="text"
-                    required
-                    maxLength={32}
-                    placeholder="QKH89X2LMS or TUBE_..."
-                    value={receipt}
-                    onChange={(e) => setReceipt(e.target.value.toUpperCase())}
-                    disabled={isBusy}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-sm font-mono uppercase text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
-                  />
+            ) : deviceConflict ? (
+              <div className="bg-zinc-900 border border-amber-500/40 rounded-2xl p-5 text-center space-y-3 animate-in fade-in zoom-in-95">
+                <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
+                  <Laptop className="w-6 h-6" />
                 </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Pass Active on Another Screen</h4>
+                  <p className="text-xs text-zinc-300 mt-1.5 leading-relaxed">
+                    Your TubeTV pass for <strong className="text-white">{phone}</strong> is currently playing on another screen.
+                    TubeTV enforces a <strong>1-device policy</strong>.
+                  </p>
+                </div>
+                <div className="pt-2 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => handleRestore(undefined, true)}
+                    className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-amber-950/40"
+                  >
+                    {status === 'restoring' ? (
+                      <>
+                        <Loader2 size={15} className="animate-spin" />
+                        <span>Logging out other screen...</span>
+                      </>
+                    ) : (
+                      <>
+                        <LogOut size={15} />
+                        <span>Log out other device & watch here</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeviceConflict(false)}
+                    className="w-full py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-xs font-semibold transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={(e) => handleRestore(e, false)} className="space-y-4">
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Enter the phone number you used to subscribe. If active on another device, you can switch playback to this screen.
+                </p>
 
                 <div>
-                  <label htmlFor="restore-contact" className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    {t('paywall.restoreContactLabel')}
+                  <label htmlFor="restore-phone" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    Phone Number
                   </label>
                   <div className="relative">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-emerald-400">
                       <Smartphone size={16} />
                     </div>
                     <input
-                      id="restore-contact"
-                      type="text"
-                      placeholder="0712 345 678 or viewer@example.com"
+                      id="restore-phone"
+                      type="tel"
+                      required
+                      placeholder="0712 345 678"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
                       disabled={isBusy}
                       className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedRef(!showAdvancedRef)}
+                    className="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors"
+                  >
+                    {showAdvancedRef ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    <span>Have an M-Pesa receipt code or Paystack ref? (Optional)</span>
+                  </button>
+
+                  {showAdvancedRef && (
+                    <div className="mt-2 animate-in fade-in duration-200">
+                      <input
+                        id="restore-reference"
+                        type="text"
+                        maxLength={32}
+                        placeholder="e.g. QKH89X2LMS or TUBE_..."
+                        value={receipt}
+                        onChange={(e) => setReceipt(e.target.value.toUpperCase())}
+                        disabled={isBusy}
+                        className="w-full bg-zinc-900/80 border border-zinc-700 rounded-xl px-4 py-2.5 text-xs font-mono uppercase text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {errorMessage && (
@@ -881,16 +949,16 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
                 <button
                   type="submit"
-                  disabled={isBusy}
-                  className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-950/50"
+                  disabled={isBusy || !phone.trim()}
+                  className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-950/50"
                 >
                   {status === 'restoring' ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      {t('paywall.restoring')}
+                      <span>Checking active pass...</span>
                     </>
                   ) : (
-                    t('paywall.restoreButton')
+                    <span>Restore Pass on This Device</span>
                   )}
                 </button>
               </form>

@@ -327,7 +327,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                 ) : (
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 text-sm text-zinc-400">
                     No active M-Pesa pass is saved on this browser right now. Select any locked episode to purchase a
-                    24-Hour (KSh 10), Weekly (KSh 50), or Monthly (KSh 249) pass, or restore an existing pass below.
+                    24-Hour (KSh 10), Weekly (KSh 50), or Monthly (KSh 149) pass, or restore an existing pass below.
                   </div>
                 )}
 

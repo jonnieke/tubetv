@@ -53,10 +53,14 @@ async function hasValidEntitlement(req: Request): Promise<boolean> {
     if (verified) {
       const { data: sub } = await service
         .from("subscriptions")
-        .select("id, is_active, end_date")
+        .select("id, is_active, end_date, active_device_id")
         .eq("id", verified.subId)
         .maybeSingle();
       if (sub?.is_active && (!sub.end_date || Date.parse(sub.end_date) > Date.now())) {
+        // Enforce 1-device concurrency: if pass was transferred to another device, reject older device
+        if (sub.active_device_id && verified.deviceId && sub.active_device_id !== verified.deviceId) {
+          return false;
+        }
         return true;
       }
     }

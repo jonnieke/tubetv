@@ -6,7 +6,7 @@ import { issuePassToken, sha256Hex, verifyPassToken } from "../_shared/passToken
 const PLANS = {
   daily: { amount: 10, label: "TubeTV Daily", hours: 24 },
   weekly: { amount: 50, label: "TubeTV Weekly", hours: 168 },
-  monthly: { amount: 249, label: "TubeTV Monthly", hours: 720 },
+  monthly: { amount: 149, label: "TubeTV Monthly", hours: 720 },
 } as const;
 
 const METHODS = "POST, OPTIONS";
@@ -290,29 +290,55 @@ serve(async (req) => {
     );
   }
 
-  // ─── Action: Cross-device M-Pesa receipt recovery ──────────────────────────
+  // ─── Action: Phone-number-only cross-device recovery (1-device concurrency) ──
   if (action === "restore") {
-    if (!checkIpRateLimit(`restore:${clientIp}`, 8)) {
+    if (!checkIpRateLimit(`restore:${clientIp}`, 10)) {
       return jsonReply(req, { error: "Too many restore attempts. Please wait a minute and try again." }, 429, METHODS);
     }
 
-    const receipt = String(requestBody.mpesaReceipt || "").trim().toUpperCase();
     const parsedPhone = normalizeKenyanPhone(requestBody.phone);
-    if (!/^[A-Z0-9_]{6,36}$/.test(receipt) || !parsedPhone) {
-      return jsonReply(req, { error: "Enter a valid M-Pesa receipt code or reference and phone number." }, 400, METHODS);
+    if (!parsedPhone) {
+      return jsonReply(req, { error: "Please enter a valid Kenyan phone number (e.g. 0712 345 678)." }, 400, METHODS);
     }
 
-    const { data: sub } = await service
-      .from("subscriptions")
-      .select("id, phone, tier, end_date, is_active, mpesa_ref, payment_reference")
-      .or(`mpesa_ref.ilike.${receipt},payment_reference.ilike.${receipt}`)
-      .order("end_date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const sub9 = parsedPhone.sub9;
+    const incomingDeviceId = String(requestBody.deviceId || "").trim();
+    const forceSwitch = Boolean(requestBody.forceSwitch);
+    const receipt = String(requestBody.mpesaReceipt || "").trim().toUpperCase();
 
-    const storedSub9 = String(sub?.phone || "").replace(/\D/g, "").slice(-9);
-    if (!sub || (storedSub9 && storedSub9 !== parsedPhone.sub9)) {
-      return jsonReply(req, { error: "No pass matched that M-Pesa receipt and phone number." }, 404, METHODS);
+    // Query active subscriptions matching this phone
+    const { data: subs, error: subError } = await service
+      .from("subscriptions")
+      .select("id, phone, tier, end_date, is_active, mpesa_ref, payment_reference, active_device_id")
+      .eq("is_active", true)
+      .gt("end_date", new Date().toISOString())
+      .order("end_date", { ascending: false })
+      .limit(10);
+
+    if (subError) {
+      return jsonReply(req, { error: "Database service temporarily unavailable." }, 503, METHODS);
+    }
+
+    // Match by phone number suffix or receipt
+    const sub = (subs || []).find((s) => {
+      const storedDigits = String(s.phone || "").replace(/\D/g, "");
+      const phoneMatch = storedDigits.endsWith(sub9);
+      if (receipt) {
+        const refMatch =
+          (s.mpesa_ref && s.mpesa_ref.toUpperCase() === receipt) ||
+          (s.payment_reference && s.payment_reference.toUpperCase() === receipt);
+        return phoneMatch || refMatch;
+      }
+      return phoneMatch;
+    });
+
+    if (!sub) {
+      return jsonReply(
+        req,
+        { error: "No active pass found for this phone number. Choose a pass below to start watching." },
+        404,
+        METHODS,
+      );
     }
 
     const expiresAt = sub.end_date ? Date.parse(sub.end_date) : 0;
@@ -320,11 +346,39 @@ serve(async (req) => {
       return jsonReply(req, { error: "That pass has expired. Choose a new pass to continue watching." }, 410, METHODS);
     }
 
+    const currentDeviceId = String(sub.active_device_id || "").trim();
+
+    // 1-Device Concurrency Enforcement:
+    // If active on another device and user has NOT confirmed forceSwitch, prompt them
+    if (currentDeviceId && incomingDeviceId && currentDeviceId !== incomingDeviceId && !forceSwitch) {
+      return jsonReply(
+        req,
+        {
+          conflict: true,
+          message: "Your pass is currently active on another device. Would you like to log out the other device and watch here?",
+          tier: sub.tier,
+          expiresAt,
+        },
+        409,
+        METHODS,
+      );
+    }
+
+    // Assign active device ID to this new session
+    const finalDeviceId = incomingDeviceId || currentDeviceId || crypto.randomUUID();
+    if (finalDeviceId !== currentDeviceId) {
+      await service
+        .from("subscriptions")
+        .update({ active_device_id: finalDeviceId, updated_at: new Date().toISOString() })
+        .eq("id", sub.id);
+    }
+
     const passToken = await issuePassToken({
       subId: sub.id,
       tier: sub.tier,
       exp: expiresAt,
-      ref: sub.mpesa_ref || sub.payment_reference || receipt,
+      ref: sub.mpesa_ref || sub.payment_reference || "PASS",
+      deviceId: finalDeviceId,
     });
 
     return jsonReply(
@@ -334,8 +388,11 @@ serve(async (req) => {
           token: passToken,
           tier: sub.tier,
           expiresAt,
-          mpesaReceipt: sub.mpesa_ref || sub.payment_reference || receipt,
+          mpesaReceipt: sub.mpesa_ref || sub.payment_reference || "PASS",
+          phone: parsedPhone.e164,
+          deviceId: finalDeviceId,
         },
+        switched: Boolean(currentDeviceId && incomingDeviceId && currentDeviceId !== incomingDeviceId),
       },
       200,
       METHODS,

@@ -25,7 +25,7 @@ describe('public legal pages', () => {
     expect(html).toContain('another person’s account');
     expect(html).toContain('KSh 10');
     expect(html).toContain('KSh 50');
-    expect(html).toContain('KSh 249');
+    expect(html).toContain('KSh 149');
     expect(html).toContain('never auto-renew');
     expect(html).toContain('Consumer Protection Act, 2012');
     expect(html).toContain('href="mailto:info@onfonmedia.com"');

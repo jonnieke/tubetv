@@ -40,7 +40,7 @@ const content = {
       ],
       [
         'Prepaid passes & refunds',
-        'TubeTV offers one-time, non-recurring prepaid passes via Safaricom M-Pesa and Paystack (Card, Apple Pay, and Mobile Money): 24-Hour All-Access Pass (KSh 10), Weekly Binge Pass (KSh 50), and Monthly VIP Pass (KSh 249), inclusive of applicable taxes. Passes never auto-renew and can be restored on another browser using your payment reference or M-Pesa receipt code and phone number. Verified duplicate or unfulfilled debits caused by a platform fault are credited or refunded via customer support.',
+        'TubeTV offers one-time, non-recurring prepaid passes via Safaricom M-Pesa and Paystack (Card, Apple Pay, and Mobile Money): 24-Hour All-Access Pass (KSh 10), Weekly Binge Pass (KSh 50), and Monthly VIP Pass (KSh 149), inclusive of applicable taxes. Passes never auto-renew and can be restored on another browser using your phone number or payment reference. Verified duplicate or unfulfilled debits caused by a platform fault are credited or refunded via customer support.',
       ],
       [
         'Content & KFCB classification',

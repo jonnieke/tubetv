@@ -4,7 +4,7 @@ import { isLocalAuthUserId } from './localAuth';
 export const SUBSCRIPTION_PLANS = {
   daily: { code: 'daily', label: '24-Hour Pass', amountKes: 10, description: '24 hours of unlimited premium access' },
   weekly: { code: 'weekly', label: 'Weekly Pass', amountKes: 50, description: '7 days of unlimited premium access' },
-  monthly: { code: 'monthly', label: 'Monthly Pass', amountKes: 249, description: '30 days of unlimited premium access' },
+  monthly: { code: 'monthly', label: 'Monthly Pass', amountKes: 149, description: '30 days of unlimited premium access' },
 } as const;
 
 export type SubscriptionPlanCode = keyof typeof SUBSCRIPTION_PLANS;
@@ -22,6 +22,25 @@ export interface StoredPass {
   tier: string;
   expiresAt: number;
   mpesaReceipt?: string;
+  phone?: string;
+  deviceId?: string;
+}
+
+export function getOrCreateDeviceId(): string {
+  if (typeof window === 'undefined') return 'server';
+  const STORAGE_KEY = 'tubetv_device_id';
+  try {
+    let deviceId = localStorage.getItem(STORAGE_KEY);
+    if (!deviceId || deviceId.length < 10) {
+      deviceId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `dev_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      localStorage.setItem(STORAGE_KEY, deviceId);
+    }
+    return deviceId;
+  } catch {
+    return 'fallback_device';
+  }
 }
 
 const SIGNED_PASS_KEY = 'tube_pass_token';
@@ -396,29 +415,101 @@ export async function fetchPaymentStatus(transactionId: string, checkoutToken: s
   };
 }
 
+export interface RestorePassOptions {
+  phone: string;
+  forceSwitch?: boolean;
+  mpesaReceipt?: string;
+  reference?: string;
+}
+
+export interface RestorePassResult {
+  success: boolean;
+  pass?: StoredPass;
+  conflict?: boolean;
+  message?: string;
+  tier?: string;
+  switched?: boolean;
+}
+
+export async function restorePassByPhone(options: RestorePassOptions): Promise<RestorePassResult> {
+  if (!isSupabaseConfigured) {
+    throw new Error('Pass restoration requires a live payment connection.');
+  }
+
+  const cleanPhone = options.phone.trim();
+  const deviceId = getOrCreateDeviceId();
+
+  try {
+    const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+      body: {
+        action: 'restore',
+        phone: cleanPhone,
+        deviceId,
+        forceSwitch: Boolean(options.forceSwitch),
+        mpesaReceipt: options.mpesaReceipt?.trim() || options.reference?.trim() || '',
+      },
+    });
+
+    if (data?.conflict) {
+      return {
+        success: false,
+        conflict: true,
+        message:
+          data.message ||
+          'Your pass is currently active on another device. Would you like to log out the other device and watch here?',
+        tier: data.tier,
+      };
+    }
+
+    if (error || data?.error) {
+      if (options.reference?.startsWith('TUBE_')) {
+        const paystackPass = await restorePaystackPass(options.reference, cleanPhone);
+        return { success: true, pass: paystackPass };
+      }
+      return {
+        success: false,
+        message: data?.error || error?.message || 'No active pass found for this phone number.',
+      };
+    }
+
+    if (data?.pass?.token) {
+      const stored: StoredPass = {
+        token: data.pass.token,
+        tier: data.pass.tier,
+        expiresAt: Number(data.pass.expiresAt),
+        mpesaReceipt: data.pass.mpesaReceipt,
+        phone: cleanPhone,
+        deviceId,
+      };
+      saveStoredPass(stored);
+      return {
+        success: true,
+        pass: stored,
+        switched: Boolean(data.switched),
+      };
+    }
+
+    return {
+      success: false,
+      message: 'Unable to restore pass with those details.',
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : 'Unable to restore pass.',
+    };
+  }
+}
+
 export async function restoreMpesaPass(mpesaReceipt: string, phone: string): Promise<StoredPass> {
   if (!isSupabaseConfigured) {
     throw new Error('Pass restoration requires a live payment connection.');
   }
-  const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
-    body: { action: 'restore', mpesaReceipt: mpesaReceipt.trim().toUpperCase(), phone: phone.trim() },
-  });
-
-  if (error) {
-    throw new Error(data?.error || error.message || 'Could not restore pass with those details.');
+  const result = await restorePassByPhone({ phone, mpesaReceipt, forceSwitch: true });
+  if (result.success && result.pass) {
+    return result.pass;
   }
-  if (data?.error || !data?.pass?.token) {
-    throw new Error(data?.error || 'No active pass matched that M-Pesa receipt and phone number.');
-  }
-
-  const stored: StoredPass = {
-    token: data.pass.token,
-    tier: data.pass.tier,
-    expiresAt: Number(data.pass.expiresAt),
-    mpesaReceipt: data.pass.mpesaReceipt,
-  };
-  saveStoredPass(stored);
-  return stored;
+  throw new Error(result.message || 'Could not restore pass with those details.');
 }
 
 export async function resolveAuthorizedPlaybackUrl(
@@ -452,7 +543,7 @@ export async function resolveAuthorizedPlaybackUrl(
       { headers, cache: 'no-store', signal: AbortSignal.timeout(5000) },
     );
 
-    if (res.status === 402) {
+    if (res.status === 402 || res.status === 403) {
       if (storedPass) clearStoredPass();
       return { locked: true, url: '' };
     }

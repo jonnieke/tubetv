@@ -318,7 +318,8 @@ alter table public.analytics_events
     'checkout_start',
     'checkout_submitted',
     'subscription_activated',
-    'checkout_failed'
+    'checkout_failed',
+    'qualified_view'
   ));
 
 -- 8. Default viewer maximum_rating to '16' for general profiles

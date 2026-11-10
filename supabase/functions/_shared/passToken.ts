@@ -6,6 +6,7 @@ export interface SignedPassPayload {
   tier: string;
   exp: number; // Unix timestamp in milliseconds
   ref: string;
+  deviceId?: string;
 }
 
 function toBase64Url(bytes: Uint8Array): string {

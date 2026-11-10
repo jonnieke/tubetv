@@ -6,7 +6,7 @@ import { issuePassToken, sha256Hex, verifyPassToken } from "../_shared/passToken
 const PLANS = {
   daily: { amount: 10, label: "TubeTV 24-Hour Pass", hours: 24 },
   weekly: { amount: 50, label: "TubeTV Weekly Pass", hours: 168 },
-  monthly: { amount: 249, label: "TubeTV Monthly Pass", hours: 720 },
+  monthly: { amount: 149, label: "TubeTV Monthly Pass", hours: 720 },
 } as const;
 
 const METHODS = "POST, OPTIONS";
@@ -516,26 +516,74 @@ serve(async (req) => {
     }
 
     const ref = String(requestBody.reference || "").trim().toUpperCase();
-    const contact = String(requestBody.emailOrPhone || "").trim();
-    if (!ref) {
-      return jsonReply(req, { error: "Please enter your Paystack reference or receipt." }, 400, METHODS);
+    const contact = String(requestBody.emailOrPhone || requestBody.phone || "").trim();
+    const incomingDeviceId = String(requestBody.deviceId || "").trim();
+    const forceSwitch = Boolean(requestBody.forceSwitch);
+
+    if (!ref && !contact) {
+      return jsonReply(req, { error: "Please enter your phone number or reference." }, 400, METHODS);
     }
 
     // Search existing active subscription
-    const { data: sub } = await service
+    let query = service
       .from("subscriptions")
-      .select("id, tier, end_date, is_active, payment_reference, mpesa_ref, phone")
-      .or(`payment_reference.ilike.${ref},mpesa_ref.ilike.${ref}`)
+      .select("id, tier, end_date, is_active, payment_reference, mpesa_ref, phone, active_device_id")
       .eq("is_active", true)
-      .maybeSingle();
+      .gt("end_date", new Date().toISOString())
+      .order("end_date", { ascending: false });
+
+    if (ref) {
+      query = query.or(`payment_reference.ilike.${ref},mpesa_ref.ilike.${ref}`);
+    }
+
+    const { data: subs } = await query.limit(5);
+    const cleanPhoneDigits = contact.replace(/\D/g, "");
+    const sub9 = cleanPhoneDigits.length >= 9 ? cleanPhoneDigits.slice(-9) : "";
+
+    const sub = (subs || []).find((s) => {
+      if (ref) {
+        if (s.payment_reference?.toUpperCase() === ref || s.mpesa_ref?.toUpperCase() === ref) return true;
+      }
+      if (sub9) {
+        const storedDigits = String(s.phone || "").replace(/\D/g, "");
+        if (storedDigits.endsWith(sub9)) return true;
+      }
+      return false;
+    });
 
     if (sub && sub.end_date && Date.parse(sub.end_date) > Date.now()) {
       const expiresAt = Date.parse(sub.end_date);
+      const currentDeviceId = String(sub.active_device_id || "").trim();
+
+      // Enforce 1 device concurrency
+      if (currentDeviceId && incomingDeviceId && currentDeviceId !== incomingDeviceId && !forceSwitch) {
+        return jsonReply(
+          req,
+          {
+            conflict: true,
+            message: "Your pass is currently active on another device. Would you like to log out the other device and watch here?",
+            tier: sub.tier,
+            expiresAt,
+          },
+          409,
+          METHODS,
+        );
+      }
+
+      const finalDeviceId = incomingDeviceId || currentDeviceId || crypto.randomUUID();
+      if (finalDeviceId !== currentDeviceId) {
+        await service
+          .from("subscriptions")
+          .update({ active_device_id: finalDeviceId, updated_at: new Date().toISOString() })
+          .eq("id", sub.id);
+      }
+
       const passToken = await issuePassToken({
         subId: sub.id,
         tier: sub.tier,
         exp: expiresAt,
-        ref: sub.payment_reference || sub.mpesa_ref || ref,
+        ref: sub.payment_reference || sub.mpesa_ref || ref || "PASS",
+        deviceId: finalDeviceId,
       });
 
       return jsonReply(
@@ -546,7 +594,9 @@ serve(async (req) => {
             tier: sub.tier,
             expiresAt,
             reference: sub.payment_reference || sub.mpesa_ref || ref,
+            deviceId: finalDeviceId,
           },
+          switched: Boolean(currentDeviceId && incomingDeviceId && currentDeviceId !== incomingDeviceId),
         },
         200,
         METHODS,
