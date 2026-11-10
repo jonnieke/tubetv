@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star
+  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star, Coins
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
+import RoyaltiesDashboard from './RoyaltiesDashboard';
 import { NavItem, Video } from '../types';
 import { normalizeContentRating, ratingDescription, type ContentRating } from '../lib/contentRating';
 import { CONTENT_RATING_ENFORCED } from '../constants';
@@ -516,7 +517,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddCategory = () => {},
   onRemoveCategory = () => {},
 }) => {
-  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties'>('content');
   const [items, setItems] = useState<BunnyVideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -878,8 +879,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <BarChart2 size={16} /> Analytics
           </button>
+          <button
+            onClick={() => setActiveTab('royalties')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              activeTab === 'royalties' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <Coins size={16} /> Royalties & Payouts
+          </button>
         </div>
       </div>
+
+      {activeTab === 'royalties' && (
+        <div className="animate-in fade-in duration-500">
+          <RoyaltiesDashboard videos={items} />
+        </div>
+      )}
 
       {activeTab === 'upload' && (
         <div className="animate-in fade-in duration-500">

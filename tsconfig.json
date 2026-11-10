@@ -30,6 +30,7 @@
   },
   "exclude": [
     "dist",
+    "bin",
     "node_modules",
     "supabase/functions"
   ]

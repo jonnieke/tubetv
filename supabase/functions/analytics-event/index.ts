@@ -19,6 +19,7 @@ const EVENTS = new Set([
   "checkout_submitted",
   "subscription_activated",
   "checkout_failed",
+  "qualified_view",
 ]);
 
 const METHODS = "POST, OPTIONS";

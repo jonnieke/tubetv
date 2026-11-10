@@ -14,7 +14,8 @@ export type AnalyticsEventName =
   | 'checkout_start'
   | 'checkout_submitted'
   | 'subscription_activated'
-  | 'checkout_failed';
+  | 'checkout_failed'
+  | 'qualified_view';
 
 type EventProperties = Record<string, string | number | boolean | undefined>;
 

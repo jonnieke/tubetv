@@ -21,6 +21,7 @@ const names = [
   "checkout_submitted",
   "subscription_activated",
   "checkout_failed",
+  "qualified_view",
 ] as const;
 
 serve(async (req) => {

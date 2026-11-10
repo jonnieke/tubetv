@@ -102,6 +102,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const bufferAtRef = useRef<number | null>(null);
   const playerInstanceRef = useRef(crypto.randomUUID());
   const authFetchedRef = useRef<string | null>(null);
+  const qualifiedViewFiredRef = useRef<boolean>(false);
 
   const [showCaptions, setShowCaptions] = useState(preferences.captions);
   const introEnd = video.introEndSeconds;
@@ -133,6 +134,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   useEffect(() => {
     setAuthorizedSrc(video.url || '');
     authFetchedRef.current = null;
+    qualifiedViewFiredRef.current = false;
   }, [video.id, video.url]);
 
   useEffect(() => {
@@ -608,6 +610,26 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (!isHoverPlay && total > 0 && Math.abs(current - lastProgressSaveRef.current) >= 10) {
       saveCurrentProgress();
     }
+
+    // Share of Play: 30-Second Minimum Qualified View (QV)
+    if (!isHoverPlay && !qualifiedViewFiredRef.current && current >= 30) {
+      qualifiedViewFiredRef.current = true;
+      trackEvent('qualified_view', {
+        videoId: video.id,
+        author: video.author || 'Creator',
+        seriesTitle: video.seriesTitle || '',
+        episode: video.episode || 1,
+        category: video.category,
+        watchSeconds: Math.round(current),
+      });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('tubetv:qualified-view', {
+            detail: { videoId: video.id, author: video.author, watchSeconds: Math.round(current) },
+          })
+        );
+      }
+    }
   };
 
   const handleLoadedMetadata = () => {
@@ -914,6 +936,18 @@ const VideoCard: React.FC<VideoCardProps> = ({
                     category: video.category,
                     seriesId: video.seriesId || '',
                   });
+                  // If short video completed without reaching 30s threshold, award Qualified View on full completion
+                  if (!qualifiedViewFiredRef.current && (total >= 15 || total >= (duration || 0) * 0.9)) {
+                    qualifiedViewFiredRef.current = true;
+                    trackEvent('qualified_view', {
+                      videoId: video.id,
+                      author: video.author || 'Creator',
+                      seriesTitle: video.seriesTitle || '',
+                      episode: video.episode || 1,
+                      category: video.category,
+                      watchSeconds: Math.round(total),
+                    });
+                  }
                 }
                 onEnded(video.id);
               }}

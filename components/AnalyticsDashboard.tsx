@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Plus, Trash2, LayoutGrid, Tag, Star, Music, Gamepad2, Coffee, Briefcase, Anchor, Zap, Cpu, Film, BookOpen, Utensils } from 'lucide-react';
+import { Plus, Trash2, LayoutGrid, Tag, Star, Music, Gamepad2, Coffee, Briefcase, Anchor, Zap, Cpu, Film, BookOpen, Utensils, Coins } from 'lucide-react';
 import { NavItem } from '../types';
 import { BunnyVideoItem, bunnyVideoToVideo, fetchBunnyVideos } from '../services/bunnyService';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
+import RoyaltiesDashboard from './RoyaltiesDashboard';
 
 // Helper for formatting large numbers
 const formatNumber = (num: number) => {
@@ -40,7 +41,7 @@ export default function AnalyticsDashboard({
   videos,
 }: AnalyticsDashboardProps) {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'overview' | 'menu'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'menu' | 'royalties'>('overview');
   const [newCatName, setNewCatName] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('Star');
   const [loadedVideos, setLoadedVideos] = useState<BunnyVideoItem[]>([]);
@@ -154,6 +155,16 @@ export default function AnalyticsDashboard({
                 }`}
             >
               {t('studio.menu')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('royalties')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                activeTab === 'royalties' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Coins className="w-4 h-4 text-amber-400" />
+              <span>Performance & Royalties</span>
             </button>
           </div>
         </div>
@@ -351,6 +362,13 @@ export default function AnalyticsDashboard({
             </div>
           </div>
         </div>
+      )}
+
+      {/* --- TAB: ROYALTIES & PERFORMANCE --- */}
+      {activeTab === 'royalties' && (
+        <section aria-label="Creatives Royalties & Performance">
+          <RoyaltiesDashboard videos={effectiveVideos} />
+        </section>
       )}
     </div>
   );
