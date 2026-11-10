@@ -2,6 +2,11 @@ import React, { Suspense, lazy, useState, useEffect, useMemo, useRef, useCallbac
 import CinemaNavigation from './components/CinemaNavigation';
 import LandingHero from './components/LandingHero';
 import LandingFooter from './components/LandingFooter';
+import {
+  CreatorOriginalsSpotlight,
+  LandingPassRibbon,
+  TopTenCarousel,
+} from './components/LandingShowcase';
 import MicroDramaComingSoon from './components/MicroDramaComingSoon';
 import ViewerWelcome from './components/ViewerWelcome';
 import CatalogueArtwork from './components/CatalogueArtwork';
@@ -1020,16 +1025,27 @@ const App: React.FC = () => {
                 const hero = featuredVideos.length ? featuredVideos[heroIndex % featuredVideos.length] : null;
                 if (!hero) return null;
                 return (
-                  <LandingHero
-                    video={hero}
-                    real={isRealContent}
-                    saved={watchLater.includes(hero.id)}
-                    onPlay={() => openVideo(hero)}
-                    onSave={() => toggleWatchLater(hero.id)}
-                    count={featuredVideos.length}
-                    index={heroIndex % featuredVideos.length}
-                    onSelect={setHeroIndex}
-                  />
+                  <>
+                    <LandingHero
+                      video={hero}
+                      featuredVideos={featuredVideos}
+                      real={isRealContent}
+                      saved={watchLater.includes(hero.id)}
+                      hasActivePass={hasActivePass}
+                      dataSaver={shouldSaveData(preferences.dataSaver)}
+                      onPlay={() => openVideo(hero, { autoPlay: true })}
+                      onMoreInfo={() => openVideo(hero, { autoPlay: false })}
+                      onSave={() => toggleWatchLater(hero.id)}
+                      onRequireUnlock={(v) => setPaywallVideo(v)}
+                      count={featuredVideos.length}
+                      index={heroIndex % featuredVideos.length}
+                      onSelect={setHeroIndex}
+                    />
+                    <LandingPassRibbon
+                      hasActivePass={hasActivePass}
+                      onUnlockPass={() => setPaywallVideo(hero)}
+                    />
+                  </>
                 );
               })()}
 
@@ -1046,21 +1062,44 @@ const App: React.FC = () => {
             )}
 
             {!searchQuery && (
-              <div className="flex gap-3 overflow-x-auto pb-4 mb-6 no-scrollbar sticky top-0 z-10 bg-zinc-950/90 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
-                {currentSubCategories.map((cat) => (
-                  <button
-                    type="button"
-                    key={cat}
-                    onClick={() => setActiveSubCategory(cat)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors border border-transparent ${
-                      activeSubCategory === cat
-                        ? 'bg-white text-black'
-                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-white'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
+              <div className="flex gap-2.5 overflow-x-auto pb-4 mb-6 no-scrollbar sticky top-0 z-10 bg-zinc-950/90 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
+                {currentSubCategories.map((cat) => {
+                  const pillEmoji =
+                    cat === 'Trending'
+                      ? '🔥 '
+                      : cat === 'Movies'
+                        ? '🎬 '
+                        : cat === 'Series'
+                          ? '📺 '
+                          : cat === 'Micro Dramas'
+                            ? '📱 '
+                            : cat === 'Diaspora'
+                              ? '🌍 '
+                              : cat === 'Farmers'
+                                ? '🌾 '
+                                : cat === 'Kids'
+                                  ? '🧒 '
+                                  : cat === 'Education'
+                                    ? '🎓 '
+                                    : cat === 'Faith'
+                                      ? '✨ '
+                                      : '';
+                  return (
+                    <button
+                      type="button"
+                      key={cat}
+                      onClick={() => setActiveSubCategory(cat)}
+                      className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors border ${
+                        activeSubCategory === cat
+                          ? 'bg-white text-black border-white shadow-sm'
+                          : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-600 hover:text-white'
+                      }`}
+                    >
+                      {pillEmoji}
+                      {cat}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -1149,6 +1188,12 @@ const App: React.FC = () => {
               </div>
             ) : currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Trending' ? (
               <div className="space-y-2 animate-in fade-in duration-500">
+                <TopTenCarousel
+                  videos={ratingFilteredVideos}
+                  watchLaterIds={watchLater}
+                  onToggleWatchLater={toggleWatchLater}
+                />
+
                 <VideoCarousel
                   key="Trending"
                   title={t('shelf.trendingNow')}
@@ -1172,6 +1217,12 @@ const App: React.FC = () => {
                     isAuthenticated={isAuthenticated}
                   />
                 )}
+
+                <CreatorOriginalsSpotlight
+                  videos={ratingFilteredVideos}
+                  onSelectVideo={openVideo}
+                  onOpenCreatorPortal={() => handleNavigate(ViewState.SETTINGS, 'creator')}
+                />
 
                 {['Movies', 'Farmers', 'Education', 'Faith', 'Kids', 'Diaspora'].map((cat) => {
                   const catVideos =
