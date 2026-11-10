@@ -152,13 +152,22 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewStateOrString>(() => {
     if (typeof window === 'undefined') return ViewState.HOME;
     const params = new URLSearchParams(window.location.search);
+    if (params.get('creator_code')) {
+      return ViewState.SETTINGS;
+    }
     const requestedView = params.get('view');
     if (requestedView && Object.values(ViewState).includes(requestedView as ViewState)) {
       return requestedView as ViewState;
     }
     return ViewState.HOME;
   });
-  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>('general');
+  const [initialCreatorCode] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('creator_code') || '';
+  });
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>(() =>
+    initialCreatorCode ? 'creator' : 'general'
+  );
   const [selectedShortId, setSelectedShortId] = useState<string | undefined>(() => {
     if (typeof window === 'undefined') return undefined;
     return new URLSearchParams(window.location.search).get('short') || undefined;
@@ -230,6 +239,31 @@ const App: React.FC = () => {
   const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
   const [deviceSwitchedNotice, setDeviceSwitchedNotice] = useState<{ phone?: string; tier?: string } | null>(null);
   const [reclaimingPass, setReclaimingPass] = useState(false);
+  const [expiringSoonMinutes, setExpiringSoonMinutes] = useState<number | null>(null);
+  const [dismissedExpiryNotice, setDismissedExpiryNotice] = useState<boolean>(false);
+
+  useEffect(() => {
+    const checkPassExpiryWindow = () => {
+      const stored = getStoredPass();
+      if (!stored) {
+        setExpiringSoonMinutes(null);
+        return;
+      }
+      const remainingMs = new Date(stored.expiresAt).getTime() - Date.now();
+      if (remainingMs > 0 && remainingMs <= 2 * 60 * 60 * 1000) {
+        setExpiringSoonMinutes(Math.max(1, Math.ceil(remainingMs / 60000)));
+      } else {
+        setExpiringSoonMinutes(null);
+      }
+    };
+    checkPassExpiryWindow();
+    const timer = window.setInterval(checkPassExpiryWindow, 30000);
+    window.addEventListener('tubetv:pass-updated', checkPassExpiryWindow);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('tubetv:pass-updated', checkPassExpiryWindow);
+    };
+  }, []);
 
   const refreshAccessState = useCallback(async () => {
     try {
@@ -854,6 +888,8 @@ const App: React.FC = () => {
         return (
           <SettingsSection
             initialTab={settingsInitialTab}
+            initialCreatorCode={initialCreatorCode}
+            videos={videos}
             currentUser={currentUser}
             userPhone={userPhone}
             onLogout={handleLogout}
@@ -1679,6 +1715,40 @@ const App: React.FC = () => {
                   aria-label="Dismiss device notice"
                   onClick={() => setDeviceSwitchedNotice(null)}
                   className="text-amber-300 hover:text-white p-1"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {expiringSoonMinutes !== null && !dismissedExpiryNotice && (
+            <div
+              role="status"
+              className="bg-emerald-950/90 border-b border-emerald-500/40 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-100 z-40"
+            >
+              <div className="flex items-center gap-2">
+                <Clock size={14} className="text-emerald-400 shrink-0" />
+                <span>
+                  Your TubeTV Pass expires in <strong>{expiringSoonMinutes}m</strong>. Top up anytime so your episode isn&apos;t interrupted.
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = activeHeroVideo || ratingFilteredVideos[0];
+                    if (target) setPaywallVideo(target);
+                  }}
+                  className="rounded-lg bg-emerald-500 hover:bg-emerald-400 px-3 py-1 font-bold text-black transition-colors"
+                >
+                  Top Up Pass
+                </button>
+                <button
+                  type="button"
+                  aria-label="Dismiss pass expiry notice"
+                  onClick={() => setDismissedExpiryNotice(true)}
+                  className="text-emerald-300 hover:text-white p-1"
                 >
                   <X size={14} />
                 </button>

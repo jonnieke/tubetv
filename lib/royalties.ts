@@ -20,6 +20,30 @@ export interface RoyaltyPoolConfig {
   payoutThresholdKes?: number;
 }
 
+export interface CreatorPayoutProfile {
+  creator_name: string;
+  payout_rail: string;
+  payout_account: string;
+  tax_id_or_pin?: string;
+  withholding_tax_percent?: number;
+  contact_email?: string;
+  portal_access_code: string;
+}
+
+/**
+ * Generates a deterministic read-only Creator Portal Access Code (e.g. "TUBE-RM84")
+ * from a creator's studio name so filmmakers can immediately preview their portal.
+ */
+export function generateDefaultPortalCode(creatorName: string): string {
+  const clean = (creatorName || 'CREATOR').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const prefix = (clean.slice(0, 2) || 'CR').padEnd(2, 'X');
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash * 31 + clean.charCodeAt(i)) % 900 + 100;
+  }
+  return `TUBE-${prefix}${hash}`;
+}
+
 export interface CreatorRoyaltySummary {
   rank: number;
   creator: string;
@@ -35,6 +59,9 @@ export interface CreatorRoyaltySummary {
   isEligibleForPayout: boolean;
   payoutStatus: 'ELIGIBLE' | 'CARRIED_FORWARD';
   mpesaDestination?: string;
+  payoutRail?: string;
+  withholdingTaxPercent?: number;
+  portalAccessCode?: string;
 }
 
 export interface ContentPerformanceRow {
@@ -434,6 +461,7 @@ export function exportPayoutBatchCsv(
   options: {
     periodLabel: string;
     payoutRail: string;
+    profiles?: Record<string, CreatorPayoutProfile>;
   }
 ): void {
   const eligible = creators.filter((c) => c.isEligibleForPayout);
@@ -441,7 +469,10 @@ export function exportPayoutBatchCsv(
     'Beneficiary Name',
     'Payout Rail',
     'Destination / Mobile / Account',
-    'Amount (KES)',
+    'Tax ID / KRA PIN',
+    'Gross Creative Royalty (KES)',
+    'Withholding Tax (%)',
+    'Net Disbursement (KES)',
     'USD Equivalent ($)',
     'Qualified Views (30s+)',
     'Share of Play (%)',
@@ -449,17 +480,31 @@ export function exportPayoutBatchCsv(
     'Narration',
   ];
 
-  const rows = eligible.map((c, idx) => [
-    c.creator,
-    options.payoutRail,
-    c.mpesaDestination || '2547XXXXXXXX',
-    Math.round(c.netEarningsKes),
-    (c.netEarningsKes / 129).toFixed(2),
-    c.qualifiedViews,
-    `${c.shareOfPlayPercent.toFixed(2)}%`,
-    `TUBE_PAY_${cleanFilename(options.periodLabel)}_${String(idx + 1).padStart(3, '0')}`,
-    `TubeTV 60/40 Creative Royalty (${options.periodLabel})`,
-  ]);
+  const rows = eligible.map((c, idx) => {
+    const profile = options.profiles?.[c.creator];
+    const rail = profile?.payout_rail || c.payoutRail || options.payoutRail;
+    const account = profile?.payout_account || c.mpesaDestination || '2547XXXXXXXX';
+    const taxId = profile?.tax_id_or_pin || 'N/A';
+    const whtPercent = Number(profile?.withholding_tax_percent ?? c.withholdingTaxPercent ?? 0);
+    const grossCreativeKes = Math.round(c.netEarningsKes);
+    const whtKes = Math.round(grossCreativeKes * (whtPercent / 100));
+    const netDisburseKes = Math.max(0, grossCreativeKes - whtKes);
+
+    return [
+      c.creator,
+      rail,
+      account,
+      taxId,
+      grossCreativeKes,
+      `${whtPercent}%`,
+      netDisburseKes,
+      (netDisburseKes / 129).toFixed(2),
+      c.qualifiedViews,
+      `${c.shareOfPlayPercent.toFixed(2)}%`,
+      `TUBE_PAY_${cleanFilename(options.periodLabel)}_${String(idx + 1).padStart(3, '0')}`,
+      `TubeTV 60/40 Creative Royalty (${options.periodLabel})`,
+    ];
+  });
 
   const csvContent =
     headers.map(escapeCsv).join(',') +
@@ -469,6 +514,63 @@ export function exportPayoutBatchCsv(
   downloadBlob(
     csvContent,
     `TubeTV_Bulk_Payout_Batch_${cleanFilename(options.payoutRail)}_${cleanFilename(options.periodLabel)}.csv`
+  );
+}
+
+/**
+ * Exports a single filmmaker's Self-Service Royalty Statement CSV (episodes + summary).
+ */
+export function exportCreatorSelfStatementCsv(
+  creatorSummary: CreatorRoyaltySummary,
+  episodes: ContentPerformanceRow[],
+  periodLabel: string
+): void {
+  const headers = [
+    'Title',
+    'Series',
+    'Episode',
+    'Access Tier',
+    '30s+ Qualified Views',
+    'Total Watch Hours',
+    'Completion Rate (%)',
+    'Share of Platform Pool (%)',
+    'Your 60% Net Royalty (KES)',
+    'Period',
+  ];
+
+  const rows = episodes.map((ep) => [
+    ep.title,
+    ep.seriesTitle,
+    ep.episode,
+    ep.accessTier,
+    ep.qualifiedViews,
+    ep.totalWatchHours,
+    `${ep.completionRatePercent}%`,
+    `${ep.shareOfPoolPercent.toFixed(3)}%`,
+    ep.attributedRevenueKes.toFixed(2),
+    periodLabel,
+  ]);
+
+  const metaHeader = [
+    `# TubeTV Official Creator Royalty Statement`,
+    `# Creative / Studio: ${creatorSummary.creator}`,
+    `# Period: ${periodLabel}`,
+    `# Total 30s+ Qualified Views: ${creatorSummary.qualifiedViews.toLocaleString()}`,
+    `# Share of Play: ${creatorSummary.shareOfPlayPercent.toFixed(3)}%`,
+    `# Net 60% Royalty Earnings: KES ${creatorSummary.netEarningsKes.toFixed(2)}`,
+    `# Monthly Payout Status: ${creatorSummary.isEligibleForPayout ? 'ELIGIBLE (>= KES 1,000)' : 'CARRIED FORWARD (< KES 1,000)'}`,
+    '',
+  ].join('\r\n');
+
+  const csvContent =
+    metaHeader +
+    headers.map(escapeCsv).join(',') +
+    '\r\n' +
+    rows.map((r) => r.map(escapeCsv).join(',')).join('\r\n');
+
+  downloadBlob(
+    csvContent,
+    `TubeTV_Statement_${cleanFilename(creatorSummary.creator)}_${cleanFilename(periodLabel)}.csv`
   );
 }
 

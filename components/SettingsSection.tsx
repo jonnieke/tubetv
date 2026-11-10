@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
+  Coins,
   Download,
+  Film,
   Globe,
   KeyRound,
   Loader2,
@@ -14,6 +16,16 @@ import {
   User,
 } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
+import type { Video } from '../types';
+import { supabase } from '../lib/supabase';
+import {
+  computeShareOfPlayRoyalties,
+  exportCreatorSelfStatementCsv,
+  generateDefaultPortalCode,
+  MINIMUM_PAYOUT_THRESHOLD_KES,
+  DEFAULT_CREATOR_POOL_PERCENT,
+  PAYMENT_GATEWAY_FEE_PERCENT,
+} from '../lib/royalties';
 import { clearViewerLocalData, DEFAULT_PLAYBACK_PREFERENCES, type PlaybackPreferences } from '../lib/viewerState';
 import {
   clearStoredPass,
@@ -27,11 +39,13 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { deleteAccount, exportAccountData } from '../lib/privacy';
 import { trackEvent } from '../lib/analytics';
 
-export type SettingsTabId = 'general' | 'pass' | 'account' | 'privacy';
+export type SettingsTabId = 'general' | 'pass' | 'creator' | 'account' | 'privacy';
 
 interface SettingsSectionProps {
   currentUser?: SupabaseUser | null;
   initialTab?: SettingsTabId;
+  initialCreatorCode?: string;
+  videos?: Video[];
   userPhone?: string | null;
   onLogout?: () => void;
   onLocalDataCleared?: () => void;
@@ -46,13 +60,36 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   onLocalDataCleared,
   preferences,
   initialTab = 'general',
+  initialCreatorCode = '',
+  videos = [],
   onPreferencesChange,
 }) => {
   const { language, setLanguage, t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(
+    initialCreatorCode ? 'creator' : initialTab
+  );
   const [privacyBusy, setPrivacyBusy] = useState(false);
   const [privacyMessage, setPrivacyMessage] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+
+  // Creator Self-Service Portal state
+  const [creatorCodeInput, setCreatorCodeInput] = useState<string>(() => {
+    if (initialCreatorCode) return initialCreatorCode.toUpperCase();
+    try {
+      return window.localStorage.getItem('tubetv_saved_creator_code_v1') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [unlockedCreatorName, setUnlockedCreatorName] = useState<string | null>(null);
+  const [unlockedProfileMeta, setUnlockedProfileMeta] = useState<{
+    payoutRail?: string;
+    maskedAccount?: string;
+    whtPercent?: number;
+    code?: string;
+  } | null>(null);
+  const [creatorPortalError, setCreatorPortalError] = useState<string>('');
+  const [creatorPortalBusy, setCreatorPortalBusy] = useState<boolean>(false);
 
   // M-Pesa Pass state
   const [storedPass, setStoredPass] = useState<StoredPass | null>(() => getStoredPass());
@@ -188,9 +225,92 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
     }
   };
 
+  const royaltySnapshot = useMemo(() => {
+    return computeShareOfPlayRoyalties(videos, {
+      periodLabel: 'Current Monthly Cycle',
+      grossSubscriptionRevenueKes: 35000,
+      creatorPoolPercent: DEFAULT_CREATOR_POOL_PERCENT,
+      gatewayFeePercent: PAYMENT_GATEWAY_FEE_PERCENT,
+      payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
+    });
+  }, [videos]);
+
+  const verifyCreatorCode = async (rawCode: string) => {
+    const clean = rawCode.trim().toUpperCase();
+    if (!clean) {
+      setCreatorPortalError('Enter your Creator Portal Access Code (e.g. TUBE-RM84).');
+      return;
+    }
+    setCreatorPortalError('');
+    setCreatorPortalBusy(true);
+    try {
+      // 1. Check Supabase RPC first
+      const { data: rpcRows } = await supabase.rpc('get_creator_profile_by_code', {
+        p_access_code: clean,
+      });
+      if (Array.isArray(rpcRows) && rpcRows.length > 0 && rpcRows[0]?.creator_name) {
+        const row = rpcRows[0];
+        setUnlockedCreatorName(row.creator_name);
+        setUnlockedProfileMeta({
+          payoutRail: row.payout_rail,
+          maskedAccount: row.masked_payout_account,
+          whtPercent: Number(row.withholding_tax_percent) || 0,
+          code: row.portal_access_code,
+        });
+        try {
+          window.localStorage.setItem('tubetv_saved_creator_code_v1', clean);
+        } catch {}
+        return;
+      }
+
+      // 2. Check locally saved creator profiles or default deterministic code from catalogue
+      let localProfiles: Record<string, any> = {};
+      try {
+        const raw = window.localStorage.getItem('tubetv_creator_payout_profiles_v1');
+        if (raw) localProfiles = JSON.parse(raw);
+      } catch {}
+
+      for (const c of royaltySnapshot.creators) {
+        const saved = localProfiles[c.creator];
+        const code = (saved?.portal_access_code || generateDefaultPortalCode(c.creator)).toUpperCase();
+        if (code === clean || c.creator.toUpperCase() === clean) {
+          const acc = saved?.payout_account || '';
+          const masked =
+            acc.length > 4 ? `${'*'.repeat(Math.max(2, acc.length - 4))}${acc.slice(-4)}` : acc;
+          setUnlockedCreatorName(c.creator);
+          setUnlockedProfileMeta({
+            payoutRail: saved?.payout_rail || 'M-Pesa B2C (Kenya)',
+            maskedAccount: masked || 'Not configured yet',
+            whtPercent: Number(saved?.withholding_tax_percent) || 0,
+            code,
+          });
+          try {
+            window.localStorage.setItem('tubetv_saved_creator_code_v1', code);
+          } catch {}
+          return;
+        }
+      }
+
+      setCreatorPortalError(
+        'Invalid Creator Access Code. Ask the TubeTV Studio team for your studio code from the Royalties tab.'
+      );
+    } finally {
+      setCreatorPortalBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialCreatorCode) {
+      setActiveTab('creator');
+      void verifyCreatorCode(initialCreatorCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCreatorCode]);
+
   const tabs: ReadonlyArray<{ id: SettingsTabId; label: string; icon: typeof Monitor; requiresAuth?: boolean }> = [
     { id: 'general', label: t('settings.tabPlayback'), icon: Monitor },
     { id: 'pass', label: t('settings.tabPass'), icon: Ticket },
+    { id: 'creator', label: 'Creator Portal', icon: Coins },
     { id: 'account', label: t('settings.tabAccount'), icon: User, requiresAuth: true },
     { id: 'privacy', label: t('settings.tabPrivacy'), icon: Shield },
   ];
@@ -444,6 +564,186 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                     {t('paywall.restoreButton')}
                   </button>
                 </form>
+              </section>
+            )}
+
+            {activeTab === 'creator' && (
+              <section aria-labelledby="creator-portal-heading" className="space-y-6">
+                <div>
+                  <h2 id="creator-portal-heading" className="text-xl font-bold flex items-center gap-2">
+                    <Coins size={20} className="text-amber-400" />
+                    <span>Creator Self-Service Royalties Portal</span>
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Read-only portal for filmmakers and studios to track 30-second Qualified Views (QVs), 60/40 Share-of-Play royalties, and monthly KSh 1,000 payout eligibility.
+                  </p>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void verifyCreatorCode(creatorCodeInput);
+                  }}
+                  className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 space-y-4"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                    <div className="flex-1">
+                      <label htmlFor="creator-access-code" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                        Studio / Creator Access Code
+                      </label>
+                      <input
+                        id="creator-access-code"
+                        type="text"
+                        placeholder="e.g. TUBE-RM84"
+                        value={creatorCodeInput}
+                        onChange={(e) => setCreatorCodeInput(e.target.value.toUpperCase())}
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3.5 py-2.5 text-sm font-mono uppercase text-amber-300"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={creatorPortalBusy}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-black text-black hover:bg-amber-400 disabled:opacity-50"
+                    >
+                      {creatorPortalBusy && <Loader2 size={15} className="animate-spin" />}
+                      View My Royalties
+                    </button>
+                  </div>
+
+                  {creatorPortalError && (
+                    <p role="alert" className="text-xs text-red-300">
+                      {creatorPortalError}
+                    </p>
+                  )}
+                </form>
+
+                {unlockedCreatorName && (() => {
+                  const summary = royaltySnapshot.creators.find(
+                    (c) => c.creator.toLowerCase() === unlockedCreatorName.toLowerCase()
+                  );
+                  const episodes = royaltySnapshot.content.filter(
+                    (ep) => ep.creator.toLowerCase() === unlockedCreatorName.toLowerCase()
+                  );
+
+                  if (!summary) {
+                    return (
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 text-sm text-zinc-400">
+                        Verified Studio: <strong className="text-white">{unlockedCreatorName}</strong>. No published catalogue episodes found in the current cycle yet.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-6 animate-in fade-in duration-200">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-zinc-900/80 p-5">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold uppercase">
+                              Verified Studio
+                            </span>
+                            <span className="font-mono text-xs text-zinc-400">{unlockedProfileMeta?.code}</span>
+                          </div>
+                          <h3 className="text-lg font-black text-white mt-1">{summary.creator}</h3>
+                          <p className="text-xs text-zinc-400 mt-0.5">
+                            Payout Rail: <strong className="text-zinc-200">{unlockedProfileMeta?.payoutRail}</strong> ·
+                            Account: <strong className="text-emerald-400 font-mono">{unlockedProfileMeta?.maskedAccount}</strong>
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            exportCreatorSelfStatementCsv(summary, episodes, royaltySnapshot.periodLabel)
+                          }
+                          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 text-xs font-bold text-white shadow"
+                        >
+                          <Download size={15} />
+                          Download My Statement (CSV)
+                        </button>
+                      </div>
+
+                      {/* Creator KPI Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                          <p className="text-[11px] font-bold uppercase text-zinc-400">30s+ Qualified Views</p>
+                          <p className="text-2xl font-black text-white mt-1">
+                            {summary.qualifiedViews.toLocaleString()}
+                          </p>
+                          <p className="text-xs text-zinc-400 mt-1">{summary.totalWatchHours} Watch Hours</p>
+                        </div>
+
+                        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                          <p className="text-[11px] font-bold uppercase text-zinc-400">Share of Play</p>
+                          <p className="text-2xl font-black text-amber-400 mt-1">
+                            {summary.shareOfPlayPercent.toFixed(2)}%
+                          </p>
+                          <p className="text-xs text-zinc-400 mt-1">Across {summary.titlesCount} catalogue titles</p>
+                        </div>
+
+                        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                          <p className="text-[11px] font-bold uppercase text-emerald-400">Your 60% Net Royalties</p>
+                          <p className="text-2xl font-black text-emerald-400 mt-1">
+                            KES {summary.netEarningsKes.toLocaleString()}
+                          </p>
+                          <div className="mt-2">
+                            <div className="flex justify-between text-[10px] mb-1">
+                              <span className={summary.isEligibleForPayout ? 'text-emerald-300 font-bold' : 'text-amber-300'}>
+                                {summary.isEligibleForPayout ? '✓ Eligible for Payout' : 'Carried Forward (< KSh 1,000)'}
+                              </span>
+                              <span className="text-zinc-400">{summary.thresholdProgressPercent}% of KSh 1,000</span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  summary.isEligibleForPayout ? 'bg-emerald-500' : 'bg-amber-500'
+                                }`}
+                                style={{ width: `${summary.thresholdProgressPercent}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Creator Episodes Table */}
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+                        <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2 text-xs font-bold text-white">
+                          <Film size={15} className="text-red-500" />
+                          <span>My Titles &amp; Episodes ({episodes.length})</span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-zinc-950/70 text-zinc-400 border-b border-zinc-800">
+                              <tr>
+                                <th className="py-2.5 px-4">Title</th>
+                                <th className="py-2.5 px-4">Series</th>
+                                <th className="py-2.5 px-4 text-right">30s+ QVs</th>
+                                <th className="py-2.5 px-4 text-right">Watch Time</th>
+                                <th className="py-2.5 px-4 text-right">60% Net Royalty</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-800/60">
+                              {episodes.map((ep) => (
+                                <tr key={ep.videoId}>
+                                  <td className="py-2.5 px-4 font-bold text-white">{ep.title}</td>
+                                  <td className="py-2.5 px-4 text-zinc-400">
+                                    {ep.seriesTitle} {ep.episode ? `· Ep ${ep.episode}` : ''}
+                                  </td>
+                                  <td className="py-2.5 px-4 text-right font-bold text-white">
+                                    {ep.qualifiedViews.toLocaleString()}
+                                  </td>
+                                  <td className="py-2.5 px-4 text-right text-zinc-400">{ep.totalWatchHours} hrs</td>
+                                  <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-400">
+                                    KES {ep.attributedRevenueKes.toLocaleString()}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </section>
             )}
 

@@ -23,6 +23,8 @@ import {
   exportCreativesCsv,
   exportPayoutBatchCsv,
   exportContentCsv,
+  generateDefaultPortalCode,
+  CreatorPayoutProfile,
   MINIMUM_PAYOUT_THRESHOLD_KES,
   QUALIFIED_VIEW_SECONDS,
   DEFAULT_CREATOR_POOL_PERCENT,
@@ -30,6 +32,18 @@ import {
   CreatorRoyaltySummary,
   ContentPerformanceRow,
 } from '../lib/royalties';
+
+const CREATOR_PROFILES_STORAGE_KEY = 'tubetv_creator_payout_profiles_v1';
+
+export function getSavedCreatorProfiles(): Record<string, CreatorPayoutProfile> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(CREATOR_PROFILES_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
 
 interface RoyaltiesDashboardProps {
   videos?: BunnyVideoItem[];
@@ -47,6 +61,17 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
   const [measuredQVs, setMeasuredQVs] = useState<Record<string, number>>({});
   const [revenueByRegion, setRevenueByRegion] = useState<Record<string, number>>({});
   const [payoutRail, setPayoutRail] = useState<string>('M-Pesa B2C (Kenya)');
+  const [creatorProfiles, setCreatorProfiles] = useState<Record<string, CreatorPayoutProfile>>(getSavedCreatorProfiles);
+  const [editingProfileCreator, setEditingProfileCreator] = useState<string | null>(null);
+  const [profileForm, setProfileForm] = useState<CreatorPayoutProfile>({
+    creator_name: '',
+    payout_rail: 'M-Pesa B2C (Kenya)',
+    payout_account: '',
+    tax_id_or_pin: '',
+    withholding_tax_percent: 0,
+    contact_email: '',
+    portal_access_code: '',
+  });
   const [loadingDb, setLoadingDb] = useState<boolean>(false);
   const [payoutSaving, setPayoutSaving] = useState<boolean>(false);
   const [payoutSuccessMessage, setPayoutSuccessMessage] = useState<string | null>(null);
@@ -87,6 +112,32 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           if (totalFromDb > 0) {
             setGrossRevenueInput(totalFromDb);
           }
+        }
+
+        // 3. Load saved Creator Payout Directory profiles from Supabase
+        const { data: profileRows, error: profileErr } = await supabase
+          .from('creator_payout_profiles')
+          .select('*');
+
+        if (!profileErr && Array.isArray(profileRows) && profileRows.length > 0 && active) {
+          const merged: Record<string, CreatorPayoutProfile> = { ...getSavedCreatorProfiles() };
+          profileRows.forEach((row: any) => {
+            if (row.creator_name) {
+              merged[row.creator_name] = {
+                creator_name: row.creator_name,
+                payout_rail: row.payout_rail || 'M-Pesa B2C (Kenya)',
+                payout_account: row.payout_account || '',
+                tax_id_or_pin: row.tax_id_or_pin || '',
+                withholding_tax_percent: Number(row.withholding_tax_percent) || 0,
+                contact_email: row.contact_email || '',
+                portal_access_code: row.portal_access_code || generateDefaultPortalCode(row.creator_name),
+              };
+            }
+          });
+          setCreatorProfiles(merged);
+          try {
+            window.localStorage.setItem(CREATOR_PROFILES_STORAGE_KEY, JSON.stringify(merged));
+          } catch {}
         }
       } catch (err) {
         console.warn('Could not load live payment transactions:', err);
@@ -141,6 +192,62 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
       );
     });
   }, [royaltyResult.content, searchQuery]);
+
+  const openEditProfile = (creatorName: string) => {
+    const existing = creatorProfiles[creatorName];
+    setProfileForm({
+      creator_name: creatorName,
+      payout_rail: existing?.payout_rail || payoutRail,
+      payout_account: existing?.payout_account || '',
+      tax_id_or_pin: existing?.tax_id_or_pin || '',
+      withholding_tax_percent: existing?.withholding_tax_percent ?? 0,
+      contact_email: existing?.contact_email || '',
+      portal_access_code: existing?.portal_access_code || generateDefaultPortalCode(creatorName),
+    });
+    setEditingProfileCreator(creatorName);
+  };
+
+  const handleSaveCreatorProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProfileCreator) return;
+    const normalized: CreatorPayoutProfile = {
+      ...profileForm,
+      creator_name: editingProfileCreator,
+      portal_access_code:
+        (profileForm.portal_access_code || generateDefaultPortalCode(editingProfileCreator))
+          .trim()
+          .toUpperCase(),
+    };
+
+    const next = { ...creatorProfiles, [editingProfileCreator]: normalized };
+    setCreatorProfiles(next);
+    try {
+      window.localStorage.setItem(CREATOR_PROFILES_STORAGE_KEY, JSON.stringify(next));
+    } catch {}
+
+    try {
+      await supabase.from('creator_payout_profiles').upsert(
+        {
+          creator_name: normalized.creator_name,
+          payout_rail: normalized.payout_rail,
+          payout_account: normalized.payout_account,
+          tax_id_or_pin: normalized.tax_id_or_pin || '',
+          withholding_tax_percent: Number(normalized.withholding_tax_percent) || 0,
+          contact_email: normalized.contact_email || '',
+          portal_access_code: normalized.portal_access_code,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'creator_name' }
+      );
+    } catch (err) {
+      console.warn('Could not sync creator profile to Supabase:', err);
+    }
+
+    setPayoutSuccessMessage(
+      `✓ Saved Payout Directory profile & Portal Code (${normalized.portal_access_code}) for ${editingProfileCreator}.`
+    );
+    setEditingProfileCreator(null);
+  };
 
   // Record settlement to Supabase
   const handleSaveSettlements = async () => {
@@ -229,6 +336,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
               exportPayoutBatchCsv(royaltyResult.creators, {
                 periodLabel: selectedPeriod,
                 payoutRail,
+                profiles: creatorProfiles,
               })
             }
             className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black px-4 py-2.5 rounded-xl text-sm font-black shadow-md transition-all hover:scale-[1.02]"
@@ -533,13 +641,13 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                   <th className="py-3.5 px-4">#</th>
                   <th className="py-3.5 px-4">Creator / Studio</th>
                   <th className="py-3.5 px-4">Titles</th>
-                  <th className="py-3.5 px-4">Primary Series</th>
+                  <th className="py-3.5 px-4">Payout Account & Portal Code</th>
                   <th className="py-3.5 px-4 text-right">30s+ QVs</th>
                   <th className="py-3.5 px-4 text-right">Watch Time</th>
                   <th className="py-3.5 px-4 text-right">Share of Play</th>
                   <th className="py-3.5 px-4 text-right">Net Royalties</th>
                   <th className="py-3.5 px-4 text-center">Payout Status (KSh 1,000 Threshold)</th>
-                  <th className="py-3.5 px-4 text-center">Action</th>
+                  <th className="py-3.5 px-4 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60 font-medium">
@@ -550,81 +658,141 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                     </td>
                   </tr>
                 ) : (
-                  filteredCreators.map((creator) => (
-                    <tr key={creator.creator} className="hover:bg-zinc-800/30 transition-colors">
-                      <td className="py-3.5 px-4 text-zinc-500 font-bold">{creator.rank}</td>
-                      <td className="py-3.5 px-4 font-bold text-white flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300">
-                          {creator.creator.charAt(0).toUpperCase()}
-                        </div>
-                        <span>{creator.creator}</span>
-                      </td>
-                      <td className="py-3.5 px-4 text-zinc-400">{creator.titlesCount}</td>
-                      <td className="py-3.5 px-4 text-zinc-300 font-medium">{creator.topSeries}</td>
-                      <td className="py-3.5 px-4 text-right font-bold text-white">
-                        {creator.qualifiedViews.toLocaleString()}
-                      </td>
-                      <td className="py-3.5 px-4 text-right text-zinc-400">{creator.totalWatchHours} hrs</td>
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="font-bold text-white">{creator.shareOfPlayPercent.toFixed(2)}%</span>
-                          <div className="w-12 h-1.5 bg-zinc-800 rounded-full overflow-hidden hidden sm:block">
-                            <div
-                              className="h-full bg-red-600 rounded-full"
-                              style={{ width: `${Math.min(100, creator.shareOfPlayPercent * 3)}%` }}
-                            />
+                  filteredCreators.map((creator) => {
+                    const savedProfile = creatorProfiles[creator.creator];
+                    const portalCode = savedProfile?.portal_access_code || generateDefaultPortalCode(creator.creator);
+                    return (
+                      <tr key={creator.creator} className="hover:bg-zinc-800/30 transition-colors">
+                        <td className="py-3.5 px-4 text-zinc-500 font-bold">{creator.rank}</td>
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300">
+                              {creator.creator.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <span className="font-bold text-white block">{creator.creator}</span>
+                              <span className="text-[10px] text-zinc-400">{creator.topSeries}</span>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <span className="font-mono font-bold text-sm text-emerald-400">
-                          KES {creator.netEarningsKes.toLocaleString()}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="flex flex-col items-center gap-1">
-                          {creator.isEligibleForPayout ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Eligible (≥ KSh 1,000)</span>
-                            </span>
-                          ) : (
-                            <div className="w-full max-w-[170px] space-y-1">
-                              <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-amber-400 font-semibold">Carried Forward</span>
-                                <span className="text-zinc-500">
-                                  KES {creator.netEarningsKes} / 1,000
+                        </td>
+                        <td className="py-3.5 px-4 text-zinc-400">{creator.titlesCount}</td>
+                        <td className="py-3.5 px-4">
+                          <div className="space-y-1">
+                            {savedProfile?.payout_account ? (
+                              <div className="text-[11px] text-emerald-300 font-mono">
+                                {savedProfile.payout_account}{' '}
+                                <span className="text-zinc-500 font-sans">
+                                  ({savedProfile.payout_rail.split(' ')[0]}
+                                  {savedProfile.withholding_tax_percent
+                                    ? ` · ${savedProfile.withholding_tax_percent}% WHT`
+                                    : ''})
                                 </span>
                               </div>
-                              <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-amber-500 rounded-full"
-                                  style={{ width: `${creator.thresholdProgressPercent}%` }}
-                                />
-                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openEditProfile(creator.creator)}
+                                className="text-[11px] text-amber-400 hover:underline font-semibold"
+                              >
+                                + Set M-Pesa / Bank Account
+                              </button>
+                            )}
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 font-mono text-[10px] text-zinc-300">
+                                Portal: {portalCode}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const url = `${window.location.origin}/?creator_code=${encodeURIComponent(portalCode)}`;
+                                  void navigator.clipboard?.writeText(url);
+                                  setPayoutSuccessMessage(
+                                    `✓ Copied Self-Service Creator Portal link for ${creator.creator} (${portalCode})`
+                                  );
+                                }}
+                                className="text-[10px] text-zinc-400 hover:text-white underline"
+                                title="Copy read-only Creator Self-Service Portal link"
+                              >
+                                Copy Link
+                              </button>
                             </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            exportCreativesCsv([creator], {
-                              periodLabel: `${selectedPeriod} - ${creator.creator}`,
-                              grossRevenueKes: royaltyResult.grossRevenueKes,
-                              netCreatorPoolKes: royaltyResult.netCreatorPoolKes,
-                              totalQualifiedViews: royaltyResult.totalQualifiedViews,
-                            });
-                          }}
-                          className="text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 p-1.5 rounded-lg transition-colors"
-                          title={`Download CSV statement for ${creator.creator}`}
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-bold text-white">
+                          {creator.qualifiedViews.toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-4 text-right text-zinc-400">{creator.totalWatchHours} hrs</td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="font-bold text-white">{creator.shareOfPlayPercent.toFixed(2)}%</span>
+                            <div className="w-12 h-1.5 bg-zinc-800 rounded-full overflow-hidden hidden sm:block">
+                              <div
+                                className="h-full bg-red-600 rounded-full"
+                                style={{ width: `${Math.min(100, creator.shareOfPlayPercent * 3)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <span className="font-mono font-bold text-sm text-emerald-400">
+                            KES {creator.netEarningsKes.toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="flex flex-col items-center gap-1">
+                            {creator.isEligibleForPayout ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Eligible (≥ KSh 1,000)</span>
+                              </span>
+                            ) : (
+                              <div className="w-full max-w-[170px] space-y-1">
+                                <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-amber-400 font-semibold">Carried Forward</span>
+                                  <span className="text-zinc-500">
+                                    KES {creator.netEarningsKes} / 1,000
+                                  </span>
+                                </div>
+                                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-amber-500 rounded-full"
+                                    style={{ width: `${creator.thresholdProgressPercent}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEditProfile(creator.creator)}
+                              className="text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+                              title={`Configure M-Pesa / Bank Payout & Portal Code for ${creator.creator}`}
+                            >
+                              Payout Profile
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                exportCreativesCsv([creator], {
+                                  periodLabel: `${selectedPeriod} - ${creator.creator}`,
+                                  grossRevenueKes: royaltyResult.grossRevenueKes,
+                                  netCreatorPoolKes: royaltyResult.netCreatorPoolKes,
+                                  totalQualifiedViews: royaltyResult.totalQualifiedViews,
+                                });
+                              }}
+                              className="text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 p-1.5 rounded-lg transition-colors"
+                              title={`Download CSV statement for ${creator.creator}`}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -706,6 +874,118 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           </div>
         )}
       </div>
+
+      {/* Creator Payout Directory & Self-Service Portal Code Modal */}
+      {editingProfileCreator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-black text-white">Creator Payout Profile</h3>
+                <p className="text-xs text-zinc-400">
+                  Studio / Creative: <strong className="text-amber-400">{editingProfileCreator}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingProfileCreator(null)}
+                className="text-xs text-zinc-400 hover:text-white px-2 py-1"
+              >
+                Close
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCreatorProfile} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-zinc-300 font-semibold mb-1">Payout Settlement Rail</label>
+                <select
+                  value={profileForm.payout_rail}
+                  onChange={(e) => setProfileForm({ ...profileForm, payout_rail: e.target.value })}
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value="M-Pesa B2C (Kenya)">🇰🇪 M-Pesa B2C (Kenya)</option>
+                  <option value="Paystack Bank Transfer (NG / GH / ZA)">🇳🇬🇿🇦 Paystack Bank Transfer (NG/GH/ZA)</option>
+                  <option value="Mobile Money (TZ / UG / RW)">🇹🇿🇺🇬 Mobile Money (East Africa)</option>
+                  <option value="Wise / Bank Wire (Diaspora USD/GBP/EUR)">🌍 Wise / Bank Wire (Diaspora)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-zinc-300 font-semibold mb-1">
+                  M-Pesa Number / Bank Account / Wise Email
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 254712345678 or Equity 0110..."
+                  value={profileForm.payout_account}
+                  onChange={(e) => setProfileForm({ ...profileForm, payout_account: e.target.value })}
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-300 font-semibold mb-1">KRA PIN / Tax ID</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. A001234567Z"
+                    value={profileForm.tax_id_or_pin || ''}
+                    onChange={(e) => setProfileForm({ ...profileForm, tax_id_or_pin: e.target.value })}
+                    className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-300 font-semibold mb-1">Withholding Tax (%)</label>
+                  <select
+                    value={profileForm.withholding_tax_percent ?? 0}
+                    onChange={(e) =>
+                      setProfileForm({ ...profileForm, withholding_tax_percent: Number(e.target.value) })
+                    }
+                    className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value={0}>0% (No WHT)</option>
+                    <option value={5}>5% (Resident Digital Content WHT)</option>
+                    <option value={15}>15% (Non-Resident Royalty WHT)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-300 font-semibold mb-1">
+                  Creator Self-Service Portal Access Code
+                </label>
+                <input
+                  type="text"
+                  value={profileForm.portal_access_code}
+                  onChange={(e) =>
+                    setProfileForm({ ...profileForm, portal_access_code: e.target.value.toUpperCase() })
+                  }
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 font-mono text-amber-400 focus:outline-none focus:border-amber-500"
+                />
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  Share this code with the filmmaker so they can view their own series QVs & 60% earnings in Settings → Creator Portal.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingProfileCreator(null)}
+                  className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 font-semibold hover:bg-zinc-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-amber-500 text-black font-black hover:bg-amber-400"
+                >
+                  Save Profile
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
