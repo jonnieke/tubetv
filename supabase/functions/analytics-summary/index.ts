@@ -61,12 +61,54 @@ serve(async (req) => {
     return jsonReply(req, { error: "Analytics unavailable." }, 503, METHODS, { "Cache-Control": "no-store" });
   }
 
+  // Also aggregate 30-day verified Qualified Views per videoId and succeeded payment_transactions revenue
+  const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
+  const [qvRes, txRes] = await Promise.all([
+    client
+      .from("analytics_events")
+      .select("properties")
+      .eq("event_name", "qualified_view")
+      .gte("occurred_at", since30d)
+      .limit(5000),
+    client
+      .from("payment_transactions")
+      .select("amount_kes, region_code, currency")
+      .eq("status", "succeeded")
+      .gte("created_at", since30d)
+      .limit(5000),
+  ]);
+
+  const qualifiedViewsByVideo: Record<string, number> = {};
+  if (Array.isArray(qvRes.data)) {
+    for (const row of qvRes.data) {
+      const props = (row.properties || {}) as Record<string, unknown>;
+      const vid = typeof props.videoId === "string" ? props.videoId.trim() : "";
+      if (vid) {
+        qualifiedViewsByVideo[vid] = (qualifiedViewsByVideo[vid] || 0) + 1;
+      }
+    }
+  }
+
+  let grossRevenueKes30d = 0;
+  const revenueByRegion: Record<string, number> = {};
+  if (Array.isArray(txRes.data)) {
+    for (const tx of txRes.data) {
+      const amt = Number(tx.amount_kes) || 0;
+      const reg = String(tx.region_code || "KE").toUpperCase();
+      grossRevenueKes30d += amt;
+      revenueByRegion[reg] = (revenueByRegion[reg] || 0) + amt;
+    }
+  }
+
   return jsonReply(
     req,
     {
       since,
       until: new Date().toISOString(),
       counts: Object.fromEntries(results.map((result) => [result.name, result.count || 0])),
+      qualifiedViewsByVideo,
+      grossRevenueKes30d,
+      revenueByRegion,
     },
     200,
     METHODS,

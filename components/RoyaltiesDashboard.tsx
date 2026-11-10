@@ -43,16 +43,38 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
   const [activeSubTab, setActiveSubTab] = useState<'creatives' | 'content'>('creatives');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ELIGIBLE' | 'CARRIED_FORWARD'>('ALL');
   const [liveDbRevenue, setLiveDbRevenue] = useState<number | null>(null);
+  const [measuredQVs, setMeasuredQVs] = useState<Record<string, number>>({});
+  const [revenueByRegion, setRevenueByRegion] = useState<Record<string, number>>({});
+  const [payoutRail, setPayoutRail] = useState<string>('M-Pesa B2C (Kenya)');
   const [loadingDb, setLoadingDb] = useState<boolean>(false);
   const [payoutSaving, setPayoutSaving] = useState<boolean>(false);
   const [payoutSuccessMessage, setPayoutSuccessMessage] = useState<string | null>(null);
 
-  // Fetch actual transaction revenue from Supabase payment_transactions
+  // Fetch actual transaction revenue and server-verified 30s Qualified Views from Supabase
   useEffect(() => {
     let active = true;
     const fetchTransactionsRevenue = async () => {
       setLoadingDb(true);
       try {
+        // 1. Try admin analytics-summary Edge Function (returns verified QVs + succeeded revenue by region)
+        const { data: summaryData } = await supabase.functions.invoke('analytics-summary', {
+          method: 'GET',
+        });
+        if (active && summaryData) {
+          if (summaryData.qualifiedViewsByVideo && typeof summaryData.qualifiedViewsByVideo === 'object') {
+            setMeasuredQVs(summaryData.qualifiedViewsByVideo as Record<string, number>);
+          }
+          if (summaryData.revenueByRegion && typeof summaryData.revenueByRegion === 'object') {
+            setRevenueByRegion(summaryData.revenueByRegion as Record<string, number>);
+          }
+          const summaryRev = Number(summaryData.grossRevenueKes30d) || 0;
+          if (summaryRev > 0) {
+            setLiveDbRevenue(summaryRev);
+            setGrossRevenueInput(summaryRev);
+          }
+        }
+
+        // 2. Also query payment_transactions fallback
         const { data, error } = await supabase
           .from('payment_transactions')
           .select('amount_kes, status')
@@ -80,14 +102,18 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
 
   // Compute Share of Play and Royalties
   const royaltyResult = useMemo(() => {
-    return computeShareOfPlayRoyalties(videos, {
-      periodLabel: selectedPeriod,
-      grossSubscriptionRevenueKes: grossRevenueInput,
-      creatorPoolPercent,
-      gatewayFeePercent: PAYMENT_GATEWAY_FEE_PERCENT,
-      payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
-    });
-  }, [videos, selectedPeriod, grossRevenueInput, creatorPoolPercent]);
+    return computeShareOfPlayRoyalties(
+      videos,
+      {
+        periodLabel: selectedPeriod,
+        grossSubscriptionRevenueKes: grossRevenueInput,
+        creatorPoolPercent,
+        gatewayFeePercent: PAYMENT_GATEWAY_FEE_PERCENT,
+        payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
+      },
+      Object.keys(measuredQVs).length > 0 ? { measuredQualifiedViews: measuredQVs } : undefined,
+    );
+  }, [videos, selectedPeriod, grossRevenueInput, creatorPoolPercent, measuredQVs]);
 
   // Filtered Creatives
   const filteredCreators = useMemo(() => {
@@ -140,7 +166,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
         console.warn('Settlement upsert note:', error.message);
       }
       setPayoutSuccessMessage(
-        `✓ Settlement snapshot for ${selectedPeriod} saved. ${royaltyResult.eligibleCreatorsCount} creatives eligible for M-Pesa payout.`
+        `✓ Settlement snapshot for ${selectedPeriod} saved (${payoutRail}). ${royaltyResult.eligibleCreatorsCount} creatives eligible for payout.`
       );
       setTimeout(() => setPayoutSuccessMessage(null), 6000);
     } catch (err) {
@@ -170,6 +196,19 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-3">
+          {/* Payout Rail Selector */}
+          <select
+            aria-label="Creator payout settlement rail"
+            value={payoutRail}
+            onChange={(e) => setPayoutRail(e.target.value)}
+            className="bg-zinc-800 text-emerald-300 text-xs font-bold rounded-xl px-3.5 py-2.5 border border-emerald-500/30 focus:outline-none focus:border-emerald-500"
+          >
+            <option value="M-Pesa B2C (Kenya)">🇰🇪 M-Pesa B2C (Kenya)</option>
+            <option value="Paystack Bank Transfer (NG / GH / ZA)">🇳🇬🇿🇦 Paystack Transfer (NG/GH/ZA)</option>
+            <option value="Mobile Money (TZ / UG / RW)">🇹🇿🇺🇬 Mobile Money (East Africa)</option>
+            <option value="Wise / Bank Wire (Diaspora USD/GBP/EUR)">🌍 Wise / Wire (Diaspora)</option>
+          </select>
+
           {/* Period Selector */}
           <select
             value={selectedPeriod}

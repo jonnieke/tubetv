@@ -15,6 +15,7 @@ import {
   Captions,
   Share2,
   Tv,
+  Download,
 } from 'lucide-react';
 import { Video } from '../types';
 import { CONTENT_RATING_ENFORCED } from '../constants';
@@ -25,6 +26,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { canWatchContent, normalizeContentRating, ratingDescription } from '../lib/contentRating';
 import { isVideoLocked } from '../lib/monetization';
 import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
+import { isVideoSavedOffline, removeOfflineVideo, saveVideoForOfflineCommute } from '../lib/offlineCache';
 import { trackEvent } from '../lib/analytics';
 import { shouldSaveData } from '../lib/network';
 import CatalogueArtwork from './CatalogueArtwork';
@@ -111,6 +113,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const qualifiedViewFiredRef = useRef<boolean>(false);
 
   const [showCaptions, setShowCaptions] = useState(preferences.captions);
+  const [captionLang, setCaptionLang] = useState<'en' | 'sw' | 'fr' | 'off'>(preferences.captions ? 'en' : 'off');
+  const [savedOffline, setSavedOffline] = useState<boolean>(() => isVideoSavedOffline(video.id));
+  const [savingOffline, setSavingOffline] = useState<boolean>(false);
   const introEnd = video.introEndSeconds;
   const outroStart = video.outroStartSeconds;
   const canSkipIntro =
@@ -141,7 +146,40 @@ const VideoCard: React.FC<VideoCardProps> = ({
     setAuthorizedSrc(video.url || '');
     authFetchedRef.current = null;
     qualifiedViewFiredRef.current = false;
+    setSavedOffline(isVideoSavedOffline(video.id));
   }, [video.id, video.url]);
+
+  useEffect(() => {
+    const syncOffline = () => setSavedOffline(isVideoSavedOffline(video.id));
+    window.addEventListener('tubetv:offline-updated', syncOffline);
+    window.addEventListener('tubetv:pass-updated', syncOffline);
+    return () => {
+      window.removeEventListener('tubetv:offline-updated', syncOffline);
+      window.removeEventListener('tubetv:pass-updated', syncOffline);
+    };
+  }, [video.id]);
+
+  const handleToggleOfflineSave = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (locked) {
+      onRequireUnlock?.(video);
+      return;
+    }
+    if (savedOffline) {
+      await removeOfflineVideo(video.id);
+      setSavedOffline(false);
+      return;
+    }
+    try {
+      setSavingOffline(true);
+      await saveVideoForOfflineCommute(video);
+      setSavedOffline(true);
+    } catch {
+      onRequireUnlock?.(video);
+    } finally {
+      setSavingOffline(false);
+    }
+  };
 
   useEffect(() => {
     const pauseOther = (event: Event) => {
@@ -478,8 +516,26 @@ const VideoCard: React.FC<VideoCardProps> = ({
     e.stopPropagation();
     const newState = !showCaptions;
     setShowCaptions(newState);
-    const track = videoRef.current?.textTracks[0];
-    if (track) track.mode = newState ? 'showing' : 'hidden';
+    setCaptionLang(newState ? (captionLang === 'off' ? 'en' : captionLang) : 'off');
+    const tracks = videoRef.current?.textTracks;
+    if (tracks && tracks.length > 0) {
+      for (let i = 0; i < tracks.length; i += 1) {
+        tracks[i].mode = newState && i === 0 ? 'showing' : 'hidden';
+      }
+    }
+  };
+
+  const handleSelectCaptionLanguage = (lang: 'en' | 'sw' | 'fr' | 'off') => {
+    setCaptionLang(lang);
+    const enable = lang !== 'off';
+    setShowCaptions(enable);
+    const tracks = videoRef.current?.textTracks;
+    if (tracks && tracks.length > 0) {
+      for (let i = 0; i < tracks.length; i += 1) {
+        const match = tracks[i].language === lang || (i === 0 && enable);
+        tracks[i].mode = enable && match ? 'showing' : 'hidden';
+      }
+    }
   };
 
   const togglePlay = (e: React.MouseEvent) => {
@@ -1174,8 +1230,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
                     </button>
 
                     {showSettings && (
-                      <div className="absolute bottom-8 right-0 bg-black/95 border border-zinc-800 rounded-lg p-2 min-w-[120px] shadow-xl animate-in fade-in zoom-in duration-200 z-50">
-                        <div className="text-xs font-bold text-zinc-400 mb-2 px-2 uppercase tracking-wider">Quality</div>
+                      <div className="absolute bottom-8 right-0 bg-black/95 border border-zinc-800 rounded-lg p-2 min-w-[155px] shadow-xl animate-in fade-in zoom-in duration-200 z-50">
+                        <div className="text-[10px] font-bold text-zinc-400 mb-1.5 px-2 uppercase tracking-wider">Quality</div>
                         {qualities.map((q) => (
                           <button
                             type="button"
@@ -1184,15 +1240,53 @@ const VideoCard: React.FC<VideoCardProps> = ({
                               e.stopPropagation();
                               handleQualityChange(q);
                             }}
-                            className="w-full text-left px-2 py-1.5 text-xs text-white hover:bg-zinc-800 rounded flex items-center justify-between"
+                            className="w-full text-left px-2 py-1 text-xs text-white hover:bg-zinc-800 rounded flex items-center justify-between"
                           >
                             <span>{q}</span>
                             {quality === q && <Check size={12} className="text-red-500" />}
                           </button>
                         ))}
+                        <div className="border-t border-zinc-800 my-1.5" />
+                        <div className="text-[10px] font-bold text-zinc-400 mb-1 px-2 uppercase tracking-wider">Subtitles</div>
+                        {[
+                          { id: 'off', label: 'Off' },
+                          { id: 'en', label: 'English' },
+                          { id: 'sw', label: 'Kiswahili' },
+                          { id: 'fr', label: 'Français' },
+                        ].map((sub) => (
+                          <button
+                            type="button"
+                            key={sub.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectCaptionLanguage(sub.id as 'en' | 'sw' | 'fr' | 'off');
+                            }}
+                            className="w-full text-left px-2 py-1 text-xs text-white hover:bg-zinc-800 rounded flex items-center justify-between"
+                          >
+                            <span>{sub.label}</span>
+                            {captionLang === sub.id && <Check size={12} className="text-emerald-400" />}
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleOfflineSave}
+                    disabled={savingOffline}
+                    className={`transition-colors ${
+                      savedOffline ? 'text-emerald-400' : 'text-zinc-300 hover:text-white'
+                    }`}
+                    title={savedOffline ? 'Saved for Offline Commute (Click to remove)' : 'Save Offline for Commute'}
+                    aria-label={savedOffline ? 'Remove offline video' : 'Save video for offline commute'}
+                  >
+                    {savingOffline ? (
+                      <Loader2 size={17} className="animate-spin text-emerald-400" />
+                    ) : (
+                      <Download size={17} />
+                    )}
+                  </button>
 
                   <button
                     type="button"

@@ -664,7 +664,7 @@ const App: React.FC = () => {
       case ViewState.FAITH:
         return ['All', 'Sermons', 'Kids Bible', 'Worship', 'Devotion'];
       case ViewState.DIASPORA:
-        return ['All', 'Investments', 'Events', 'News', 'Culture'];
+        return ['All', 'East Africa', 'West Africa', 'Southern Africa', 'Diaspora Stories', 'Investments', 'Events', 'News', 'Culture'];
       case ViewState.KIDS:
         return ['All', 'Cartoons', 'Learning', 'Songs', 'Stories'];
       case ViewState.ORIGINALS:
