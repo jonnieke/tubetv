@@ -9,7 +9,7 @@ import { Video } from '../types';
 
 export const MINIMUM_PAYOUT_THRESHOLD_KES = 1000;
 export const QUALIFIED_VIEW_SECONDS = 30;
-export const DEFAULT_CREATOR_POOL_PERCENT = 70; // 70% net revenue to creatives
+export const DEFAULT_CREATOR_POOL_PERCENT = 60; // 60/40 revenue split in favor of creative (60% to creative, 40% platform)
 export const PAYMENT_GATEWAY_FEE_PERCENT = 1.5; // 1.5% Paystack Kenya fee
 
 export interface RoyaltyPoolConfig {
@@ -109,7 +109,7 @@ export function computeShareOfPlayRoyalties(
   const gatewayFees = grossRev * (feePercent / 100);
   const netPool = grossRev - gatewayFees;
 
-  // Creator share (70% standard) vs Platform share (30%)
+  // Creator share (60% in favor of creative) vs Platform share (40%)
   const netCreatorPool = netPool * (poolPercent / 100);
   const platformShare = netPool - netCreatorPool;
 
@@ -335,7 +335,8 @@ export function exportCreativesCsv(
     `# Period: ${poolMeta.periodLabel}`,
     `# Generated At: ${new Date().toISOString()}`,
     `# Total Gross Subscription Pool: KES ${poolMeta.grossRevenueKes.toLocaleString()}`,
-    `# Net Creator Royalty Pool (70%): KES ${poolMeta.netCreatorPoolKes.toLocaleString()}`,
+    `# Net Creator Royalty Pool (60%): KES ${poolMeta.netCreatorPoolKes.toLocaleString()}`,
+    `# Platform Operations & CDN Share (40%): KES ${(poolMeta.grossRevenueKes - poolMeta.netCreatorPoolKes).toLocaleString()}`,
     `# Total 30s+ Qualified Views: ${poolMeta.totalQualifiedViews.toLocaleString()}`,
     `# Minimum Payout Threshold: KES ${MINIMUM_PAYOUT_THRESHOLD_KES} (M-Pesa B2C settlement)`,
     '',

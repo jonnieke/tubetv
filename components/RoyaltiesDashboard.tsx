@@ -162,7 +162,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
             <div>
               <h2 className="text-2xl font-black text-white tracking-tight">Views Performance & Royalties</h2>
               <p className="text-sm text-zinc-400">
-                Share-of-Play algorithm · 30-second minimum qualified view · Monthly KSh 1,000 payout threshold
+                60/40 revenue share in favor of creative · 30s minimum qualified view · Monthly KSh 1,000 payout threshold
               </p>
             </div>
           </div>
@@ -301,7 +301,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           </div>
           <p className="text-3xl font-black text-emerald-400">KES {royaltyResult.netCreatorPoolKes.toLocaleString()}</p>
           <p className="text-xs text-zinc-400 mt-1">
-            Platform share (30%): KES {royaltyResult.platformShareKes.toLocaleString()}
+            Platform share ({100 - creatorPoolPercent}%): KES {royaltyResult.platformShareKes.toLocaleString()}
           </p>
         </div>
 
@@ -352,11 +352,11 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                 A view only qualifies for payment once playback exceeds 30 continuous seconds (or 100% completion if under 30s). Bounce clicks do not dilute the pool.
               </div>
               <div className="bg-zinc-950/70 p-3 rounded-xl border border-zinc-800">
-                <strong className="text-zinc-200 block mb-1">2. Share of Play Formula</strong>
+                <strong className="text-zinc-200 block mb-1">2. 60/40 Share of Play Formula</strong>
                 <code className="text-amber-300 font-mono text-[11px]">
-                  (Creative QVs ÷ Total QVs) × Net Pool
+                  (Creative QVs ÷ Total QVs) × 60% Net Pool
                 </code>
-                . Creatives receive an exact pro-rata proportion of subscription fees based on actual engagement.
+                . Revenue share is 60/40 in favor of the creative. Creatives receive an exact pro-rata proportion of 60% subscription pool based on actual qualified engagement.
               </div>
               <div className="bg-zinc-950/70 p-3 rounded-xl border border-zinc-800">
                 <strong className="text-zinc-200 block mb-1">3. KSh 1,000 Monthly Settlement</strong>

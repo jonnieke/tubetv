@@ -16,12 +16,12 @@ describe('Creator Royalties & Share of Play Engine', () => {
     expect(parseDurationToSeconds('invalid')).toBe(120);
   });
 
-  it('computes 70% net creator pool after Paystack 1.5% gateway fee', () => {
+  it('computes 60/40 net creator pool in favor of creative after Paystack 1.5% gateway fee', () => {
     const config: RoyaltyPoolConfig = {
       periodLabel: 'November 2026',
       grossSubscriptionRevenueKes: 100000,
       gatewayFeePercent: 1.5,
-      creatorPoolPercent: 70,
+      // Uses default 60% creator pool
     };
 
     const mockVideos: Video[] = [
@@ -44,13 +44,13 @@ describe('Creator Royalties & Share of Play Engine', () => {
     // Gross: 100,000
     // Gateway Fee: 1,500 (1.5%)
     // Net Subscription Pool: 98,500
-    // Net Creator Pool: 68,950 (70% of 98,500)
-    // Platform Share: 29,550 (30% of 98,500)
+    // Net Creator Pool: 59,100 (60% of 98,500 in favor of creative)
+    // Platform Share: 39,400 (40% of 98,500)
     expect(result.grossRevenueKes).toBe(100000);
     expect(result.gatewayFeesKes).toBe(1500);
     expect(result.netSubscriptionPoolKes).toBe(98500);
-    expect(result.netCreatorPoolKes).toBe(68950);
-    expect(result.platformShareKes).toBe(29550);
+    expect(result.netCreatorPoolKes).toBe(59100);
+    expect(result.platformShareKes).toBe(39400);
   });
 
   it('allocates pro-rata Share of Play based on 30s Qualified Views', () => {
@@ -58,7 +58,7 @@ describe('Creator Royalties & Share of Play Engine', () => {
       periodLabel: 'November 2026',
       grossSubscriptionRevenueKes: 50000,
       gatewayFeePercent: 1.5,
-      creatorPoolPercent: 70,
+      // Default 60% creator pool
     };
 
     // Creator A has 600 views, Creator B has 400 views
@@ -106,14 +106,14 @@ describe('Creator Royalties & Share of Play Engine', () => {
   it('enforces KSh 1,000 minimum monthly payout threshold', () => {
     const config: RoyaltyPoolConfig = {
       periodLabel: 'November 2026',
-      grossSubscriptionRevenueKes: 2000, // Small pool
+      grossSubscriptionRevenueKes: 2500, // Small pool
       gatewayFeePercent: 0,
-      creatorPoolPercent: 70, // Total creator pool = 1,400
+      creatorPoolPercent: 60, // Total creator pool = 1,500 (60% split)
       payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
     };
 
-    // Alpha gets 80% (1,120 KES >= 1,000 threshold -> ELIGIBLE)
-    // Beta gets 20% (280 KES < 1,000 threshold -> CARRIED_FORWARD)
+    // Big Creator gets 80% (1,200 KES >= 1,000 threshold -> ELIGIBLE)
+    // Small Creator gets 20% (300 KES < 1,000 threshold -> CARRIED_FORWARD)
     const mockVideos: Video[] = [
       {
         id: 'vid-1',
@@ -142,18 +142,18 @@ describe('Creator Royalties & Share of Play Engine', () => {
     const bigCreator = result.creators.find((c) => c.creator === 'Big Creator')!;
     const smallCreator = result.creators.find((c) => c.creator === 'Small Creator')!;
 
-    expect(bigCreator.netEarningsKes).toBe(1120);
+    expect(bigCreator.netEarningsKes).toBe(1200);
     expect(bigCreator.isEligibleForPayout).toBe(true);
     expect(bigCreator.payoutStatus).toBe('ELIGIBLE');
     expect(bigCreator.thresholdProgressPercent).toBe(100);
 
-    expect(smallCreator.netEarningsKes).toBe(280);
+    expect(smallCreator.netEarningsKes).toBe(300);
     expect(smallCreator.isEligibleForPayout).toBe(false);
     expect(smallCreator.payoutStatus).toBe('CARRIED_FORWARD');
-    expect(smallCreator.thresholdProgressPercent).toBe(28); // 280 / 1000 = 28%
+    expect(smallCreator.thresholdProgressPercent).toBe(30); // 300 / 1000 = 30%
 
     expect(result.eligibleCreatorsCount).toBe(1);
     expect(result.carriedForwardCreatorsCount).toBe(1);
-    expect(result.totalEligiblePayoutKes).toBe(1120);
+    expect(result.totalEligiblePayoutKes).toBe(1200);
   });
 });
