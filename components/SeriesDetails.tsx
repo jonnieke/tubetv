@@ -180,14 +180,12 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
                           EPISODE {episode.episode || 1}
                           {episode.duration ? ` · ${episode.duration}` : ''}
                         </span>
-                        <span
-                          className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                            epLocked ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
-                          }`}
-                        >
-                          {epLocked && <Lock size={10} />}
-                          {epLocked ? t('player.locked') : t('player.free')}
-                        </span>
+                        {epLocked && (
+                          <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            <Lock size={10} />
+                            {t('player.locked')}
+                          </span>
+                        )}
                       </span>
                       <strong>{episode.title}</strong>
                       {(episode.episodeSynopsis || episode.description) && (

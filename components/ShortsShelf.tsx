@@ -70,7 +70,16 @@ const ShortItem: React.FC<{
           videoRef.current.play().catch(() => setShouldPlay(false));
           return;
         }
-        const hls = new Hls();
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          backBufferLength: 5,
+          maxBufferLength: 8,
+          maxMaxBufferLength: 15,
+          maxBufferSize: 8 * 1000 * 1000,
+          capLevelToPlayerSize: true,
+          abrEwmaDefaultEstimate: 500_000,
+        });
         hlsRef.current = hls;
         hls.loadSource(src);
         hls.attachMedia(videoRef.current);
@@ -86,6 +95,15 @@ const ShortItem: React.FC<{
           }, -1);
           if (lowIndex >= 0) hls.currentLevel = lowIndex;
           videoRef.current.play().catch(() => setShouldPlay(false));
+        });
+        hls.on(Hls.Events.ERROR, (_e, data) => {
+          if (!data.fatal || cancelled) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hls.startLoad();
+            return;
+          }
+          hls.destroy();
+          if (hlsRef.current === hls) hlsRef.current = null;
         });
       });
     } else {

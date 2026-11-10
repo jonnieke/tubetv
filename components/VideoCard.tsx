@@ -305,7 +305,20 @@ const VideoCard: React.FC<VideoCardProps> = ({
           hlsRef.current = null;
         }
 
-        const hls = new Hls();
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          backBufferLength: 15,
+          maxBufferLength: 20,
+          maxMaxBufferLength: 40,
+          maxBufferSize: 25 * 1000 * 1000,
+          capLevelToPlayerSize: true,
+          abrEwmaDefaultEstimate: 800_000,
+          fragLoadingTimeOut: 15000,
+          fragLoadingMaxRetry: 4,
+          levelLoadingTimeOut: 10000,
+          manifestLoadingTimeOut: 10000,
+        });
         hlsRef.current = hls;
         hls.loadSource(activeVideoSrc);
         hls.attachMedia(currentEl);
@@ -335,6 +348,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!data.fatal || cancelled) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            console.warn('HLS network error, recovering stream...', data);
+            hls.startLoad();
+            return;
+          }
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            console.warn('HLS media error, recovering stream...', data);
+            hls.recoverMediaError();
+            return;
+          }
           setPlaybackError(true);
           setIsPlaying(false);
           setIsHoverPlay(false);
@@ -702,18 +725,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
             </div>
 
             <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10">
-              <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 ${
-                  locked
-                    ? 'bg-amber-500 text-black'
-                    : requiresPassTier
-                      ? 'bg-emerald-500 text-black'
-                      : 'bg-emerald-600 text-white'
-                }`}
-              >
-                {locked && <Lock size={10} />}
-                {locked ? t('player.premium') : requiresPassTier ? 'PASS' : t('player.free')}
-              </span>
+              {locked && (
+                <span className="rounded px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 bg-amber-500 text-black shadow-md">
+                  <Lock size={10} />
+                  {t('player.premium')}
+                </span>
+              )}
               <div className="rounded bg-black/85 px-2 py-1 text-xs font-bold text-white">{contentRating}</div>
             </div>
 
@@ -893,7 +910,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               autoPlay
               loop={isHoverPlay && !isPlaying}
               playsInline
-              preload={effectiveDataSaver ? 'none' : 'metadata'}
+              preload={playerOnly || isPlaying ? 'auto' : effectiveDataSaver ? 'none' : 'metadata'}
               onError={() => {
                 setPlaybackError(true);
                 setIsPlaying(false);

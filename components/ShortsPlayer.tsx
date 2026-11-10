@@ -204,7 +204,18 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, isNearby, dataSa
             hlsRef.current = null;
           }
 
-          const hls = new Hls();
+          const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 10,
+            maxBufferLength: 15,
+            maxMaxBufferLength: 30,
+            maxBufferSize: 20 * 1000 * 1000,
+            capLevelToPlayerSize: true,
+            abrEwmaDefaultEstimate: 800_000,
+            fragLoadingTimeOut: 15000,
+            fragLoadingMaxRetry: 4,
+          });
           hlsRef.current = hls;
           hls.loadSource(videoSrc);
           hls.attachMedia(videoRef.current);
@@ -237,6 +248,14 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, isNearby, dataSa
           });
           hls.on(Hls.Events.ERROR, (_e, data) => {
             if (!data.fatal || cancelled) return;
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              hls.startLoad();
+              return;
+            }
+            if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              hls.recoverMediaError();
+              return;
+            }
             setHasPlaybackError(true);
             setIsPlaying(false);
             hls.destroy();

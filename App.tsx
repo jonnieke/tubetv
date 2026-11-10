@@ -1413,15 +1413,11 @@ const App: React.FC = () => {
                     <span className="rounded border border-zinc-700 px-2 py-1">
                       {activeHeroVideo.contentRating || 'UNRATED'}
                     </span>
-                    <span
-                      className={`rounded border px-2 py-0.5 font-bold ${
-                        isVideoLocked(activeHeroVideo, false)
-                          ? 'border-amber-500/40 bg-amber-500/20 text-amber-300'
-                          : 'border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
-                      }`}
-                    >
-                      {isVideoLocked(activeHeroVideo, false) ? t('player.premium') : t('player.free')}
-                    </span>
+                    {isVideoLocked(activeHeroVideo, false) && (
+                      <span className="rounded border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 font-bold text-amber-300">
+                        {t('player.premium')}
+                      </span>
+                    )}
                     <span>{activeHeroVideo.category}</span>
                     <span>{activeHeroVideo.author}</span>
                   </div>

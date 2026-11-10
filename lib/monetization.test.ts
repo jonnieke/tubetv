@@ -49,11 +49,12 @@ describe('monetization rules', () => {
       expect(isVideoLocked(microDrama(4, true, 3), false)).toBe(true);
     });
 
-    it('keeps entire micro drama free if marked free', () => {
+    it('keeps entire micro drama free if marked free with sufficient freeEpisodes', () => {
       const freeDrama: Video = {
         ...microDrama(5),
         isPremium: false,
         accessTier: 'free',
+        freeEpisodes: 999,
       };
       expect(isVideoLocked(freeDrama, false)).toBe(false);
     });

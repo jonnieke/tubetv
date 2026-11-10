@@ -13,29 +13,25 @@ function getTag(tags: Array<{ property?: string; value?: string }>, name: string
 
 function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; value?: string }>; title?: unknown }): boolean {
   const tags = Array.isArray(item.metaTags) ? item.metaTags : [];
-  const accessTier = getTag(tags, "accesstier").toLowerCase();
-  if (accessTier === "free") return false;
+  const rawFree = Number(getTag(tags, "freeepisodes"));
+  const freeCount = Number.isFinite(rawFree) && rawFree >= 0 ? rawFree : 2;
+  const rawEpisode = Number(getTag(tags, "episode"));
+  const titleMatch =
+    String(item.title || "").match(/(?:S\d+)?E(\d{1,3})/i) ||
+    String(item.title || "").match(/Episode\s*(\d{1,3})/i);
+  const episodeNum = Number.isFinite(rawEpisode) && rawEpisode > 0
+    ? rawEpisode
+    : titleMatch
+      ? Number(titleMatch[1])
+      : undefined;
 
-  const category = getTag(tags, "category").toLowerCase();
-  const seriesFormat = getTag(tags, "seriesformat").toLowerCase();
-  const isMicro =
-    seriesFormat === "micro-drama" ||
-    category === "micro dramas" ||
-    category === "micro-drama" ||
-    category === "micro drama";
-
-  if (isMicro) {
-    const rawFree = Number(getTag(tags, "freeepisodes"));
-    const freeCount = Number.isFinite(rawFree) && rawFree >= 0 ? rawFree : 2;
-    const rawEpisode = Number(getTag(tags, "episode"));
-    const titleMatch = String(item.title || "").match(/E(\d{1,3})/i);
-    const episodeNum = Number.isFinite(rawEpisode) && rawEpisode > 0
-      ? rawEpisode
-      : titleMatch
-        ? Number(titleMatch[1])
-        : 1;
+  // Enforced: Any episodic series / micro-drama triggers paywall after episode 2 (episode 3+)
+  if (episodeNum !== undefined && episodeNum > 0) {
     return episodeNum > freeCount;
   }
+
+  const accessTier = getTag(tags, "accesstier").toLowerCase();
+  if (accessTier === "free") return false;
 
   return accessTier === "premium" || getTag(tags, "ispremium").toLowerCase() === "true";
 }

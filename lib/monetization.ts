@@ -1,7 +1,30 @@
 import type { Video } from '../types';
-import { isMicroDrama } from './series';
+
+export function getEpisodeNumber(video: Video): number | undefined {
+  if (typeof video.episode === 'number' && Number.isFinite(video.episode) && video.episode > 0) {
+    return video.episode;
+  }
+  if (typeof video.episode === 'string') {
+    const parsed = parseInt(video.episode, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  const match = video.title.match(/(?:S\d+)?E(\d{1,3})/i) || video.title.match(/Episode\s*(\d{1,3})/i);
+  if (match) {
+    const parsed = parseInt(match[1], 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return undefined;
+}
 
 export function isContentFree(video: Video): boolean {
+  const currentEpisodeNumber = getEpisodeNumber(video);
+  if (currentEpisodeNumber !== undefined) {
+    const freeCount = typeof video.freeEpisodes === 'number' && Number.isFinite(video.freeEpisodes)
+      ? video.freeEpisodes
+      : 2;
+    return currentEpisodeNumber <= freeCount;
+  }
+
   if (video.accessTier === 'free') return true;
   if (video.accessTier === 'premium') return false;
   return video.isPremium === false;
@@ -18,26 +41,19 @@ export function isVideoLocked(
   // Unlocked specifically in this session / device
   if (unlockedVideoIds.includes(video.id)) return false;
 
-  // If explicitly classified as Free, never locked
-  if (video.accessTier === 'free') return false;
+  const currentEpisodeNumber = getEpisodeNumber(video);
 
-  // MODEL 1: Micro Dramas
-  // Opening teaser episodes (default: 1 & 2) are free cliffhanger hooks.
-  // Cliffhanger episodes (episode 3+) require M-Pesa pass/unlock.
-  if (isMicroDrama(video) || video.category === 'Micro Dramas' || video.seriesFormat === 'micro-drama') {
+  // ENFORCED: Any episodic content (Micro Dramas, Series, or episodic shorts)
+  // Opening teaser episodes (1 & 2) are free hooks; Episode 3+ (after episode 2) triggers paywall.
+  if (currentEpisodeNumber !== undefined) {
     const freeCount = typeof video.freeEpisodes === 'number' && Number.isFinite(video.freeEpisodes)
       ? video.freeEpisodes
       : 2;
-    const currentEpisodeNumber = Number(video.episode) || 1;
-
-    if (currentEpisodeNumber <= freeCount) {
-      return false; // Free teaser episode
-    }
-    return true; // Locked cliffhanger
+    return currentEpisodeNumber > freeCount;
   }
 
-  // MODEL 2: Other Shows (Movies, Series, Originals, Lifestyle, etc.)
-  // Free content is open to all; Premium requires a pass.
+  // Standalone non-episodic content (Movies, Specials):
+  if (video.accessTier === 'free') return false;
   return video.accessTier === 'premium' || Boolean(video.isPremium);
 }
 
