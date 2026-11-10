@@ -448,6 +448,39 @@ export interface PaystackInitiateResponse {
   publicKey?: string;
 }
 
+async function unwrapFunctionPayload(data: any, error: any): Promise<any> {
+  if (data && typeof data === 'object') return data;
+  if (error && typeof error === 'object' && 'context' in error && error.context) {
+    try {
+      const ctx = error.context as Response;
+      if (typeof ctx.clone === 'function') {
+        const parsed = await ctx.clone().json();
+        if (parsed && typeof parsed === 'object') return parsed;
+      } else if (typeof ctx.json === 'function') {
+        const parsed = await ctx.json();
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {
+      // ignore JSON parse errors on error context
+    }
+  }
+  return data;
+}
+
+function cleanFunctionErrorMessage(error: any, payload: any, fallback: string): string {
+  if (payload && typeof payload.error === 'string' && payload.error.trim()) {
+    return payload.error;
+  }
+  if (payload && typeof payload.message === 'string' && payload.message.trim()) {
+    return payload.message;
+  }
+  const rawMsg = typeof error?.message === 'string' ? error.message.trim() : '';
+  if (rawMsg && !rawMsg.includes('non-2xx status code')) {
+    return rawMsg;
+  }
+  return fallback;
+}
+
 export async function startPaystackPayment(
   planCode: SubscriptionPlanCode,
   options: { email?: string; phone?: string; regionCode?: RegionCode; currency?: string } = {},
@@ -456,7 +489,7 @@ export async function startPaystackPayment(
     throw new Error('Paystack payments are not configured in this environment.');
   }
   const idempotencyKey = crypto.randomUUID();
-  const { data, error } = await supabase.functions.invoke('paystack-checkout', {
+  const { data: rawData, error } = await supabase.functions.invoke('paystack-checkout', {
     body: {
       action: 'initiate',
       planCode,
@@ -467,9 +500,10 @@ export async function startPaystackPayment(
     },
     headers: { 'Idempotency-Key': idempotencyKey },
   });
+  const data = await unwrapFunctionPayload(rawData, error);
 
-  if (error) {
-    throw new Error(data?.error || error.message || 'Could not initiate Paystack checkout.');
+  if (error && !data?.transaction) {
+    throw new Error(cleanFunctionErrorMessage(error, data, 'Could not initiate Paystack checkout.'));
   }
   if (data?.error) throw new Error(data.error);
 
@@ -481,12 +515,13 @@ export async function fetchPaystackStatus(reference: string, checkoutToken: stri
     throw new Error('Payment status verification is unavailable.');
   }
   const deviceId = getOrCreateDeviceId();
-  const { data, error } = await supabase.functions.invoke('paystack-checkout', {
+  const { data: rawData, error } = await supabase.functions.invoke('paystack-checkout', {
     body: { action: 'status', reference, checkoutToken, transactionId, deviceId },
   });
+  const data = await unwrapFunctionPayload(rawData, error);
 
-  if (error) {
-    throw new Error(data?.error || error.message || 'Unable to verify payment status.');
+  if (error && !data?.transaction) {
+    throw new Error(cleanFunctionErrorMessage(error, data, 'Unable to verify payment status.'));
   }
   if (data?.error) throw new Error(data.error);
 
@@ -515,15 +550,20 @@ export async function restorePaystackPass(reference: string, emailOrPhone?: stri
   if (!isSupabaseConfigured) {
     throw new Error('Pass restoration requires a live payment connection.');
   }
-  const { data, error } = await supabase.functions.invoke('paystack-checkout', {
-    body: { action: 'restore', reference: reference.trim().toUpperCase(), emailOrPhone: emailOrPhone?.trim() },
+  const deviceId = getOrCreateDeviceId();
+  const { data: rawData, error } = await supabase.functions.invoke('paystack-checkout', {
+    body: {
+      action: 'restore',
+      reference: reference.trim().toUpperCase(),
+      emailOrPhone: emailOrPhone?.trim(),
+      deviceId,
+      forceSwitch: true,
+    },
   });
+  const data = await unwrapFunctionPayload(rawData, error);
 
-  if (error) {
-    throw new Error(data?.error || error.message || 'Could not restore pass with those details.');
-  }
-  if (data?.error || !data?.pass?.token) {
-    throw new Error(data?.error || 'No active pass matched that reference.');
+  if ((error && !data?.pass?.token) || data?.error || !data?.pass?.token) {
+    throw new Error(cleanFunctionErrorMessage(error, data, 'No active pass matched that reference.'));
   }
 
   const stored: StoredPass = {
@@ -531,6 +571,7 @@ export async function restorePaystackPass(reference: string, emailOrPhone?: stri
     tier: data.pass.tier,
     expiresAt: Number(data.pass.expiresAt),
     mpesaReceipt: data.pass.reference,
+    deviceId: data.pass.deviceId || deviceId,
   };
   saveStoredPass(stored);
   return stored;
@@ -671,7 +712,7 @@ export async function restorePassByPhone(options: RestorePassOptions): Promise<R
   const deviceId = getOrCreateDeviceId();
 
   try {
-    const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+    const { data: rawData, error } = await supabase.functions.invoke('mpesa-stk-push', {
       body: {
         action: 'restore',
         phone: cleanPhone,
@@ -680,6 +721,7 @@ export async function restorePassByPhone(options: RestorePassOptions): Promise<R
         mpesaReceipt: options.mpesaReceipt?.trim() || options.reference?.trim() || '',
       },
     });
+    const data = await unwrapFunctionPayload(rawData, error);
 
     if (data?.conflict) {
       return {
@@ -692,14 +734,18 @@ export async function restorePassByPhone(options: RestorePassOptions): Promise<R
       };
     }
 
-    if (error || data?.error) {
+    if ((error && !data?.pass?.token) || data?.error) {
       if (options.reference?.startsWith('TUBE_')) {
         const paystackPass = await restorePaystackPass(options.reference, cleanPhone);
         return { success: true, pass: paystackPass };
       }
       return {
         success: false,
-        message: data?.error || error?.message || 'No active pass found for this phone number.',
+        message: cleanFunctionErrorMessage(
+          error,
+          data,
+          'No active pass found for this phone number. Choose a pass below to start watching.',
+        ),
       };
     }
 

@@ -392,7 +392,7 @@ serve(async (req) => {
   // ─── Action: Phone-number-only cross-device recovery (1-device concurrency) ──
   if (action === "restore") {
     if (!checkIpRateLimit(`restore:${clientIp}`, 10)) {
-      return jsonReply(req, { error: "Too many restore attempts. Please wait a minute and try again." }, 429, METHODS);
+      return jsonReply(req, { error: "Too many restore attempts. Please wait a minute and try again." }, 200, METHODS);
     }
 
     const parsedPhone = normalizeGlobalPhone(requestBody.phone);
@@ -401,7 +401,7 @@ serve(async (req) => {
       return jsonReply(
         req,
         { error: "Please enter a valid phone number (e.g. 0712 345 678 or +1 / +44 / +234...)." },
-        400,
+        200,
         METHODS,
       );
     }
@@ -421,7 +421,7 @@ serve(async (req) => {
         return jsonReply(
           req,
           { error: "Too many restore attempts for this number. Please wait 15 minutes and try again." },
-          429,
+          200,
           METHODS,
         );
       }
@@ -449,11 +449,11 @@ serve(async (req) => {
       .limit(10);
 
     if (subError) {
-      return jsonReply(req, { error: "Database service temporarily unavailable." }, 503, METHODS);
+      return jsonReply(req, { error: "Database service temporarily unavailable." }, 200, METHODS);
     }
 
     // Match by phone number suffix or receipt
-    const sub = (subs || []).find((s) => {
+    let sub = (subs || []).find((s) => {
       const storedDigits = String(s.phone || "").replace(/\D/g, "");
       const phoneMatch = Boolean(sub9 && storedDigits.endsWith(sub9));
       if (receipt) {
@@ -465,18 +465,81 @@ serve(async (req) => {
       return phoneMatch;
     });
 
+    // Fallback: if no active subscription yet, check if a recent Paystack transaction for this phone/receipt succeeded upstream
+    if (!sub && paystackSecretKey && (sub9 || receipt)) {
+      try {
+        let txQuery = service
+          .from("payment_transactions")
+          .select("id, paystack_reference, plan_code, phone_e164, customer_email, status")
+          .not("paystack_reference", "is", null);
+
+        if (receipt && sub9) {
+          txQuery = txQuery.or(`phone_e164.ilike.%${sub9},paystack_reference.ilike.${receipt}`);
+        } else if (receipt) {
+          txQuery = txQuery.ilike("paystack_reference", receipt);
+        } else {
+          txQuery = txQuery.ilike("phone_e164", `%${sub9}`);
+        }
+
+        const { data: recentTxs } = await txQuery.order("created_at", { ascending: false }).limit(3);
+        for (const cand of recentTxs || []) {
+          if (!cand.paystack_reference) continue;
+          const paystackRes = await fetch(
+            `https://api.paystack.co/transaction/verify/${encodeURIComponent(cand.paystack_reference)}`,
+            {
+              headers: { Authorization: `Bearer ${paystackSecretKey}` },
+              signal: AbortSignal.timeout(8_000),
+            },
+          );
+          const paystackData = await paystackRes.json().catch(() => ({}));
+          if (paystackRes.ok && paystackData.status && paystackData.data?.status === "success") {
+            const pAmountKes = Math.round(Number(paystackData.data.amount) / 100);
+            const pChannel = String(paystackData.data.channel || "mobile_money");
+            const pPaidAt = paystackData.data.paid_at
+              ? new Date(paystackData.data.paid_at).toISOString()
+              : new Date().toISOString();
+            const pEmail = paystackData.data.customer?.email || cand.customer_email || null;
+            const pPhone = paystackData.data.customer?.phone || cand.phone_e164 || parsedPhone?.e164 || null;
+
+            const { data: rpcResult } = await service.rpc("fulfill_paystack_payment", {
+              p_reference: cand.paystack_reference,
+              p_amount_kes: pAmountKes,
+              p_channel: pChannel,
+              p_paid_at: pPaidAt,
+              p_customer_email: pEmail,
+              p_phone: pPhone,
+              p_device_id: incomingDeviceId || null,
+            });
+            if (rpcResult?.ok && rpcResult.subscription_id) {
+              const { data: fulfilledSub } = await service
+                .from("subscriptions")
+                .select("id, phone, tier, end_date, is_active, mpesa_ref, payment_reference, active_device_id, viewer_state")
+                .eq("id", rpcResult.subscription_id)
+                .maybeSingle();
+              if (fulfilledSub) {
+                sub = fulfilledSub;
+                break;
+              }
+            }
+          }
+        }
+      } catch {
+        // Non-blocking upstream verification check
+      }
+    }
+
     if (!sub) {
       return jsonReply(
         req,
         { error: "No active pass found for this phone number. Choose a pass below to start watching." },
-        404,
+        200,
         METHODS,
       );
     }
 
     const expiresAt = sub.end_date ? Date.parse(sub.end_date) : 0;
     if (!sub.is_active || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-      return jsonReply(req, { error: "That pass has expired. Choose a new pass to continue watching." }, 410, METHODS);
+      return jsonReply(req, { error: "That pass has expired. Choose a new pass to continue watching." }, 200, METHODS);
     }
 
     const currentDeviceId = String(sub.active_device_id || "").trim();
@@ -492,7 +555,7 @@ serve(async (req) => {
           tier: sub.tier,
           expiresAt,
         },
-        409,
+        200,
         METHODS,
       );
     }

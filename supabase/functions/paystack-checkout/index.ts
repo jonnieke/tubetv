@@ -543,7 +543,7 @@ serve(async (req) => {
   // ─── Action: Cross-Device Restore Pass ───────────────────────────────────────
   if (action === "restore") {
     if (!checkIpRateLimit(`paystack:restore:${clientIp}`, 10)) {
-      return jsonReply(req, { error: "Too many restore attempts. Please wait a minute." }, 429, METHODS);
+      return jsonReply(req, { error: "Too many restore attempts. Please wait a minute." }, 200, METHODS);
     }
 
     const ref = String(requestBody.reference || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
@@ -552,7 +552,7 @@ serve(async (req) => {
     const forceSwitch = Boolean(requestBody.forceSwitch);
 
     if (!ref && !contact) {
-      return jsonReply(req, { error: "Please enter your phone number or reference." }, 400, METHODS);
+      return jsonReply(req, { error: "Please enter your phone number or reference." }, 200, METHODS);
     }
 
     const cleanPhoneDigits = contact.replace(/\D/g, "");
@@ -569,7 +569,7 @@ serve(async (req) => {
         return jsonReply(
           req,
           { error: "Too many restore attempts. Please wait 15 minutes and try again." },
-          429,
+          200,
           METHODS,
         );
       }
@@ -619,7 +619,7 @@ serve(async (req) => {
             tier: sub.tier,
             expiresAt,
           },
-          409,
+          200,
           METHODS,
         );
       }
@@ -713,7 +713,7 @@ serve(async (req) => {
     return jsonReply(
       req,
       { error: "No active pass was found for that payment reference. Check your code or buy a new pass." },
-      404,
+      200,
       METHODS,
     );
   }
