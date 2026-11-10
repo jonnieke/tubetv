@@ -5,8 +5,10 @@ export function parseAllowedOrigins(): string[] {
     .map((origin) => origin.trim().replace(/\/$/, ""))
     .filter(Boolean);
 
-  // If https://www.tube.co.ke is configured, automatically allow apex https://tube.co.ke as well (and vice-versa)
   const expanded = new Set(configured);
+  expanded.add("https://www.tube.co.ke");
+  expanded.add("https://tube.co.ke");
+  expanded.add("https://tubetv-now.vercel.app");
   for (const item of configured) {
     if (item === "https://www.tube.co.ke") expanded.add("https://tube.co.ke");
     if (item === "https://tube.co.ke") expanded.add("https://www.tube.co.ke");
@@ -18,7 +20,17 @@ export function isOriginAllowed(req: Request): boolean {
   const origin = (req.headers.get("Origin") || "").trim().replace(/\/$/, "");
   if (!origin) return true; // Non-browser / server-to-server request
   const allowed = parseAllowedOrigins();
-  return allowed.includes(origin);
+  if (allowed.includes(origin)) return true;
+
+  try {
+    const url = new URL(origin);
+    if (url.hostname === "tube.co.ke" || url.hostname.endsWith(".tube.co.ke")) return true;
+    if (url.hostname.endsWith(".vercel.app")) return true;
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return true;
+  } catch {
+    // Malformed origin
+  }
+  return false;
 }
 
 export function corsHeaders(
@@ -26,9 +38,8 @@ export function corsHeaders(
   methods = "GET, POST, OPTIONS",
   extraHeaders: Record<string, string> = {},
 ): Record<string, string> {
-  const allowed = parseAllowedOrigins();
   const origin = (req.headers.get("Origin") || "").trim().replace(/\/$/, "");
-  const matchedOrigin = origin && allowed.includes(origin) ? origin : "";
+  const matchedOrigin = isOriginAllowed(req) && origin ? origin : "";
 
   return {
     ...(matchedOrigin ? { "Access-Control-Allow-Origin": matchedOrigin } : {}),
