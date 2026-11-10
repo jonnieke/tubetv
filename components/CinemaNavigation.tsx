@@ -110,67 +110,69 @@ export default function CinemaNavigation(props: Props) {
           </button>
         </nav>
 
-        <label className="cinema-search">
-          <Search size={17} />
-          <input
-            aria-label="Search videos"
-            placeholder={language === 'sw' ? 'Tafuta' : 'Search'}
-            value={props.search}
-            onChange={props.onSearch}
-          />
-        </label>
+        <div className="cinema-nav-right">
+          <label className="cinema-search">
+            <Search size={17} />
+            <input
+              aria-label="Search videos"
+              placeholder={language === 'sw' ? 'Tafuta' : 'Search'}
+              value={props.search}
+              onChange={props.onSearch}
+            />
+          </label>
 
-        {activePass ? (
+          {activePass ? (
+            <button
+              type="button"
+              onClick={() => navigate(ViewState.SETTINGS, 'pass')}
+              title={`Active ${activePass.tier.toUpperCase()} Pass — Click to manage`}
+              className="inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-950/40 px-2.5 py-1 text-[11px] font-bold text-emerald-300 hover:border-emerald-400 hover:text-white transition-colors"
+            >
+              <CheckCircle2 size={12} className="text-emerald-400" />
+              <span>Pass · {formatRemainingPassTime(activePass.expiresAt)}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate(ViewState.SETTINGS, 'pass')}
+              title="Restore or view your TubeTV Pass"
+              className="inline-flex shrink-0 whitespace-nowrap items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-1 text-[11px] font-semibold text-zinc-300 hover:border-emerald-500/50 hover:text-emerald-300 transition-colors"
+            >
+              <Ticket size={12} className="text-emerald-400" />
+              <span>{language === 'sw' ? 'Pasi' : 'Pass'}</span>
+            </button>
+          )}
+
           <button
             type="button"
-            onClick={() => navigate(ViewState.SETTINGS, 'pass')}
-            title={`Active ${activePass.tier.toUpperCase()} Pass — Click to manage`}
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-950/40 px-2.5 py-1 text-[11px] font-bold text-emerald-300 hover:border-emerald-400 hover:text-white transition-colors"
+            onClick={toggleLanguage}
+            aria-label={language === 'en' ? 'Badili lugha kwenda Kiswahili' : 'Switch language to English'}
+            title={language === 'en' ? 'Kiswahili' : 'English'}
+            className="hidden sm:inline-flex shrink-0 items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-1 text-xs font-bold uppercase text-zinc-200 hover:border-zinc-500 hover:text-white transition-colors"
           >
-            <CheckCircle2 size={12} className="text-emerald-400" />
-            <span>Pass · {formatRemainingPassTime(activePass.expiresAt)}</span>
+            <Globe size={13} />
+            {language === 'en' ? 'SW' : 'EN'}
           </button>
-        ) : (
+
           <button
             type="button"
-            onClick={() => navigate(ViewState.SETTINGS, 'pass')}
-            title="Restore or view your TubeTV Pass"
-            className="hidden md:inline-flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-1 text-[11px] font-semibold text-zinc-300 hover:border-emerald-500/50 hover:text-emerald-300 transition-colors"
+            className="cinema-mobile-search"
+            aria-label="Toggle search"
+            onClick={() => setSearchOpen(!searchOpen)}
           >
-            <Ticket size={12} className="text-emerald-400" />
-            <span>{language === 'sw' ? 'Pasi' : 'Pass'}</span>
+            {searchOpen ? <X size={20} /> : <Search size={20} />}
           </button>
-        )}
 
-        <button
-          type="button"
-          onClick={toggleLanguage}
-          aria-label={language === 'en' ? 'Badili lugha kwenda Kiswahili' : 'Switch language to English'}
-          title={language === 'en' ? 'Kiswahili' : 'English'}
-          className="hidden sm:inline-flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-1 text-xs font-bold uppercase text-zinc-200 hover:border-zinc-500 hover:text-white transition-colors"
-        >
-          <Globe size={13} />
-          {language === 'en' ? 'SW' : 'EN'}
-        </button>
-
-        <button
-          type="button"
-          className="cinema-mobile-search"
-          aria-label="Toggle search"
-          onClick={() => setSearchOpen(!searchOpen)}
-        >
-          {searchOpen ? <X size={20} /> : <Search size={20} />}
-        </button>
-
-        <button
-          type="button"
-          className="cinema-account"
-          aria-label={props.authenticated ? 'Account and navigation' : 'Admin sign in'}
-          title={props.authenticated ? 'Account and navigation' : 'Admin sign in'}
-          onClick={() => setMore(!more)}
-        >
-          <UserRound size={19} />
-        </button>
+          <button
+            type="button"
+            className="cinema-account shrink-0"
+            aria-label={props.authenticated ? 'Account and navigation' : 'Admin sign in'}
+            title={props.authenticated ? 'Account and navigation' : 'Admin sign in'}
+            onClick={() => setMore(!more)}
+          >
+            <UserRound size={19} />
+          </button>
+        </div>
       </div>
 
       {searchOpen && (
