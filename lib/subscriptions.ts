@@ -449,7 +449,7 @@ export async function resolveAuthorizedPlaybackUrl(
 
     const res = await fetch(
       `${SUPABASE_URL}/functions/v1/playback-access?id=${encodeURIComponent(videoId)}`,
-      { headers, cache: 'no-store' },
+      { headers, cache: 'no-store', signal: AbortSignal.timeout(5000) },
     );
 
     if (res.status === 402) {

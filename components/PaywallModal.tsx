@@ -72,8 +72,20 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const [mode, setMode] = useState<'buy' | 'restore'>('buy');
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'mpesa'>('paystack');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanCode>('daily');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState(() => {
+    try {
+      return localStorage.getItem('tubetv_user_phone') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [email, setEmail] = useState(() => {
+    try {
+      return localStorage.getItem('tubetv_user_email') || '';
+    } catch {
+      return '';
+    }
+  });
   const [receipt, setReceipt] = useState('');
   const [status, setStatus] = useState<'idle' | 'sending' | 'prompt_sent' | 'restoring' | 'completed' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -87,6 +99,20 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const isMicro = isMicroDrama(video) || video.category === 'Micro Dramas' || video.seriesFormat === 'micro-drama';
   const showTitle = video.seriesTitle || video.title;
   const episodeNumber = video.episode || 3;
+
+  const handlePhoneChange = (val: string) => {
+    setPhone(val);
+    try {
+      localStorage.setItem('tubetv_user_phone', val);
+    } catch {}
+  };
+
+  const handleEmailChange = (val: string) => {
+    setEmail(val);
+    try {
+      localStorage.setItem('tubetv_user_email', val);
+    } catch {}
+  };
 
   const clearTimers = () => {
     if (pollIntervalRef.current) {
@@ -170,6 +196,16 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     try {
       const cleanPhone = phone.trim() ? validateKenyanPhone(phone) : null;
       const cleanEmail = email.trim();
+      if (cleanPhone) {
+        try { localStorage.setItem('tubetv_user_phone', cleanPhone); } catch {}
+      }
+      if (cleanEmail) {
+        try { localStorage.setItem('tubetv_user_email', cleanEmail); } catch {}
+      }
+      try {
+        localStorage.setItem('tubetv_last_watched_video_id', video.id);
+        sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+      } catch {}
       const result = await startPaystackPayment(selectedPlan, {
         email: cleanEmail || undefined,
         phone: cleanPhone || undefined,
@@ -284,6 +320,12 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       setErrorMessage('Please enter a valid Kenyan Safaricom phone number (e.g. 0712 345 678 or 0112 345 678).');
       return;
     }
+
+    try {
+      localStorage.setItem('tubetv_user_phone', cleanPhone);
+      localStorage.setItem('tubetv_last_watched_video_id', video.id);
+      sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+    } catch {}
 
     clearTimers();
     setErrorMessage('');
@@ -662,7 +704,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                         autoComplete="email"
                         placeholder="viewer@example.com"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => handleEmailChange(e.target.value)}
                         disabled={isBusy}
                         className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
                       />
@@ -683,7 +725,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                           autoComplete="tel"
                           placeholder="0712 345 678"
                           value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
+                          onChange={(e) => handlePhoneChange(e.target.value)}
                           disabled={isBusy}
                           className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
                         />
@@ -712,7 +754,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                         required
                         placeholder="0712 345 678"
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        onChange={(e) => handlePhoneChange(e.target.value)}
                         disabled={isBusy}
                         className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
                       />

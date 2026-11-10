@@ -103,11 +103,11 @@ serve(async (req) => {
 
   const libraryId = Deno.env.get("BUNNY_LIBRARY_ID");
   const accessKey = Deno.env.get("BUNNY_ACCESS_KEY");
-  const pullZone = Deno.env.get("BUNNY_PULL_ZONE") || "";
+  const pullZone = Deno.env.get("BUNNY_PULL_ZONE") || "vz-0fe79b1a-8ad.b-cdn.net";
   const tokenAuthKey = Deno.env.get("BUNNY_TOKEN_AUTH_KEY") || "";
   const enforceRating = Deno.env.get("ENFORCE_CONTENT_RATINGS") === "true";
 
-  if (!libraryId || !accessKey || !pullZone) {
+  if (!libraryId || !accessKey) {
     return jsonReply(req, { error: "Playback service is not configured." }, 503, METHODS);
   }
 
@@ -119,7 +119,7 @@ serve(async (req) => {
   try {
     const upstream = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${videoId}`, {
       headers: { AccessKey: accessKey, Accept: "application/json" },
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(4_000),
     });
     if (!upstream.ok) {
       return jsonReply(req, { error: "Video not found." }, upstream.status === 404 ? 404 : 503, METHODS);

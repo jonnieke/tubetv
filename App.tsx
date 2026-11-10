@@ -248,8 +248,22 @@ const App: React.FC = () => {
           searchParams.delete('paystack_ref');
           searchParams.delete('reference');
           const cleanSearch = searchParams.toString() ? `?${searchParams.toString()}` : '';
-          window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
           setHasActivePass(true);
+          void refreshAccessState();
+
+          // Restore where the viewer left off
+          const returnVideoId =
+            sessionStorage.getItem('tubetv_paywall_target_video_id') ||
+            localStorage.getItem('tubetv_last_watched_video_id');
+          if (returnVideoId) {
+            const targetVideo = videos.find((v) => v.id === returnVideoId);
+            if (targetVideo) {
+              window.history.replaceState({}, '', `${videoPath(targetVideo.id)}${cleanSearch}`);
+              setActiveHeroVideo(targetVideo);
+              return;
+            }
+          }
+          window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
         })
         .catch(() => {});
     }
@@ -456,6 +470,11 @@ const App: React.FC = () => {
 
   const openVideo = useCallback(
     (video: Video) => {
+      try {
+        sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+        localStorage.setItem('tubetv_last_watched_video_id', video.id);
+      } catch {}
+
       if (isVideoLocked(video, hasActivePass)) {
         setPaywallVideo(video);
         return;
@@ -1301,12 +1320,22 @@ const App: React.FC = () => {
             <PaywallModal
               video={paywallVideo}
               onSuccess={() => {
-                const target = paywallVideo;
+                const returnId =
+                  paywallVideo?.id ||
+                  sessionStorage.getItem('tubetv_paywall_target_video_id') ||
+                  localStorage.getItem('tubetv_last_watched_video_id');
+                const target = paywallVideo || (returnId ? videos.find((v) => v.id === returnId) : null);
                 setPaywallVideo(null);
                 setHasActivePass(true);
-                void refreshAccessState().then(() => {
+                if (target) {
                   window.history.pushState({}, '', videoPath(target.id));
                   setActiveHeroVideo(target);
+                }
+                void refreshAccessState().then(() => {
+                  setHasActivePass(true);
+                  if (target) {
+                    setActiveHeroVideo(target);
+                  }
                 });
               }}
               onClose={() => setPaywallVideo(null)}

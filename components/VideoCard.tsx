@@ -188,7 +188,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
     authFetchedRef.current = video.id;
 
     let cancelled = false;
-    setIsAuthorizing(true);
+    if (!authorizedSrc && !video.url) {
+      setIsAuthorizing(true);
+    }
     void resolveAuthorizedPlaybackUrl(video.id, video.url)
       .then((res) => {
         if (cancelled) return;
@@ -228,7 +230,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       return;
     }
 
-    const shouldPlay = (isPlaying || isHoverPlay) && !isAuthorizing;
+    const shouldPlay = isPlaying || isHoverPlay;
     if (shouldPlay && !activeVideoSrc) {
       setIsPlaying(false);
       setIsHoverPlay(false);
@@ -309,19 +311,26 @@ const VideoCard: React.FC<VideoCardProps> = ({
           enableWorker: true,
           lowLatencyMode: false,
           backBufferLength: 15,
-          maxBufferLength: 20,
-          maxMaxBufferLength: 40,
-          maxBufferSize: 25 * 1000 * 1000,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          maxBufferSize: 30 * 1000 * 1000,
+          maxBufferHole: 0.5,
+          nudgeOffset: 0.2,
+          nudgeMaxRetry: 5,
           capLevelToPlayerSize: true,
-          abrEwmaDefaultEstimate: 800_000,
-          fragLoadingTimeOut: 15000,
+          abrEwmaDefaultEstimate: 600_000,
+          startLevel: 0,
+          fragLoadingTimeOut: 12000,
           fragLoadingMaxRetry: 4,
-          levelLoadingTimeOut: 10000,
-          manifestLoadingTimeOut: 10000,
+          levelLoadingTimeOut: 8000,
+          manifestLoadingTimeOut: 8000,
         });
         hlsRef.current = hls;
         hls.loadSource(activeVideoSrc);
         hls.attachMedia(currentEl);
+        hls.on(Hls.Events.BUFFER_STALLED, () => {
+          hls.startLoad();
+        });
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           if (cancelled || !videoRef.current) {
             hls.destroy();
@@ -852,6 +861,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 saveCurrentProgress();
               }}
               onWaiting={() => {
+                if (hlsRef.current) {
+                  hlsRef.current.startLoad();
+                }
                 if (firstFrameRef.current && bufferAtRef.current === null) bufferAtRef.current = performance.now();
                 if (isPlaying || (isHovering && isHoverPlay)) {
                   setIsBuffering(true);
