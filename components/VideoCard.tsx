@@ -77,6 +77,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     isLocked,
     onRequireUnlock,
     onOpenSettings,
+    onSelectVideo,
   } = usePlayback();
   const contentRating = normalizeContentRating(video.contentRating);
   const isUnratedAllowedInTest = !CONTENT_RATING_ENFORCED && contentRating === 'UNRATED' && preferences.maximumRating === '16';
@@ -111,6 +112,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cardClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClickTimeRef = useRef<number>(0);
   const lastProgressSaveRef = useRef(0);
   const startAtRef = useRef(performance.now());
@@ -458,9 +460,17 @@ const VideoCard: React.FC<VideoCardProps> = ({
   }, [isPlaying, isHoverPlay, isAuthorizing, activeVideoSrc, isRatingLocked, locked]);
 
   useEffect(() => {
+    if (autoPlay && !isRatingLocked && !locked) {
+      setHasActivatedPlayback(true);
+      setIsPlaying(true);
+    }
+  }, [autoPlay, isRatingLocked, locked]);
+
+  useEffect(() => {
     return () => {
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+      if (cardClickTimerRef.current) clearTimeout(cardClickTimerRef.current);
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -546,6 +556,48 @@ const VideoCard: React.FC<VideoCardProps> = ({
         tracks[i].mode = enable && match ? 'showing' : 'hidden';
       }
     }
+  };
+
+  const handleCatalogueCardClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isRatingLocked) return;
+    if (locked) {
+      onRequireUnlock?.(video);
+      return;
+    }
+
+    if (!playerOnly && onSelectVideo) {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
+      setIsHoverPlay(false);
+      setIsPlaying(false);
+      videoRef.current?.pause();
+
+      const now = Date.now();
+      if (now - lastClickTimeRef.current < 280) {
+        if (cardClickTimerRef.current) {
+          clearTimeout(cardClickTimerRef.current);
+          cardClickTimerRef.current = null;
+        }
+        lastClickTimeRef.current = 0;
+        onSelectVideo(video, { autoPlay: true });
+        return;
+      }
+
+      lastClickTimeRef.current = now;
+      if (cardClickTimerRef.current) {
+        clearTimeout(cardClickTimerRef.current);
+      }
+      cardClickTimerRef.current = setTimeout(() => {
+        cardClickTimerRef.current = null;
+        onSelectVideo(video, { autoPlay: false });
+      }, 240);
+      return;
+    }
+
+    togglePlay(e);
   };
 
   const togglePlay = (e: React.MouseEvent) => {
@@ -660,10 +712,19 @@ const VideoCard: React.FC<VideoCardProps> = ({
       return;
     }
 
+    if (!playerOnly && onSelectVideo) {
+      handleCatalogueCardClick(e);
+      return;
+    }
+
     const now = Date.now();
     if (now - lastClickTimeRef.current < 300) {
-      void toggleFullScreen();
       lastClickTimeRef.current = 0;
+      if (!isPlaying) {
+        togglePlay(e);
+      } else {
+        void toggleFullScreen();
+      }
       return;
     }
     lastClickTimeRef.current = now;
@@ -675,16 +736,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
       return;
     }
 
-    if (isHoverPlay && !hasActivatedPlayback) {
-      document.dispatchEvent(new CustomEvent('tubetv:player-start', { detail: playerInstanceRef.current }));
-      setIsHoverPlay(false);
-      setHasActivatedPlayback(true);
-      setIsPlaying(true);
-      bumpControlsVisibility();
+    if (!isPlaying) {
+      togglePlay(e);
       return;
     }
 
-    setIsPlaying((prev) => !prev);
+    setIsPlaying(false);
   };
 
   const saveCurrentProgress = (completedOverride?: boolean) => {
@@ -921,10 +978,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
             )}
 
             {/* Hover / Tap Actions */}
-            <div className={`catalogue-video-actions ${isRatingLocked ? 'catalogue-video-actions-locked' : ''}`}>
+            <div
+              onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : undefined}
+              className={`catalogue-video-actions ${!playerOnly && onSelectVideo ? 'cursor-pointer' : ''} ${
+                isRatingLocked ? 'catalogue-video-actions-locked' : ''
+              }`}
+            >
               <button
                 type="button"
-                onClick={togglePlay}
+                onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : togglePlay}
                 disabled={!rawVideoSrc && !locked}
                 aria-label={
                   locked
@@ -1383,7 +1445,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
       </div>
 
       {!playerOnly && (
-        <div className="catalogue-video-info">
+        <div
+          onClick={onSelectVideo ? handleCatalogueCardClick : undefined}
+          className={`catalogue-video-info ${onSelectVideo ? 'cursor-pointer' : ''}`}
+        >
           <p className="cinema-card-kicker">
             {video.category}
             {video.genre ? ` · ${video.genre}` : ''}

@@ -12,6 +12,7 @@ interface PlaybackContextValue {
   isLocked?: (video: Video) => boolean;
   onRequireUnlock?: (video: Video) => void;
   onOpenSettings?: () => void;
+  onSelectVideo?: (video: Video, options?: { autoPlay?: boolean }) => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue>({

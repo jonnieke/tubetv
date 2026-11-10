@@ -174,6 +174,7 @@ const App: React.FC = () => {
   });
   const [isVideoFinished, setIsVideoFinished] = useState(false);
   const [replayNonce, setReplayNonce] = useState(0);
+  const [modalAutoPlay, setModalAutoPlay] = useState<boolean>(true);
 
   const [watchLater, setWatchLater] = useState<string[]>(() => {
     try {
@@ -553,7 +554,7 @@ const App: React.FC = () => {
   }, [activeHeroVideo?.id, paywallVideo]);
 
   const openVideo = useCallback(
-    (video: Video) => {
+    (video: Video, options?: { autoPlay?: boolean }) => {
       try {
         sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
         localStorage.setItem('tubetv_last_watched_video_id', video.id);
@@ -564,6 +565,7 @@ const App: React.FC = () => {
         return;
       }
       setIsVideoFinished(false);
+      setModalAutoPlay(options?.autoPlay ?? true);
       window.history.pushState({}, '', videoPath(video.id));
       setActiveHeroVideo(video);
     },
@@ -1381,6 +1383,7 @@ const App: React.FC = () => {
         hasActivePass,
         isLocked: (video) => !isLongFormatVideo(video) && isVideoLocked(video, hasActivePass),
         onRequireUnlock: (video) => setPaywallVideo(video),
+        onSelectVideo: openVideo,
         onOpenSettings: () => {
           closeVideo();
           handleNavigate(ViewState.SETTINGS, 'general');
@@ -1466,7 +1469,7 @@ const App: React.FC = () => {
                 <VideoCard
                   key={`${activeHeroVideo.id}:${replayNonce}`}
                   video={activeHeroVideo}
-                  autoPlay
+                  autoPlay={modalAutoPlay}
                   playerOnly
                   nextEpisode={nextEpisode(ratingFilteredVideos, activeHeroVideo.id)}
                   onNextEpisode={() => {
@@ -1547,6 +1550,15 @@ const App: React.FC = () => {
                     <p className="mt-2 text-sm leading-6 text-zinc-300">
                       {activeHeroVideo.episodeSynopsis || activeHeroVideo.description}
                     </p>
+                  )}
+                  {!modalAutoPlay && (
+                    <button
+                      type="button"
+                      className="cinema-primary mt-4 w-full sm:w-auto px-6 py-2.5 font-bold"
+                      onClick={() => setModalAutoPlay(true)}
+                    >
+                      ▶ {t('home.watchEpisode')}
+                    </button>
                   )}
                   {nextEpisode(ratingFilteredVideos, activeHeroVideo.id) && (
                     <button
@@ -1635,7 +1647,8 @@ const App: React.FC = () => {
                           <button
                             type="button"
                             key={rec.id}
-                            onClick={() => openVideo(rec)}
+                            onClick={() => openVideo(rec, { autoPlay: false })}
+                            onDoubleClick={() => openVideo(rec, { autoPlay: true })}
                             className="group flex flex-col text-left overflow-hidden rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition"
                           >
                             <div className="aspect-video w-full relative overflow-hidden bg-zinc-800">
