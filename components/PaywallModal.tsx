@@ -304,6 +304,12 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       }
 
       setStatus('prompt_sent');
+      if (result.authorizationUrl) {
+        setPaystackAuthUrl(result.authorizationUrl);
+      }
+      if (result.reference) {
+        setPaystackRef(result.reference);
+      }
 
       let attempts = 0;
       const maxAttempts = 30; // 60 seconds total (2s intervals)
@@ -740,10 +746,14 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                           href={paystackAuthUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors shadow-sm"
+                          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl ${
+                            paymentMethod === 'mpesa'
+                              ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-950/40'
+                              : 'bg-blue-600 hover:bg-blue-500 shadow-blue-950/40'
+                          } text-white text-xs font-bold transition-all shadow-md`}
                         >
-                          <ExternalLink size={12} />
-                          <span>{t('paywall.openCheckout')}</span>
+                          <ExternalLink size={13} />
+                          <span>{paymentMethod === 'mpesa' ? 'Open M-Pesa Checkout' : t('paywall.openCheckout')}</span>
                         </a>
                       </div>
                     )}

@@ -293,22 +293,48 @@ export async function startMpesaPayment(planCode: SubscriptionPlanCode, phone: s
     throw new Error('M-Pesa payments are not configured in this environment.');
   }
   const idempotencyKey = crypto.randomUUID();
-  const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
-    body: { action: 'initiate', planCode, phone },
+
+  // Primary: call mpesa-stk-push
+  try {
+    const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+      body: { action: 'initiate', planCode, phone },
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
+
+    if (!error && data?.transaction?.id && !data?.error) {
+      return data.transaction as {
+        id: string;
+        status: string;
+        checkoutToken: string;
+        checkoutRequestId?: string;
+        reference?: string;
+        authorizationUrl?: string;
+        message?: string;
+      };
+    }
+  } catch (err) {
+    console.warn('mpesa_stk_invoke_fallback_to_paystack', err);
+  }
+
+  // Resilient fallback: initialize mobile money directly via paystack-checkout
+  const { data: pData, error: pError } = await supabase.functions.invoke('paystack-checkout', {
+    body: { action: 'initiate', planCode, phone, channel: 'mobile_money' },
     headers: { 'Idempotency-Key': idempotencyKey },
   });
 
-  if (error) {
-    throw new Error(data?.error || error.message || 'Could not initiate M-Pesa payment.');
+  if (pError || !pData?.transaction?.id) {
+    throw new Error(pData?.error || pError?.message || 'Could not initiate M-Pesa payment right now.');
   }
-  if (data?.error) throw new Error(data.error);
 
-  return data.transaction as {
-    id: string;
-    status: string;
-    checkoutToken: string;
-    checkoutRequestId?: string;
-    message?: string;
+  const pTx = pData.transaction;
+  return {
+    id: pTx.id,
+    status: pTx.status,
+    checkoutToken: pTx.checkoutToken,
+    checkoutRequestId: pTx.reference,
+    reference: pTx.reference,
+    authorizationUrl: pTx.authorizationUrl,
+    message: pTx.displayText || 'M-Pesa payment initiated.',
   };
 }
 
@@ -316,9 +342,34 @@ export async function fetchPaymentStatus(transactionId: string, checkoutToken: s
   if (!isSupabaseConfigured) {
     throw new Error('M-Pesa payments are not configured in this environment.');
   }
-  const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
-    body: { action: 'status', transactionId, checkoutToken },
-  });
+
+  let data: any;
+  let error: any;
+
+  try {
+    const res = await supabase.functions.invoke('mpesa-stk-push', {
+      body: { action: 'status', transactionId, checkoutToken },
+    });
+    data = res.data;
+    error = res.error;
+  } catch (err) {
+    error = err;
+  }
+
+  // Fallback to paystack-checkout if mpesa-stk-push returned error
+  if (error || !data?.transaction) {
+    try {
+      const pRes = await supabase.functions.invoke('paystack-checkout', {
+        body: { action: 'status', transactionId, checkoutToken },
+      });
+      if (!pRes.error && pRes.data?.transaction) {
+        data = pRes.data;
+        error = null;
+      }
+    } catch {
+      // keep original error
+    }
+  }
 
   if (error) {
     throw new Error(data?.error || error.message || 'Unable to verify payment status.');
@@ -330,7 +381,7 @@ export async function fetchPaymentStatus(transactionId: string, checkoutToken: s
       token: data.pass.token,
       tier: data.pass.tier,
       expiresAt: Number(data.pass.expiresAt),
-      mpesaReceipt: data.pass.mpesaReceipt,
+      mpesaReceipt: data.pass.mpesaReceipt || data.pass.reference,
     });
   }
 

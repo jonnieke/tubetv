@@ -72,6 +72,13 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const paystackSecretKey = Deno.env.get("PAYSTACK_SECRET_KEY") || "";
+  const siteUrl = (
+    Deno.env.get("PAYSTACK_SITE_URL") ||
+    Deno.env.get("SITE_URL") ||
+    "https://www.tube.co.ke"
+  ).replace(/\/$/, "");
+
   if (!supabaseUrl || !serviceKey) {
     return jsonReply(req, { error: "Payment service is not configured." }, 503, METHODS);
   }
@@ -80,7 +87,7 @@ serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const requestBody = await req.json().catch(() => ({})) as Record<string, unknown>;
+  const requestBody = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const action = String(requestBody.action || "initiate");
   const clientIp = getClientIp(req);
 
@@ -93,7 +100,7 @@ serve(async (req) => {
     }
     const { data: sub } = await service
       .from("subscriptions")
-      .select("id, tier, end_date, is_active, mpesa_ref")
+      .select("id, tier, end_date, is_active, mpesa_ref, payment_reference")
       .eq("id", verified.subId)
       .maybeSingle();
 
@@ -109,7 +116,7 @@ serve(async (req) => {
         pass: {
           tier: sub.tier,
           expiresAt,
-          mpesaReceipt: sub.mpesa_ref,
+          mpesaReceipt: sub.mpesa_ref || sub.payment_reference,
         },
       },
       200,
@@ -129,7 +136,7 @@ serve(async (req) => {
     const tokenHash = await sha256Hex(checkoutToken);
     const { data: tx } = await service
       .from("payment_transactions")
-      .select("id, status, plan_code, mpesa_receipt, result_description, checkout_token_hash")
+      .select("id, status, plan_code, mpesa_receipt, paystack_reference, customer_email, phone_e164, result_description, checkout_token_hash")
       .eq("id", transactionId)
       .maybeSingle();
 
@@ -137,11 +144,16 @@ serve(async (req) => {
       return jsonReply(req, { error: "Transaction not found." }, 404, METHODS);
     }
 
-    if (tx.status === "succeeded" && tx.mpesa_receipt) {
+    // 1. If transaction already succeeded in DB, return pass token
+    if (tx.status === "succeeded") {
+      const activeRef = tx.mpesa_receipt || tx.paystack_reference;
       const { data: sub } = await service
         .from("subscriptions")
-        .select("id, tier, end_date, is_active, mpesa_ref")
-        .ilike("mpesa_ref", tx.mpesa_receipt)
+        .select("id, tier, end_date, is_active, mpesa_ref, payment_reference")
+        .or(`mpesa_ref.ilike.${activeRef},payment_reference.ilike.${activeRef}`)
+        .eq("is_active", true)
+        .order("end_date", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (sub && sub.is_active && sub.end_date && Date.parse(sub.end_date) > Date.now()) {
@@ -150,7 +162,7 @@ serve(async (req) => {
           subId: sub.id,
           tier: sub.tier,
           exp: expiresAt,
-          ref: sub.mpesa_ref || tx.mpesa_receipt,
+          ref: sub.mpesa_ref || sub.payment_reference || activeRef || "",
         });
         return jsonReply(
           req,
@@ -159,19 +171,107 @@ serve(async (req) => {
               id: tx.id,
               status: "succeeded",
               result_description: tx.result_description,
-              mpesa_receipt: tx.mpesa_receipt,
+              mpesa_receipt: sub.mpesa_ref || sub.payment_reference || activeRef,
             },
             pass: {
               token: passToken,
               tier: sub.tier,
               expiresAt,
-              mpesaReceipt: sub.mpesa_ref || tx.mpesa_receipt,
+              mpesaReceipt: sub.mpesa_ref || sub.payment_reference || activeRef,
             },
           },
           200,
           METHODS,
           { "Cache-Control": "no-store" },
         );
+      }
+    }
+
+    // 2. If processed via Paystack and still pending, actively verify with Paystack API
+    if (tx.paystack_reference && paystackSecretKey && (tx.status === "pending" || tx.status === "submitted")) {
+      try {
+        const paystackRes = await fetch(
+          `https://api.paystack.co/transaction/verify/${encodeURIComponent(tx.paystack_reference)}`,
+          {
+            headers: { Authorization: `Bearer ${paystackSecretKey}` },
+            signal: AbortSignal.timeout(10_000),
+          },
+        );
+        const paystackData = await paystackRes.json().catch(() => ({}));
+
+        if (paystackRes.ok && paystackData.status && paystackData.data?.status === "success") {
+          const pAmountKes = Math.round(Number(paystackData.data.amount) / 100);
+          const pChannel = String(paystackData.data.channel || "mobile_money");
+          const pPaidAt = paystackData.data.paid_at
+            ? new Date(paystackData.data.paid_at).toISOString()
+            : new Date().toISOString();
+          const pEmail = paystackData.data.customer?.email || tx.customer_email || null;
+          const pPhone = paystackData.data.customer?.phone || tx.phone_e164 || null;
+
+          const { data: rpcResult } = await service.rpc("fulfill_paystack_payment", {
+            p_reference: tx.paystack_reference,
+            p_amount_kes: pAmountKes,
+            p_channel: pChannel,
+            p_paid_at: pPaidAt,
+            p_customer_email: pEmail,
+            p_phone: pPhone,
+          });
+
+          if (rpcResult?.ok) {
+            const expiresAt = rpcResult.expires_at
+              ? Date.parse(rpcResult.expires_at)
+              : Date.now() + 24 * 3600 * 1000;
+            const passToken = await issuePassToken({
+              subId: rpcResult.subscription_id,
+              tier: rpcResult.tier || tx.plan_code,
+              exp: expiresAt,
+              ref: tx.paystack_reference,
+            });
+            return jsonReply(
+              req,
+              {
+                transaction: {
+                  id: tx.id,
+                  status: "succeeded",
+                  result_description: "Payment confirmed successfully.",
+                  mpesa_receipt: tx.paystack_reference,
+                },
+                pass: {
+                  token: passToken,
+                  tier: rpcResult.tier || tx.plan_code,
+                  expiresAt,
+                  mpesaReceipt: tx.paystack_reference,
+                },
+              },
+              200,
+              METHODS,
+              { "Cache-Control": "no-store" },
+            );
+          }
+        } else if (paystackData.data?.status === "failed") {
+          await service
+            .from("payment_transactions")
+            .update({
+              status: "failed",
+              result_description: paystackData.data.gateway_response || "Payment was declined or cancelled.",
+            })
+            .eq("id", tx.id);
+          return jsonReply(
+            req,
+            {
+              transaction: {
+                id: tx.id,
+                status: "failed",
+                result_description: paystackData.data.gateway_response || "Payment was declined.",
+              },
+            },
+            200,
+            METHODS,
+            { "Cache-Control": "no-store" },
+          );
+        }
+      } catch (pollErr) {
+        console.warn("mpesa_paystack_verify_poll_err", pollErr);
       }
     }
 
@@ -198,31 +298,33 @@ serve(async (req) => {
 
     const receipt = String(requestBody.mpesaReceipt || "").trim().toUpperCase();
     const parsedPhone = normalizeKenyanPhone(requestBody.phone);
-    if (!/^[A-Z0-9]{8,16}$/.test(receipt) || !parsedPhone) {
-      return jsonReply(req, { error: "Enter a valid M-Pesa receipt code and Safaricom phone number." }, 400, METHODS);
+    if (!/^[A-Z0-9_]{6,36}$/.test(receipt) || !parsedPhone) {
+      return jsonReply(req, { error: "Enter a valid M-Pesa receipt code or reference and phone number." }, 400, METHODS);
     }
 
     const { data: sub } = await service
       .from("subscriptions")
-      .select("id, phone, tier, end_date, is_active, mpesa_ref")
-      .ilike("mpesa_ref", receipt)
+      .select("id, phone, tier, end_date, is_active, mpesa_ref, payment_reference")
+      .or(`mpesa_ref.ilike.${receipt},payment_reference.ilike.${receipt}`)
+      .order("end_date", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     const storedSub9 = String(sub?.phone || "").replace(/\D/g, "").slice(-9);
-    if (!sub || storedSub9 !== parsedPhone.sub9) {
+    if (!sub || (storedSub9 && storedSub9 !== parsedPhone.sub9)) {
       return jsonReply(req, { error: "No pass matched that M-Pesa receipt and phone number." }, 404, METHODS);
     }
 
     const expiresAt = sub.end_date ? Date.parse(sub.end_date) : 0;
     if (!sub.is_active || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-      return jsonReply(req, { error: "That M-Pesa pass has expired. Choose a new pass to continue watching." }, 410, METHODS);
+      return jsonReply(req, { error: "That pass has expired. Choose a new pass to continue watching." }, 410, METHODS);
     }
 
     const passToken = await issuePassToken({
       subId: sub.id,
       tier: sub.tier,
       exp: expiresAt,
-      ref: sub.mpesa_ref || receipt,
+      ref: sub.mpesa_ref || sub.payment_reference || receipt,
     });
 
     return jsonReply(
@@ -232,7 +334,7 @@ serve(async (req) => {
           token: passToken,
           tier: sub.tier,
           expiresAt,
-          mpesaReceipt: sub.mpesa_ref || receipt,
+          mpesaReceipt: sub.mpesa_ref || sub.payment_reference || receipt,
         },
       },
       200,
@@ -241,12 +343,12 @@ serve(async (req) => {
     );
   }
 
-  // ─── Action: Initiate frictionless M-Pesa STK Push ──────────────────────────
+  // ─── Action: Initiate M-Pesa Payment ─────────────────────────────────────────
   if (action !== "initiate") {
     return jsonReply(req, { error: "Unknown payment action." }, 400, METHODS);
   }
 
-  if (!checkIpRateLimit(`stk:${clientIp}`, 6)) {
+  if (!checkIpRateLimit(`stk:${clientIp}`, 10)) {
     return jsonReply(req, { error: "Too many payment requests. Please wait a moment and try again." }, 429, METHODS);
   }
 
@@ -261,7 +363,7 @@ serve(async (req) => {
     return jsonReply(req, { error: "Unknown subscription plan." }, 400, METHODS);
   }
 
-  // Optionally associate authenticated Supabase user if a valid session JWT is sent
+  // Associate authenticated user if session JWT is present
   let authenticatedUserId: string | null = null;
   let authenticatedPhone: string | null = null;
   const authHeader = req.headers.get("Authorization") || "";
@@ -289,6 +391,18 @@ serve(async (req) => {
     );
   }
 
+  // Check existing idempotent request
+  const { data: existing } = await service
+    .from("payment_transactions")
+    .select("id, status, checkout_request_id, paystack_reference, result_description")
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle();
+
+  if (existing) {
+    return jsonReply(req, { transaction: existing, reused: true }, 200, METHODS);
+  }
+
+  // Check Daraja secrets vs Paystack fallback
   const consumerKey = Deno.env.get("MPESA_CONSUMER_KEY");
   const consumerSecret = Deno.env.get("MPESA_CONSUMER_SECRET");
   const shortcode = Deno.env.get("MPESA_SHORTCODE");
@@ -296,51 +410,148 @@ serve(async (req) => {
   const callbackBaseUrl = Deno.env.get("MPESA_CALLBACK_URL");
   const callbackSecret = Deno.env.get("MPESA_CALLBACK_SECRET");
   const environment = Deno.env.get("MPESA_ENV") === "production" ? "production" : "sandbox";
-  if (!consumerKey || !consumerSecret || !shortcode || !passkey || !callbackBaseUrl || !callbackSecret) {
+
+  const hasDaraja = Boolean(
+    consumerKey && consumerSecret && shortcode && passkey && callbackBaseUrl && callbackSecret
+  );
+  const hasPaystack = Boolean(paystackSecretKey);
+
+  if (!hasDaraja && !hasPaystack) {
     return jsonReply(req, { error: "M-Pesa payments are temporarily unavailable." }, 503, METHODS);
-  }
-
-  const { data: existing } = await service
-    .from("payment_transactions")
-    .select("id, status, checkout_request_id, result_description")
-    .eq("idempotency_key", idempotencyKey)
-    .maybeSingle();
-  if (existing) {
-    return jsonReply(req, { transaction: existing, reused: true }, 200, METHODS);
-  }
-
-  // Prevent STK push spam to the same phone number within 45 seconds
-  const recentCutoff = new Date(Date.now() - 45_000).toISOString();
-  const { data: recentPending } = await service
-    .from("payment_transactions")
-    .select("id, status")
-    .eq("phone_e164", parsedPhone.e164)
-    .in("status", ["pending", "submitted"])
-    .gte("created_at", recentCutoff)
-    .limit(1)
-    .maybeSingle();
-
-  if (recentPending) {
-    return jsonReply(
-      req,
-      { error: "An M-Pesa prompt was just sent to this phone. Check your handset or wait 45 seconds before retrying." },
-      429,
-      METHODS,
-    );
   }
 
   const checkoutToken = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
   const checkoutTokenHash = await sha256Hex(checkoutToken);
+
+  // ─── Direct Daraja STK Push path ───────────────────────────────────────────
+  if (hasDaraja) {
+    const { data: transaction, error: insertError } = await service
+      .from("payment_transactions")
+      .insert({
+        user_id: authenticatedUserId,
+        phone_e164: parsedPhone.e164,
+        plan_code: planCode,
+        amount_kes: plan.amount,
+        idempotency_key: idempotencyKey,
+        checkout_token_hash: checkoutTokenHash,
+        status: "pending",
+      })
+      .select("id")
+      .single();
+
+    if (insertError || !transaction) {
+      return jsonReply(req, { error: "Unable to create payment request." }, 409, METHODS);
+    }
+
+    const host = environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+    const basicAuth = btoa(`${consumerKey}:${consumerSecret}`);
+
+    try {
+      const tokenResponse = await fetch(`${host}/oauth/v1/generate?grant_type=client_credentials`, {
+        headers: { Authorization: `Basic ${basicAuth}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!tokenResponse.ok) {
+        await service
+          .from("payment_transactions")
+          .update({ status: "failed", result_description: "M-Pesa authentication failed." })
+          .eq("id", transaction.id);
+        return jsonReply(req, { error: "M-Pesa is temporarily unavailable. Please try again." }, 502, METHODS);
+      }
+
+      const accessToken = (await tokenResponse.json()).access_token;
+      const timestamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+      const password = btoa(`${shortcode}${passkey}${timestamp}`);
+      const callbackUrl = new URL(callbackBaseUrl!);
+      callbackUrl.searchParams.set("secret", callbackSecret!);
+
+      const stkResponse = await fetch(`${host}/mpesa/stkpush/v1/processrequest`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          BusinessShortCode: shortcode,
+          Password: password,
+          Timestamp: timestamp,
+          TransactionType: "CustomerPayBillOnline",
+          Amount: plan.amount,
+          PartyA: parsedPhone.digits,
+          PartyB: shortcode,
+          PhoneNumber: parsedPhone.digits,
+          CallBackURL: callbackUrl.toString(),
+          AccountReference: plan.label,
+          TransactionDesc: `${plan.label} pass`,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+
+      const stkData = await stkResponse.json().catch(() => ({}));
+      const accepted = stkResponse.ok && stkData.ResponseCode === "0" && Boolean(stkData.CheckoutRequestID);
+
+      await service
+        .from("payment_transactions")
+        .update({
+          status: accepted ? "submitted" : "failed",
+          merchant_request_id: stkData.MerchantRequestID || null,
+          checkout_request_id: stkData.CheckoutRequestID || null,
+          result_description:
+            stkData.CustomerMessage || stkData.errorMessage || (accepted ? "Prompt sent." : "M-Pesa request rejected."),
+        })
+        .eq("id", transaction.id);
+
+      if (!accepted) {
+        return jsonReply(
+          req,
+          { error: stkData.CustomerMessage || "M-Pesa did not accept the payment request." },
+          502,
+          METHODS,
+        );
+      }
+
+      return jsonReply(
+        req,
+        {
+          transaction: {
+            id: transaction.id,
+            status: "submitted",
+            checkoutToken,
+            checkoutRequestId: stkData.CheckoutRequestID,
+            message: stkData.CustomerMessage,
+          },
+        },
+        200,
+        METHODS,
+        { "Cache-Control": "no-store" },
+      );
+    } catch (error) {
+      console.error("mpesa_stk_push_error", error);
+      await service
+        .from("payment_transactions")
+        .update({ status: "failed", result_description: "Upstream M-Pesa network timeout." })
+        .eq("id", transaction.id);
+      return jsonReply(req, { error: "Could not reach M-Pesa. Check your connection and try again." }, 502, METHODS);
+    }
+  }
+
+  // ─── Paystack M-Pesa Engine (Production Fallback) ─────────────────────────
+  const reference = `TUBE_MP_${Date.now()}_${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  const customerEmail = `${parsedPhone.digits}@tube.co.ke`;
 
   const { data: transaction, error: insertError } = await service
     .from("payment_transactions")
     .insert({
       user_id: authenticatedUserId,
       phone_e164: parsedPhone.e164,
+      customer_email: customerEmail,
       plan_code: planCode,
       amount_kes: plan.amount,
       idempotency_key: idempotencyKey,
       checkout_token_hash: checkoutTokenHash,
+      paystack_reference: reference,
+      provider: "paystack",
+      channel: "mobile_money",
       status: "pending",
     })
     .select("id")
@@ -350,94 +561,145 @@ serve(async (req) => {
     return jsonReply(req, { error: "Unable to create payment request." }, 409, METHODS);
   }
 
-  const host = environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
-  const basicAuth = btoa(`${consumerKey}:${consumerSecret}`);
+  let directPromptSent = false;
+  let customerMessage = "M-Pesa STK push sent. Please enter your PIN on your phone.";
+  let authorizationUrl: string | undefined;
 
+  // 1. Attempt Paystack Charge API for instant STK Push prompt to handset
   try {
-    const tokenResponse = await fetch(`${host}/oauth/v1/generate?grant_type=client_credentials`, {
-      headers: { Authorization: `Basic ${basicAuth}` },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!tokenResponse.ok) {
-      await service
-        .from("payment_transactions")
-        .update({ status: "failed", result_description: "M-Pesa authentication failed." })
-        .eq("id", transaction.id);
-      return jsonReply(req, { error: "M-Pesa is temporarily unavailable. Please try again." }, 502, METHODS);
-    }
-
-    const accessToken = (await tokenResponse.json()).access_token;
-    const timestamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
-    const password = btoa(`${shortcode}${passkey}${timestamp}`);
-    const callbackUrl = new URL(callbackBaseUrl);
-    callbackUrl.searchParams.set("secret", callbackSecret);
-
-    const stkResponse = await fetch(`${host}/mpesa/stkpush/v1/processrequest`, {
+    const chargeRes = await fetch("https://api.paystack.co/charge", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${paystackSecretKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        BusinessShortCode: shortcode,
-        Password: password,
-        Timestamp: timestamp,
-        TransactionType: "CustomerPayBillOnline",
-        Amount: plan.amount,
-        PartyA: parsedPhone.digits,
-        PartyB: shortcode,
-        PhoneNumber: parsedPhone.digits,
-        CallBackURL: callbackUrl.toString(),
-        AccountReference: plan.label,
-        TransactionDesc: `${plan.label} pass`,
+        email: customerEmail,
+        amount: plan.amount * 100,
+        currency: "KES",
+        reference,
+        metadata: {
+          plan_code: planCode,
+          transaction_id: transaction.id,
+          phone: parsedPhone.e164,
+          custom_fields: [
+            { display_name: "Subscription Plan", variable_name: "plan", value: plan.label },
+          ],
+        },
+        mobile_money: {
+          phone: parsedPhone.digits,
+          provider: "mpesa",
+        },
       }),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(12_000),
     });
 
-    const stkData = await stkResponse.json().catch(() => ({}));
-    const accepted = stkResponse.ok && stkData.ResponseCode === "0" && Boolean(stkData.CheckoutRequestID);
-
-    await service
-      .from("payment_transactions")
-      .update({
-        status: accepted ? "submitted" : "failed",
-        merchant_request_id: stkData.MerchantRequestID || null,
-        checkout_request_id: stkData.CheckoutRequestID || null,
-        result_description:
-          stkData.CustomerMessage || stkData.errorMessage || (accepted ? "Prompt sent." : "M-Pesa request rejected."),
-      })
-      .eq("id", transaction.id);
-
-    if (!accepted) {
-      return jsonReply(
-        req,
-        { error: stkData.CustomerMessage || "M-Pesa did not accept the payment request." },
-        502,
-        METHODS,
-      );
+    const chargeData = await chargeRes.json().catch(() => ({}));
+    if (
+      chargeRes.ok &&
+      chargeData.status &&
+      (chargeData.data?.status === "pay_offline" ||
+        chargeData.data?.status === "pending" ||
+        chargeData.data?.status === "success")
+    ) {
+      directPromptSent = true;
+      customerMessage =
+        chargeData.data?.display_text ||
+        "An M-Pesa prompt has been sent to your phone. Enter your M-Pesa PIN to complete payment.";
+      await service
+        .from("payment_transactions")
+        .update({
+          status: chargeData.data?.status === "success" ? "succeeded" : "submitted",
+          result_description: customerMessage,
+        })
+        .eq("id", transaction.id);
+    } else {
+      console.warn("paystack_charge_api_fallback", chargeData?.message || chargeData);
     }
-
-    return jsonReply(
-      req,
-      {
-        transaction: {
-          id: transaction.id,
-          status: "submitted",
-          checkoutToken,
-          checkoutRequestId: stkData.CheckoutRequestID,
-          message: stkData.CustomerMessage,
-        },
-      },
-      200,
-      METHODS,
-      { "Cache-Control": "no-store" },
-    );
-  } catch (error) {
-    console.error("mpesa_stk_push_error", error);
-    await service
-      .from("payment_transactions")
-      .update({ status: "failed", result_description: "Upstream M-Pesa network timeout." })
-      .eq("id", transaction.id);
-    return jsonReply(req, { error: "Could not reach M-Pesa. Check your connection and try again." }, 502, METHODS);
+  } catch (chargeErr) {
+    console.warn("paystack_charge_api_network_error", chargeErr);
   }
+
+  // 2. If Charge API did not accept direct prompt, initialize Paystack checkout for M-Pesa
+  if (!directPromptSent) {
+    try {
+      const initRes = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${paystackSecretKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: customerEmail,
+          amount: plan.amount * 100,
+          currency: "KES",
+          reference,
+          callback_url: `${siteUrl}/?paystack_ref=${encodeURIComponent(reference)}`,
+          metadata: {
+            plan_code: planCode,
+            transaction_id: transaction.id,
+            phone: parsedPhone.e164,
+            custom_fields: [
+              { display_name: "Subscription Plan", variable_name: "plan", value: plan.label },
+            ],
+          },
+          channels: ["mobile_money"],
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      const initData = await initRes.json().catch(() => ({}));
+      if (!initRes.ok || !initData.status || !initData.data?.access_code) {
+        await service
+          .from("payment_transactions")
+          .update({
+            status: "failed",
+            result_description: initData.message || "Paystack M-Pesa initialization failed.",
+          })
+          .eq("id", transaction.id);
+        return jsonReply(
+          req,
+          { error: initData.message || "Unable to initiate M-Pesa payment right now. Please try again." },
+          502,
+          METHODS,
+        );
+      }
+
+      authorizationUrl = initData.data.authorization_url;
+      customerMessage = "Please authorize the M-Pesa payment prompt.";
+      await service
+        .from("payment_transactions")
+        .update({
+          paystack_access_code: initData.data.access_code,
+          status: "submitted",
+          result_description: customerMessage,
+        })
+        .eq("id", transaction.id);
+    } catch (initErr) {
+      console.error("paystack_init_network_error", initErr);
+      await service
+        .from("payment_transactions")
+        .update({ status: "failed", result_description: "Network timeout initiating payment." })
+        .eq("id", transaction.id);
+      return jsonReply(req, { error: "Could not reach payment gateway. Check your connection." }, 502, METHODS);
+    }
+  }
+
+  return jsonReply(
+    req,
+    {
+      transaction: {
+        id: transaction.id,
+        status: "submitted",
+        checkoutToken,
+        checkoutRequestId: reference,
+        reference,
+        authorizationUrl,
+        message: customerMessage,
+      },
+    },
+    200,
+    METHODS,
+    { "Cache-Control": "no-store" },
+  );
 });

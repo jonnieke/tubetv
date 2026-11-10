@@ -185,7 +185,84 @@ serve(async (req) => {
       return jsonReply(req, { error: "Unable to create payment transaction." }, 409, METHODS);
     }
 
-    // Call Paystack Initialize API
+    const requestedChannel = String(requestBody.channel || "").toLowerCase();
+    const channels = requestedChannel === "mobile_money"
+      ? ["mobile_money"]
+      : requestedChannel === "card"
+        ? ["card"]
+        : ["mobile_money", "card"];
+
+    // 1. If customer requested mobile_money with a phone number, attempt direct STK Push charge
+    if (requestedChannel === "mobile_money" && parsedPhone?.digits) {
+      try {
+        const chargeRes = await fetch("https://api.paystack.co/charge", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${paystackSecretKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            amount: plan.amount * 100,
+            currency: "KES",
+            reference,
+            metadata: {
+              plan_code: planCode,
+              transaction_id: tx.id,
+              phone: parsedPhone.e164,
+            },
+            mobile_money: {
+              phone: parsedPhone.digits,
+              provider: "mpesa",
+            },
+          }),
+          signal: AbortSignal.timeout(12_000),
+        });
+
+        const chargeData = await chargeRes.json().catch(() => ({}));
+        if (
+          chargeRes.ok &&
+          chargeData.status &&
+          (chargeData.data?.status === "pay_offline" ||
+            chargeData.data?.status === "pending" ||
+            chargeData.data?.status === "success")
+        ) {
+          const displayText =
+            chargeData.data?.display_text ||
+            "An M-Pesa prompt was sent to your phone. Please enter your M-Pesa PIN.";
+
+          await service
+            .from("payment_transactions")
+            .update({
+              status: chargeData.data?.status === "success" ? "succeeded" : "submitted",
+              channel: "mobile_money",
+              result_description: displayText,
+            })
+            .eq("id", tx.id);
+
+          return jsonReply(
+            req,
+            {
+              transaction: {
+                id: tx.id,
+                status: "submitted",
+                reference,
+                displayText,
+                checkoutToken,
+                publicKey: paystackPublicKey,
+              },
+            },
+            200,
+            METHODS,
+            { "Cache-Control": "no-store" },
+          );
+        }
+      } catch (chargeErr) {
+        console.warn("paystack_checkout_charge_fallback", chargeErr);
+      }
+    }
+
+    // 2. Call Paystack Initialize API
     const paystackRes = await fetch("https://api.paystack.co/transaction/initialize", {
       method: "POST",
       headers: {
@@ -210,7 +287,7 @@ serve(async (req) => {
             },
           ],
         },
-        channels: ["mobile_money", "card"],
+        channels,
       }),
       signal: AbortSignal.timeout(15_000),
     });
