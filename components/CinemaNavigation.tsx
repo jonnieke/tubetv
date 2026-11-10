@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { ChevronDown, Globe, Search, UserRound, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { CheckCircle2, ChevronDown, Globe, Search, Ticket, UserRound, X } from 'lucide-react';
 import { NavItem, ViewState, ViewStateOrString } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { getStoredPass, type StoredPass } from '../lib/subscriptions';
 import type { TranslationKey } from '../translations';
 
 interface Props {
@@ -21,6 +22,26 @@ export default function CinemaNavigation(props: Props) {
   const { language, setLanguage, t } = useLanguage();
   const [more, setMore] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [activePass, setActivePass] = useState<StoredPass | null>(() => getStoredPass());
+
+  useEffect(() => {
+    const syncPass = () => setActivePass(getStoredPass());
+    window.addEventListener('tubetv:pass-updated', syncPass);
+    const interval = setInterval(syncPass, 60_000);
+    return () => {
+      window.removeEventListener('tubetv:pass-updated', syncPass);
+      clearInterval(interval);
+    };
+  }, []);
+
+  const formatRemainingPassTime = (expiresAt: number): string => {
+    const diffMs = Math.max(0, expiresAt - Date.now());
+    const totalHours = Math.ceil(diffMs / (1000 * 60 * 60));
+    if (totalHours >= 48) {
+      return `${Math.ceil(totalHours / 24)}d left`;
+    }
+    return `${Math.max(1, totalHours)}h left`;
+  };
 
   const navigate = (view: ViewStateOrString, category?: string) => {
     props.navigate(view, category);
@@ -98,6 +119,28 @@ export default function CinemaNavigation(props: Props) {
             onChange={props.onSearch}
           />
         </label>
+
+        {activePass ? (
+          <button
+            type="button"
+            onClick={() => navigate(ViewState.SETTINGS, 'pass')}
+            title={`Active ${activePass.tier.toUpperCase()} Pass — Click to manage`}
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-950/40 px-2.5 py-1 text-[11px] font-bold text-emerald-300 hover:border-emerald-400 hover:text-white transition-colors"
+          >
+            <CheckCircle2 size={12} className="text-emerald-400" />
+            <span>Pass · {formatRemainingPassTime(activePass.expiresAt)}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => navigate(ViewState.SETTINGS, 'pass')}
+            title="Restore or view your TubeTV Pass"
+            className="hidden md:inline-flex items-center gap-1 rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-1 text-[11px] font-semibold text-zinc-300 hover:border-emerald-500/50 hover:text-emerald-300 transition-colors"
+          >
+            <Ticket size={12} className="text-emerald-400" />
+            <span>{language === 'sw' ? 'Pasi' : 'Pass'}</span>
+          </button>
+        )}
 
         <button
           type="button"

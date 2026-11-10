@@ -66,7 +66,14 @@ import { recommendVideos, getRelatedVideos } from './lib/recommendations';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
 import { shouldSaveData } from './lib/network';
 import { isVideoLocked } from './lib/monetization';
-import { clearStoredPass, fetchActiveSubscription, getStoredPass, restorePaystackPass } from './lib/subscriptions';
+import {
+  clearStoredPass,
+  fetchActiveSubscription,
+  getRememberedPhone,
+  getStoredPass,
+  restorePassByPhone,
+  restorePaystackPass,
+} from './lib/subscriptions';
 import type { SettingsTabId } from './components/SettingsSection';
 import { TranslationKey } from './translations';
 
@@ -221,6 +228,8 @@ const App: React.FC = () => {
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
   const [hasActivePass, setHasActivePass] = useState<boolean>(() => Boolean(getStoredPass()));
   const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
+  const [deviceSwitchedNotice, setDeviceSwitchedNotice] = useState<{ phone?: string; tier?: string } | null>(null);
+  const [reclaimingPass, setReclaimingPass] = useState(false);
 
   const refreshAccessState = useCallback(async () => {
     try {
@@ -234,10 +243,21 @@ const App: React.FC = () => {
   useEffect(() => {
     void refreshAccessState();
     const handlePassUpdate = () => {
-      setHasActivePass(Boolean(getStoredPass()));
+      const stored = getStoredPass();
+      setHasActivePass(Boolean(stored));
+      if (stored) setDeviceSwitchedNotice(null);
       void refreshAccessState();
     };
+    const handleDeviceSwitched = (event: Event) => {
+      const detail = (event as CustomEvent<{ phone?: string; tier?: string }>).detail || {};
+      setHasActivePass(false);
+      setDeviceSwitchedNotice({
+        phone: detail.phone || getRememberedPhone() || undefined,
+        tier: detail.tier,
+      });
+    };
     window.addEventListener('tubetv:pass-updated', handlePassUpdate);
+    window.addEventListener('tubetv:device-switched', handleDeviceSwitched);
 
     // Auto-restore pass if returning from a Paystack redirect callback
     const searchParams = new URLSearchParams(window.location.search);
@@ -268,8 +288,33 @@ const App: React.FC = () => {
         .catch(() => {});
     }
 
-    return () => window.removeEventListener('tubetv:pass-updated', handlePassUpdate);
+    return () => {
+      window.removeEventListener('tubetv:pass-updated', handlePassUpdate);
+      window.removeEventListener('tubetv:device-switched', handleDeviceSwitched);
+    };
   }, [refreshAccessState]);
+
+  const handleReclaimPassOnThisDevice = async () => {
+    const targetPhone = deviceSwitchedNotice?.phone || getRememberedPhone();
+    if (!targetPhone) {
+      setDeviceSwitchedNotice(null);
+      handleNavigate(ViewState.SETTINGS, 'pass');
+      return;
+    }
+    try {
+      setReclaimingPass(true);
+      const res = await restorePassByPhone({ phone: targetPhone, forceSwitch: true });
+      if (res.success && res.pass) {
+        setHasActivePass(true);
+        setDeviceSwitchedNotice(null);
+        trackEvent('pass_restored', { tier: res.pass.tier, source: 'device_switched_banner', switched: true });
+      } else {
+        handleNavigate(ViewState.SETTINGS, 'pass');
+      }
+    } finally {
+      setReclaimingPass(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -1603,6 +1648,38 @@ const App: React.FC = () => {
             login={() => setShowLogin(true)}
             logout={handleLogout}
           />
+
+          {deviceSwitchedNotice && (
+            <div
+              role="status"
+              className="bg-amber-950/90 border-b border-amber-500/40 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-100 z-40"
+            >
+              <div className="flex items-center gap-2">
+                <Smartphone size={15} className="text-amber-400 shrink-0" />
+                <span>
+                  Your TubeTV pass was switched to another device (1 active screen at a time).
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={reclaimingPass}
+                  onClick={() => void handleReclaimPassOnThisDevice()}
+                  className="rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 px-3 py-1 font-bold text-black transition-colors"
+                >
+                  {reclaimingPass ? 'Switching...' : 'Switch back to this device'}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Dismiss device notice"
+                  onClick={() => setDeviceSwitchedNotice(null)}
+                  className="text-amber-300 hover:text-white p-1"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
 
           <main
             ref={mainRef}

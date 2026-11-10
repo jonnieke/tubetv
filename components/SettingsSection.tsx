@@ -87,8 +87,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
 
     const cleanReceipt = restoreReceipt.trim().toUpperCase();
     const cleanPhone = restorePhone.replace(/[\s()-]/g, '');
-    if (!/^(?:254|\+254|0)?([17]\d{8})$/.test(cleanPhone)) {
-      setPassError('Enter a valid Kenyan phone number (e.g. 0712 345 678).');
+    const phoneDigits = cleanPhone.replace(/\D/g, '');
+    if (phoneDigits.length < 9 || phoneDigits.length > 15) {
+      setPassError('Enter a valid phone number (e.g. 0712 345 678 or +1 / +44 / +234...).');
       return;
     }
 

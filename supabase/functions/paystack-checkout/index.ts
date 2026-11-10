@@ -56,6 +56,19 @@ function normalizeKenyanPhone(raw: unknown): { digits: string; e164: string } | 
   };
 }
 
+function normalizeGlobalPhone(raw: unknown): { digits: string; e164: string; isKenyan: boolean } | null {
+  const ke = normalizeKenyanPhone(raw);
+  if (ke) return { ...ke, isKenyan: true };
+  if (typeof raw !== "string") return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 9 || digits.length > 15) return null;
+  return {
+    digits,
+    e164: `+${digits}`,
+    isKenyan: false,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req, METHODS) });
@@ -127,13 +140,16 @@ serve(async (req) => {
     }
 
     const rawPhone = String(requestBody.phone || authenticatedPhone || "").trim();
-    const parsedPhone = rawPhone ? normalizeKenyanPhone(rawPhone) : null;
+    const parsedPhone = rawPhone ? normalizeGlobalPhone(rawPhone) : null;
     const suppliedEmail = String(requestBody.email || authenticatedEmail || "").trim();
     const email = suppliedEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(suppliedEmail)
       ? suppliedEmail
       : parsedPhone
         ? `${parsedPhone.digits}@tube.co.ke`
         : `guest_${crypto.randomUUID().slice(0, 8)}@tube.co.ke`;
+
+    const regionCode = String(requestBody.regionCode || req.headers.get("cf-ipcountry") || "KE").toUpperCase().slice(0, 8);
+    const currencyCode = String(requestBody.currency || "KES").toUpperCase().slice(0, 8);
 
     // Check existing idempotent request
     const { data: existing } = await service
@@ -172,6 +188,8 @@ serve(async (req) => {
         customer_email: email,
         plan_code: planCode,
         amount_kes: plan.amount,
+        currency: currencyCode,
+        region_code: regionCode,
         idempotency_key: idempotencyKey,
         checkout_token_hash: checkoutTokenHash,
         paystack_reference: reference,
@@ -192,8 +210,8 @@ serve(async (req) => {
         ? ["card"]
         : ["mobile_money", "card"];
 
-    // 1. If customer requested mobile_money with a phone number, attempt direct STK Push charge
-    if (requestedChannel === "mobile_money" && parsedPhone?.digits) {
+    // 1. If customer requested mobile_money with a Kenyan phone number, attempt direct STK Push charge
+    if (requestedChannel === "mobile_money" && parsedPhone?.isKenyan && parsedPhone?.digits) {
       try {
         const chargeRes = await fetch("https://api.paystack.co/charge", {
           method: "POST",
@@ -539,6 +557,25 @@ serve(async (req) => {
 
     const cleanPhoneDigits = contact.replace(/\D/g, "");
     const sub9 = cleanPhoneDigits.length >= 9 ? cleanPhoneDigits.slice(-9) : "";
+
+    // Persistent DB rate limit check across cold starts
+    try {
+      const { data: allowed } = await service.rpc("check_pass_restore_rate_limit", {
+        p_ip: clientIp,
+        p_phone_key: sub9 || ref || "anon",
+        p_max_per_15m: 12,
+      });
+      if (allowed === false) {
+        return jsonReply(
+          req,
+          { error: "Too many restore attempts. Please wait 15 minutes and try again." },
+          429,
+          METHODS,
+        );
+      }
+    } catch {
+      // Non-blocking fallback
+    }
 
     // Search existing active subscription directly in SQL before limiting
     let query = service

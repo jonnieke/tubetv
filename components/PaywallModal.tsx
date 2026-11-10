@@ -14,12 +14,18 @@ import {
   LogOut,
   ChevronDown,
   ChevronUp,
+  Globe,
 } from 'lucide-react';
 import { Video } from '../types';
 import { isMicroDrama } from '../lib/series';
 import {
   SUBSCRIPTION_PLANS,
   SubscriptionPlanCode,
+  REGIONAL_PRICING,
+  RegionCode,
+  detectDefaultRegion,
+  savePreferredRegion,
+  saveRememberedPhone,
   startMpesaPayment,
   fetchPaymentStatus,
   restoreMpesaPass,
@@ -75,11 +81,12 @@ function loadPaystackInline(): Promise<boolean> {
 export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, onClose }) => {
   const { t } = useLanguage();
   const [mode, setMode] = useState<'buy' | 'restore'>('buy');
+  const [regionCode, setRegionCode] = useState<RegionCode>(() => detectDefaultRegion());
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'mpesa'>('paystack');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanCode>('daily');
   const [phone, setPhone] = useState(() => {
     try {
-      return localStorage.getItem('tubetv_user_phone') || '';
+      return localStorage.getItem('tubetv_user_phone') || localStorage.getItem('tubetv_saved_phone') || '';
     } catch {
       return '';
     }
@@ -109,9 +116,19 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
   const handlePhoneChange = (val: string) => {
     setPhone(val);
+    saveRememberedPhone(val);
     try {
       localStorage.setItem('tubetv_user_phone', val);
     } catch {}
+  };
+
+  const handleRegionChange = (nextRegion: RegionCode) => {
+    setRegionCode(nextRegion);
+    savePreferredRegion(nextRegion);
+    if (!REGIONAL_PRICING[nextRegion].supportsMpesaStk) {
+      setPaymentMethod('paystack');
+    }
+    setErrorMessage('');
   };
 
   const handleEmailChange = (val: string) => {
@@ -186,6 +203,18 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     return cleanPhone;
   };
 
+  const validateGlobalPhone = (raw: string): string | null => {
+    const ke = validateKenyanPhone(raw);
+    if (ke) return ke;
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length >= 9 && digits.length <= 15) {
+      return `+${digits}`;
+    }
+    return null;
+  };
+
+  const activeRegion = REGIONAL_PRICING[regionCode] || REGIONAL_PRICING.KE;
+
   const handlePaystackCheckout = async () => {
     clearTimers();
     setErrorMessage('');
@@ -201,9 +230,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     });
 
     try {
-      const cleanPhone = phone.trim() ? validateKenyanPhone(phone) : null;
+      const cleanPhone = phone.trim() ? validateGlobalPhone(phone) : null;
       const cleanEmail = email.trim();
       if (cleanPhone) {
+        saveRememberedPhone(cleanPhone);
         try { localStorage.setItem('tubetv_user_phone', cleanPhone); } catch {}
       }
       if (cleanEmail) {
@@ -216,6 +246,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       const result = await startPaystackPayment(selectedPlan, {
         email: cleanEmail || undefined,
         phone: cleanPhone || undefined,
+        regionCode,
+        currency: activeRegion.currency,
       });
 
       if (!result?.reference || !result?.checkoutToken) {
@@ -593,9 +625,27 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
             {mode === 'buy' ? (
               <form onSubmit={handlePay} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                    {t('paywall.choosePass')}
-                  </label>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                      {t('paywall.choosePass')}
+                    </label>
+                    <div className="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1">
+                      <Globe size={11} className="text-emerald-400 shrink-0" />
+                      <select
+                        aria-label="Region and currency"
+                        disabled={isBusy}
+                        value={regionCode}
+                        onChange={(e) => handleRegionChange(e.target.value as RegionCode)}
+                        className="bg-transparent text-[11px] font-semibold text-zinc-200 focus:outline-none cursor-pointer"
+                      >
+                        {(Object.keys(REGIONAL_PRICING) as RegionCode[]).map((code) => (
+                          <option key={code} value={code} className="bg-zinc-900 text-white">
+                            {REGIONAL_PRICING[code].flag} {REGIONAL_PRICING[code].label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
@@ -612,7 +662,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       </span>
                       <div className="text-xs font-bold text-white leading-tight">{t('paywall.planDaily')}</div>
                       <div className="text-base font-black text-white mt-0.5">
-                        KSh {SUBSCRIPTION_PLANS.daily.amountKes}
+                        {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.daily.amountKes}` : activeRegion.prices.daily}
                       </div>
                       <div className="text-[10px] text-zinc-400 mt-0.5">{t('paywall.planDailySub')}</div>
                     </button>
@@ -632,7 +682,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       </span>
                       <div className="text-xs font-bold text-white leading-tight">{t('paywall.planWeekly')}</div>
                       <div className="text-base font-black text-white mt-0.5">
-                        KSh {SUBSCRIPTION_PLANS.weekly.amountKes}
+                        {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.weekly.amountKes}` : activeRegion.prices.weekly}
                       </div>
                       <div className="text-[10px] text-zinc-400 mt-0.5">{t('paywall.planWeeklySub')}</div>
                     </button>
@@ -652,11 +702,16 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       </span>
                       <div className="text-xs font-bold text-white leading-tight">{t('paywall.planMonthly')}</div>
                       <div className="text-base font-black text-white mt-0.5">
-                        KSh {SUBSCRIPTION_PLANS.monthly.amountKes}
+                        {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.monthly.amountKes}` : activeRegion.prices.monthly}
                       </div>
                       <div className="text-[10px] text-zinc-400 mt-0.5">{t('paywall.planMonthlySub')}</div>
                     </button>
                   </div>
+                  {regionCode !== 'KE' && (
+                    <p className="mt-1.5 text-[10px] text-zinc-400">
+                      {activeRegion.flag} {activeRegion.paymentMethodsLabel} · Settled at KSh {activePlan.amountKes} equivalent via Paystack.
+                    </p>
+                  )}
                 </div>
 
                 {/* Payment Channel Selector */}
@@ -681,7 +736,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       <CreditCard className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
                       <div>
                         <div className="text-xs font-bold text-white leading-tight">{t('paywall.methodPaystack')}</div>
-                        <div className="text-[10px] text-zinc-400 mt-0.5">Card, Apple Pay, M-Pesa</div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">{activeRegion.paymentMethodsLabel}</div>
                       </div>
                     </button>
 
@@ -701,7 +756,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       <Smartphone className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
                       <div>
                         <div className="text-xs font-bold text-white leading-tight">{t('paywall.methodMpesa')}</div>
-                        <div className="text-[10px] text-zinc-400 mt-0.5">Instant STK Prompt</div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">Instant Kenya STK</div>
                       </div>
                     </button>
                   </div>

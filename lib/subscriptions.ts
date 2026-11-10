@@ -9,6 +9,152 @@ export const SUBSCRIPTION_PLANS = {
 
 export type SubscriptionPlanCode = keyof typeof SUBSCRIPTION_PLANS;
 
+export type RegionCode = 'KE' | 'TZ' | 'UG' | 'NG' | 'ZA' | 'GH' | 'US' | 'GB' | 'EU';
+
+export interface RegionalPriceConfig {
+  code: RegionCode;
+  label: string;
+  flag: string;
+  currency: string;
+  symbol: string;
+  dialPrefix: string;
+  supportsMpesaStk: boolean;
+  paymentMethodsLabel: string;
+  prices: Record<SubscriptionPlanCode, string>;
+}
+
+export const REGIONAL_PRICING: Record<RegionCode, RegionalPriceConfig> = {
+  KE: {
+    code: 'KE',
+    label: 'Kenya (KES)',
+    flag: '🇰🇪',
+    currency: 'KES',
+    symbol: 'KSh',
+    dialPrefix: '+254',
+    supportsMpesaStk: true,
+    paymentMethodsLabel: 'Card, Apple Pay, M-Pesa',
+    prices: { daily: 'KSh 10', weekly: 'KSh 50', monthly: 'KSh 149' },
+  },
+  TZ: {
+    code: 'TZ',
+    label: 'Tanzania (TZS)',
+    flag: '🇹🇿',
+    currency: 'TZS',
+    symbol: 'TSh',
+    dialPrefix: '+255',
+    supportsMpesaStk: false,
+    paymentMethodsLabel: 'Card, Apple Pay, M-Pesa Global',
+    prices: { daily: 'TSh 250', weekly: 'TSh 1,000', monthly: 'TSh 2,900' },
+  },
+  UG: {
+    code: 'UG',
+    label: 'Uganda (UGX)',
+    flag: '🇺🇬',
+    currency: 'UGX',
+    symbol: 'USh',
+    dialPrefix: '+256',
+    supportsMpesaStk: false,
+    paymentMethodsLabel: 'Card, Apple Pay, Mobile Money',
+    prices: { daily: 'USh 350', weekly: 'USh 1,500', monthly: 'USh 4,500' },
+  },
+  NG: {
+    code: 'NG',
+    label: 'Nigeria (NGN)',
+    flag: '🇳🇬',
+    currency: 'NGN',
+    symbol: '₦',
+    dialPrefix: '+234',
+    supportsMpesaStk: false,
+    paymentMethodsLabel: 'Card, Bank Transfer, Apple Pay',
+    prices: { daily: '₦150', weekly: '₦650', monthly: '₦1,800' },
+  },
+  ZA: {
+    code: 'ZA',
+    label: 'South Africa (ZAR)',
+    flag: '🇿🇦',
+    currency: 'ZAR',
+    symbol: 'R',
+    dialPrefix: '+27',
+    supportsMpesaStk: false,
+    paymentMethodsLabel: 'Card, Apple Pay, Instant EFT',
+    prices: { daily: 'R3', weekly: 'R10', monthly: 'R29' },
+  },
+  GH: {
+    code: 'GH',
+    label: 'Ghana (GHS)',
+    flag: '🇬🇭',
+    currency: 'GHS',
+    symbol: 'GH₵',
+    dialPrefix: '+233',
+    supportsMpesaStk: false,
+    paymentMethodsLabel: 'Card, MTN MoMo, Apple Pay',
+    prices: { daily: 'GH₵2', weekly: 'GH₵8', monthly: 'GH₵22' },
+  },
+  US: {
+    code: 'US',
+    label: 'Diaspora — US / Global (USD)',
+    flag: '🌍',
+    currency: 'USD',
+    symbol: '$',
+    dialPrefix: '+1',
+    supportsMpesaStk: false,
+    paymentMethodsLabel: 'Apple Pay, Google Pay, Visa / Mastercard',
+    prices: { daily: '$0.99', weekly: '$1.99', monthly: '$2.99' },
+  },
+  GB: {
+    code: 'GB',
+    label: 'Diaspora — UK (GBP)',
+    flag: '🇬🇧',
+    currency: 'GBP',
+    symbol: '£',
+    dialPrefix: '+44',
+    supportsMpesaStk: false,
+    paymentMethodsLabel: 'Apple Pay, Google Pay, UK Debit/Credit Card',
+    prices: { daily: '£0.79', weekly: '£1.49', monthly: '£2.49' },
+  },
+  EU: {
+    code: 'EU',
+    label: 'Diaspora — Europe (EUR)',
+    flag: '🇪🇺',
+    currency: 'EUR',
+    symbol: '€',
+    dialPrefix: '+33',
+    supportsMpesaStk: false,
+    paymentMethodsLabel: 'Apple Pay, Google Pay, Card',
+    prices: { daily: '€0.89', weekly: '€1.79', monthly: '€2.79' },
+  },
+};
+
+const REGION_STORAGE_KEY = 'tubetv_region_code';
+
+export function detectDefaultRegion(): RegionCode {
+  if (typeof window === 'undefined') return 'KE';
+  try {
+    const saved = localStorage.getItem(REGION_STORAGE_KEY) as RegionCode | null;
+    if (saved && saved in REGIONAL_PRICING) return saved;
+
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (tz.includes('Dar_es_Salaam')) return 'TZ';
+    if (tz.includes('Kampala')) return 'UG';
+    if (tz.includes('Lagos')) return 'NG';
+    if (tz.includes('Johannesburg')) return 'ZA';
+    if (tz.includes('Accra')) return 'GH';
+    if (tz.includes('London')) return 'GB';
+    if (tz.startsWith('America/')) return 'US';
+    if (tz.startsWith('Europe/')) return 'EU';
+  } catch {
+    // Default to Kenya
+  }
+  return 'KE';
+}
+
+export function savePreferredRegion(region: RegionCode) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(REGION_STORAGE_KEY, region);
+  } catch {}
+}
+
 export interface ActiveSubscription {
   id: string;
   tier: string;
@@ -171,7 +317,16 @@ export async function verifyStoredPass(): Promise<ActiveSubscription | null> {
     });
 
     if (!error && data && data.valid === false) {
+      const switched = data.reason === 'device_switched';
+      const previousPhone = stored.phone || getRememberedPhone();
       clearStoredPass();
+      if (switched && typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('tubetv:device-switched', {
+            detail: { phone: previousPhone, tier: stored.tier },
+          }),
+        );
+      }
       return null;
     }
 
@@ -256,14 +411,21 @@ export interface PaystackInitiateResponse {
 
 export async function startPaystackPayment(
   planCode: SubscriptionPlanCode,
-  options: { email?: string; phone?: string } = {},
+  options: { email?: string; phone?: string; regionCode?: RegionCode; currency?: string } = {},
 ): Promise<PaystackInitiateResponse> {
   if (!isSupabaseConfigured) {
     throw new Error('Paystack payments are not configured in this environment.');
   }
   const idempotencyKey = crypto.randomUUID();
   const { data, error } = await supabase.functions.invoke('paystack-checkout', {
-    body: { action: 'initiate', planCode, email: options.email, phone: options.phone },
+    body: {
+      action: 'initiate',
+      planCode,
+      email: options.email,
+      phone: options.phone,
+      regionCode: options.regionCode || detectDefaultRegion(),
+      currency: options.currency || 'KES',
+    },
     headers: { 'Idempotency-Key': idempotencyKey },
   });
 
@@ -545,6 +707,7 @@ export async function restoreMpesaPass(mpesaReceipt: string, phone: string): Pro
 export async function resolveAuthorizedPlaybackUrl(
   videoId: string,
   fallbackUrl?: string,
+  requiresEntitlement = false,
 ): Promise<{ locked: boolean; url: string }> {
   const safeFallback = fallbackUrl || '';
   if (
@@ -556,9 +719,10 @@ export async function resolveAuthorizedPlaybackUrl(
     return { locked: false, url: safeFallback };
   }
 
+  const storedPass = getStoredPass();
+
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    const storedPass = getStoredPass();
     const headers: Record<string, string> = {
       Accept: 'application/json',
       apikey: ANON_KEY,
@@ -575,7 +739,17 @@ export async function resolveAuthorizedPlaybackUrl(
     );
 
     if (res.status === 402 || res.status === 403) {
-      if (storedPass) clearStoredPass();
+      if (storedPass) {
+        const previousPhone = storedPass.phone || getRememberedPhone();
+        clearStoredPass();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('tubetv:device-switched', {
+              detail: { phone: previousPhone, tier: storedPass.tier },
+            }),
+          );
+        }
+      }
       return { locked: true, url: '' };
     }
 
@@ -587,8 +761,16 @@ export async function resolveAuthorizedPlaybackUrl(
       }
     }
 
+    // Security hardening: if the episode requires a pass and the user has no verified pass, never fall back to an unsigned URL
+    if (requiresEntitlement && !storedPass && !session?.access_token) {
+      return { locked: true, url: '' };
+    }
+
     return { locked: false, url: safeFallback };
   } catch {
+    if (requiresEntitlement && !storedPass) {
+      return { locked: true, url: '' };
+    }
     return { locked: false, url: safeFallback };
   }
 }

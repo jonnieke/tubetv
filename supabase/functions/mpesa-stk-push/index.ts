@@ -49,6 +49,24 @@ function normalizeKenyanPhone(raw: unknown): { digits: string; e164: string; sub
   };
 }
 
+/**
+ * Supports Kenyan (07XX / +254) as well as Pan-African & Diaspora E.164 phone numbers
+ * (+255 TZ, +256 UG, +250 RW, +234 NG, +233 GH, +27 ZA, +1 US/CA, +44 UK, etc.)
+ */
+function normalizeGlobalPhone(raw: unknown): { digits: string; e164: string; sub9: string } | null {
+  const ke = normalizeKenyanPhone(raw);
+  if (ke) return ke;
+  if (typeof raw !== "string") return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 9 || digits.length > 15) return null;
+  const sub9 = digits.slice(-9);
+  return {
+    digits,
+    e164: `+${digits}`,
+    sub9,
+  };
+}
+
 function getClientIp(req: Request): string {
   return (
     req.headers.get("cf-connecting-ip") ||
@@ -317,15 +335,39 @@ serve(async (req) => {
       return jsonReply(req, { error: "Too many restore attempts. Please wait a minute and try again." }, 429, METHODS);
     }
 
-    const parsedPhone = normalizeKenyanPhone(requestBody.phone);
-    if (!parsedPhone) {
-      return jsonReply(req, { error: "Please enter a valid Kenyan phone number (e.g. 0712 345 678)." }, 400, METHODS);
+    const parsedPhone = normalizeGlobalPhone(requestBody.phone);
+    const receipt = String(requestBody.mpesaReceipt || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+    if (!parsedPhone && !receipt) {
+      return jsonReply(
+        req,
+        { error: "Please enter a valid phone number (e.g. 0712 345 678 or +1 / +44 / +234...)." },
+        400,
+        METHODS,
+      );
     }
 
-    const sub9 = parsedPhone.sub9;
+    const sub9 = parsedPhone?.sub9 || "";
     const incomingDeviceId = String(requestBody.deviceId || "").trim();
     const forceSwitch = Boolean(requestBody.forceSwitch);
-    const receipt = String(requestBody.mpesaReceipt || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+
+    // Persistent DB rate limit check across cold starts (protects against phone enumeration)
+    try {
+      const { data: allowed } = await service.rpc("check_pass_restore_rate_limit", {
+        p_ip: clientIp,
+        p_phone_key: sub9 || receipt || "anon",
+        p_max_per_15m: 12,
+      });
+      if (allowed === false) {
+        return jsonReply(
+          req,
+          { error: "Too many restore attempts for this number. Please wait 15 minutes and try again." },
+          429,
+          METHODS,
+        );
+      }
+    } catch {
+      // Non-blocking fallback to in-memory limiter if RPC unavailable
+    }
 
     // Query active subscriptions matching this phone (or receipt) directly in SQL before limiting
     let subQuery = service
@@ -334,8 +376,10 @@ serve(async (req) => {
       .eq("is_active", true)
       .gt("end_date", new Date().toISOString());
 
-    if (receipt) {
+    if (receipt && sub9) {
       subQuery = subQuery.or(`phone.ilike.%${sub9},mpesa_ref.ilike.${receipt},payment_reference.ilike.${receipt}`);
+    } else if (receipt) {
+      subQuery = subQuery.or(`mpesa_ref.ilike.${receipt},payment_reference.ilike.${receipt}`);
     } else {
       subQuery = subQuery.ilike("phone", `%${sub9}`);
     }
@@ -351,7 +395,7 @@ serve(async (req) => {
     // Match by phone number suffix or receipt
     const sub = (subs || []).find((s) => {
       const storedDigits = String(s.phone || "").replace(/\D/g, "");
-      const phoneMatch = storedDigits.endsWith(sub9);
+      const phoneMatch = Boolean(sub9 && storedDigits.endsWith(sub9));
       if (receipt) {
         const refMatch =
           (s.mpesa_ref && s.mpesa_ref.toUpperCase() === receipt) ||

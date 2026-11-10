@@ -14,6 +14,7 @@ import {
   Loader2,
   Captions,
   Share2,
+  Tv,
 } from 'lucide-react';
 import { Video } from '../types';
 import { CONTENT_RATING_ENFORCED } from '../constants';
@@ -43,6 +44,11 @@ type SafariVideoElement = HTMLVideoElement & {
   webkitSupportsPresentationMode?: boolean;
   webkitPresentationMode?: string;
   webkitSetPresentationMode?: (mode: 'inline' | 'picture-in-picture') => void;
+  webkitShowPlaybackTargetPicker?: () => void;
+  remote?: {
+    prompt: () => Promise<void>;
+    state?: string;
+  };
 };
 
 const levelShortEdge = (level: { width?: number; height?: number }): number => {
@@ -193,7 +199,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (!authorizedSrc && !video.url) {
       setIsAuthorizing(true);
     }
-    void resolveAuthorizedPlaybackUrl(video.id, video.url)
+    const requiresEntitlement = isVideoLocked(video, false);
+    void resolveAuthorizedPlaybackUrl(video.id, video.url, requiresEntitlement)
       .then((res) => {
         if (cancelled) return;
         setIsAuthorizing(false);
@@ -313,14 +320,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
           enableWorker: true,
           lowLatencyMode: false,
           backBufferLength: 15,
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
-          maxBufferSize: 30 * 1000 * 1000,
+          maxBufferLength: effectiveDataSaver ? 15 : 30,
+          maxMaxBufferLength: effectiveDataSaver ? 30 : 60,
+          maxBufferSize: (effectiveDataSaver ? 12 : 30) * 1000 * 1000,
           maxBufferHole: 0.5,
           nudgeOffset: 0.2,
           nudgeMaxRetry: 5,
           capLevelToPlayerSize: true,
-          abrEwmaDefaultEstimate: 600_000,
+          abrEwmaDefaultEstimate: effectiveDataSaver ? 350_000 : 600_000,
           startLevel: 0,
           fragLoadingTimeOut: 12000,
           fragLoadingMaxRetry: 4,
@@ -346,7 +353,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
               const bestRes = best >= 0 ? levelShortEdge(hls.levels[best]) : 0;
               return res > 0 && res <= targetRes && (best < 0 || res > bestRes) ? index : best;
             }, -1);
-            if (matchingLevel >= 0) hls.currentLevel = matchingLevel;
+            if (matchingLevel >= 0) {
+              if (effectiveDataSaver) {
+                hls.autoLevelCapping = matchingLevel;
+              } else {
+                hls.currentLevel = matchingLevel;
+              }
+            } else if (effectiveDataSaver && hls.levels.length > 0) {
+              hls.autoLevelCapping = 0;
+            }
           }
           videoRef.current.muted = isHoverPlay && !isPlaying ? true : isMuted;
           videoRef.current.play().catch(() => {
@@ -499,6 +514,25 @@ const VideoCard: React.FC<VideoCardProps> = ({
       `Watch "${video.title}" on TubeTV: ${window.location.origin}/watch/${encodeURIComponent(video.id)}`,
     );
     window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener');
+  };
+
+  const handleCastToTv = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const videoEl = videoRef.current as SafariVideoElement | null;
+    if (!videoEl) return;
+
+    try {
+      if (typeof videoEl.webkitShowPlaybackTargetPicker === 'function') {
+        videoEl.webkitShowPlaybackTargetPicker();
+        return;
+      }
+      if (videoEl.remote && typeof videoEl.remote.prompt === 'function') {
+        await videoEl.remote.prompt();
+        return;
+      }
+    } catch (err) {
+      console.warn('Cast / AirPlay prompt closed or unavailable:', err);
+    }
   };
 
   const togglePiP = async (e: React.MouseEvent) => {
@@ -1159,6 +1193,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
                       </div>
                     )}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCastToTv}
+                    className="text-zinc-300 hover:text-white transition-colors"
+                    title="Cast to TV / AirPlay"
+                    aria-label="Cast to TV or AirPlay"
+                  >
+                    <Tv size={18} />
+                  </button>
 
                   <button
                     type="button"
