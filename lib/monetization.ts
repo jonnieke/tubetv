@@ -1,5 +1,13 @@
 import type { Video } from '../types';
 
+export const LONG_FORMAT_PREVIEW_SECONDS = 30;
+
+export function isLongFormatVideo(video: Video): boolean {
+  if (video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas') return false;
+  if (video.isShort || video.category === 'Shorts') return false;
+  return true;
+}
+
 export function getEpisodeNumber(video: Video): number | undefined {
   if (typeof video.episode === 'number' && Number.isFinite(video.episode) && video.episode > 0) {
     return video.episode;

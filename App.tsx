@@ -65,7 +65,7 @@ import { filterDiscoveryVideos, filterVideosByRating, isKidsVideo } from './lib/
 import { recommendVideos, getRelatedVideos } from './lib/recommendations';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
 import { shouldSaveData } from './lib/network';
-import { isVideoLocked } from './lib/monetization';
+import { isLongFormatVideo, isVideoLocked } from './lib/monetization';
 import {
   clearStoredPass,
   fetchActiveSubscription,
@@ -559,7 +559,7 @@ const App: React.FC = () => {
         localStorage.setItem('tubetv_last_watched_video_id', video.id);
       } catch {}
 
-      if (isVideoLocked(video, hasActivePass)) {
+      if (!isLongFormatVideo(video) && isVideoLocked(video, hasActivePass)) {
         setPaywallVideo(video);
         return;
       }
@@ -585,7 +585,7 @@ const App: React.FC = () => {
     if (!preferences.autoplay || shouldSaveData(preferences.dataSaver)) return;
     const nextVideo = nextEpisode(ratingFilteredVideos, videoId);
     if (nextVideo) {
-      if (isVideoLocked(nextVideo, hasActivePass)) {
+      if (!isLongFormatVideo(nextVideo) && isVideoLocked(nextVideo, hasActivePass)) {
         setPaywallVideo(nextVideo);
       } else {
         trackEvent('episode_next', { fromVideoId: videoId, toVideoId: nextVideo.id, automatic: true });
@@ -618,7 +618,7 @@ const App: React.FC = () => {
       const id = decodeURIComponent(match[1]);
       const video = videos.find((item) => item.id === id);
       if (video) {
-        if (isVideoLocked(video, hasActivePass)) {
+        if (!isLongFormatVideo(video) && isVideoLocked(video, hasActivePass)) {
           setPaywallVideo(video);
         } else {
           setActiveHeroVideo(video);
@@ -631,7 +631,7 @@ const App: React.FC = () => {
         if (active && item) {
           const directVideo = bunnyVideoToVideo(item) as Video;
           if (directVideo.muted || normalizeContentRating(directVideo.contentRating) === '18') return;
-          if (isVideoLocked(directVideo, hasActivePass)) {
+          if (!isLongFormatVideo(directVideo) && isVideoLocked(directVideo, hasActivePass)) {
             setPaywallVideo(directVideo);
           } else {
             setActiveHeroVideo(directVideo);
@@ -1378,7 +1378,8 @@ const App: React.FC = () => {
         getProgress: (videoId) => watchProgress[videoId],
         onEnded: handleVideoEnded,
         onProgress: handleWatchProgress,
-        isLocked: (video) => isVideoLocked(video, hasActivePass),
+        hasActivePass,
+        isLocked: (video) => !isLongFormatVideo(video) && isVideoLocked(video, hasActivePass),
         onRequireUnlock: (video) => setPaywallVideo(video),
         onOpenSettings: () => {
           closeVideo();

@@ -8,6 +8,7 @@ interface PlaybackContextValue {
   getProgress: (videoId: string) => WatchProgress | undefined;
   onProgress: (videoId: string, progress: WatchProgress) => void;
   onEnded: (videoId: string) => void;
+  hasActivePass?: boolean;
   isLocked?: (video: Video) => boolean;
   onRequireUnlock?: (video: Video) => void;
   onOpenSettings?: () => void;

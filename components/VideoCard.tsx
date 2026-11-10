@@ -24,7 +24,7 @@ import { loadHls } from '../lib/hlsLoader';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { canWatchContent, normalizeContentRating, ratingDescription } from '../lib/contentRating';
-import { isVideoLocked } from '../lib/monetization';
+import { isLongFormatVideo, isVideoLocked, LONG_FORMAT_PREVIEW_SECONDS } from '../lib/monetization';
 import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
 import { isVideoSavedOffline, removeOfflineVideo, saveVideoForOfflineCommute } from '../lib/offlineCache';
 import { trackEvent } from '../lib/analytics';
@@ -68,12 +68,21 @@ const VideoCard: React.FC<VideoCardProps> = ({
   playerOnly = false,
 }) => {
   const { t } = useLanguage();
-  const { preferences, getProgress, onProgress, onEnded, isLocked, onRequireUnlock, onOpenSettings } = usePlayback();
+  const {
+    preferences,
+    getProgress,
+    onProgress,
+    onEnded,
+    hasActivePass = false,
+    isLocked,
+    onRequireUnlock,
+    onOpenSettings,
+  } = usePlayback();
   const contentRating = normalizeContentRating(video.contentRating);
   const isUnratedAllowedInTest = !CONTENT_RATING_ENFORCED && contentRating === 'UNRATED' && preferences.maximumRating === '16';
   const isRatingLocked = !isUnratedAllowedInTest && !canWatchContent(contentRating, preferences.maximumRating);
   const locked = isLocked ? isLocked(video) : isVideoLocked(video, false);
-  const requiresPassTier = isVideoLocked(video, false);
+  const requiresThirtySecondPaywall = !hasActivePass && isLongFormatVideo(video);
 
   const savedProgress = getProgress(video.id);
   const effectiveDataSaver = shouldSaveData(preferences.dataSaver);
@@ -161,7 +170,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   const handleToggleOfflineSave = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (locked) {
+    if (locked || requiresThirtySecondPaywall) {
       onRequireUnlock?.(video);
       return;
     }
@@ -227,9 +236,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
     };
   }, [isPlaying, showSettings]);
 
-  // Authorize playback URL when full playback activates
+  // Authorize playback URL when full or hover playback activates
   useEffect(() => {
-    if (!hasActivatedPlayback || isRatingLocked || locked) return;
+    if ((!hasActivatedPlayback && !isHoverPlay) || isRatingLocked || locked) return;
     if (authFetchedRef.current === video.id) return;
     authFetchedRef.current = video.id;
 
@@ -237,13 +246,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (!authorizedSrc && !video.url) {
       setIsAuthorizing(true);
     }
-    const requiresEntitlement = isVideoLocked(video, false);
+    const requiresEntitlement = !isLongFormatVideo(video) && isVideoLocked(video, false);
     void resolveAuthorizedPlaybackUrl(video.id, video.url, requiresEntitlement)
       .then((res) => {
         if (cancelled) return;
         setIsAuthorizing(false);
         if (res.locked) {
           setIsPlaying(false);
+          setIsHoverPlay(false);
           setHasActivatedPlayback(false);
           onRequireUnlock?.(video);
           return;
@@ -263,7 +273,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [hasActivatedPlayback, isRatingLocked, locked, video, authorizedSrc, onRequireUnlock]);
+  }, [hasActivatedPlayback, isHoverPlay, isRatingLocked, locked, video, authorizedSrc, onRequireUnlock]);
 
   // Attach and control media playback without unmounting on pause
   useEffect(() => {
@@ -690,10 +700,37 @@ const VideoCard: React.FC<VideoCardProps> = ({
     });
   };
 
+  const triggerThirtySecondPaywall = () => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+      try {
+        videoRef.current.currentTime = 0;
+      } catch {
+        // Ignore seek error
+      }
+    }
+    setCurrentTime(0);
+    setProgress(0);
+    setIsPlaying(false);
+    setIsHoverPlay(false);
+    setHasActivatedPlayback(false);
+    if (typeof document !== 'undefined' && document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+    }
+    onRequireUnlock?.(video);
+  };
+
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
     const current = videoRef.current.currentTime;
     const total = videoRef.current.duration;
+
+    // Enforce 30-second free preview for all long-format videos on both hover-play and click-to-play
+    if (requiresThirtySecondPaywall && current >= LONG_FORMAT_PREVIEW_SECONDS) {
+      triggerThirtySecondPaywall();
+      return;
+    }
+
     setCurrentTime(current);
     setDuration(total || 0);
     setProgress(total > 0 ? (current / total) * 100 : 0);
@@ -724,16 +761,24 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   const handleLoadedMetadata = () => {
     if (!videoRef.current || !savedProgress || savedProgress.completed) return;
+    if (requiresThirtySecondPaywall && savedProgress.positionSeconds >= LONG_FORMAT_PREVIEW_SECONDS - 2) {
+      videoRef.current.currentTime = 0;
+      return;
+    }
     const resumeAt = Math.min(savedProgress.positionSeconds, Math.max(0, videoRef.current.duration - 2));
     if (resumeAt > 5) videoRef.current.currentTime = resumeAt;
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
-    setProgress(value);
     bumpControlsVisibility();
     if (videoRef.current && Number.isFinite(videoRef.current.duration)) {
       const newTime = (value / 100) * videoRef.current.duration;
+      if (requiresThirtySecondPaywall && newTime >= LONG_FORMAT_PREVIEW_SECONDS) {
+        triggerThirtySecondPaywall();
+        return;
+      }
+      setProgress(value);
       videoRef.current.currentTime = newTime;
       setCurrentTime(newTime);
     }
@@ -923,6 +968,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
           </>
         ) : (
           <div className="relative w-full h-full">
+            {requiresThirtySecondPaywall && (isPlaying || isHoverPlay) && (
+              <div className="absolute right-3 top-3 z-40 pointer-events-none">
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/95 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-black shadow-lg">
+                  <Lock size={10} />
+                  Preview · {Math.max(1, Math.ceil(LONG_FORMAT_PREVIEW_SECONDS - currentTime))}s left
+                </span>
+              </div>
+            )}
+
             {(canSkipIntro || canSkipOutro) && (
               <div className="absolute left-3 top-3 z-40 flex gap-2">
                 {canSkipIntro && (
@@ -931,6 +985,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
                     className="rounded-md border border-white/50 bg-black/80 px-3 py-2 text-xs font-semibold text-white hover:bg-black focus-visible:outline-2 focus-visible:outline-red-500"
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (requiresThirtySecondPaywall && Number(introEnd) >= LONG_FORMAT_PREVIEW_SECONDS) {
+                        triggerThirtySecondPaywall();
+                        return;
+                      }
                       if (videoRef.current) videoRef.current.currentTime = Number(introEnd);
                     }}
                   >

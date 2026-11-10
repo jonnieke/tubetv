@@ -13,6 +13,15 @@ function getTag(tags: Array<{ property?: string; value?: string }>, name: string
 
 function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; value?: string }>; title?: unknown }): boolean {
   const tags = Array.isArray(item.metaTags) ? item.metaTags : [];
+  const seriesFormat = getTag(tags, "seriesformat").toLowerCase();
+  const category = getTag(tags, "category").toLowerCase();
+  const isMicroDrama = seriesFormat === "micro-drama" || category === "micro dramas";
+
+  // Long-format videos allow a 30-second preview before triggering the paywall in the player
+  if (!isMicroDrama) {
+    return false;
+  }
+
   const rawFree = Number(getTag(tags, "freeepisodes"));
   const freeCount = Number.isFinite(rawFree) && rawFree >= 0 ? rawFree : 2;
   const rawEpisode = Number(getTag(tags, "episode"));
@@ -25,7 +34,7 @@ function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; val
       ? Number(titleMatch[1])
       : undefined;
 
-  // Enforced: Any episodic series / micro-drama triggers paywall after episode 2 (episode 3+)
+  // Enforced: Micro-drama triggers immediate paywall after episode 2 (episode 3+)
   if (episodeNum !== undefined && episodeNum > 0) {
     return episodeNum > freeCount;
   }
