@@ -151,6 +151,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   const rawVideoSrc = video.url || '';
   const activeVideoSrc = authorizedSrc || rawVideoSrc;
+  const isBunnyGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(video.id);
+  const hasPlayableSource = Boolean(rawVideoSrc || authorizedSrc || isBunnyGuid);
   const qualities = ['Auto', '1080p', '720p', '480p', '360p'];
 
   useEffect(() => {
@@ -238,20 +240,18 @@ const VideoCard: React.FC<VideoCardProps> = ({
     };
   }, [isPlaying, showSettings]);
 
-  // Authorize playback URL when full or hover playback activates
+  // Authorize playback URL when full, modal, or hover playback activates
   useEffect(() => {
-    if ((!hasActivatedPlayback && !isHoverPlay) || isRatingLocked || locked) return;
+    if ((!hasActivatedPlayback && !isHoverPlay && !playerOnly) || isRatingLocked || locked) return;
     if (authFetchedRef.current === video.id) return;
     authFetchedRef.current = video.id;
 
-    let cancelled = false;
     if (!authorizedSrc && !video.url) {
       setIsAuthorizing(true);
     }
     const requiresEntitlement = !isLongFormatVideo(video) && isVideoLocked(video, false);
     void resolveAuthorizedPlaybackUrl(video.id, video.url, requiresEntitlement)
       .then((res) => {
-        if (cancelled) return;
         setIsAuthorizing(false);
         if (res.locked) {
           setIsPlaying(false);
@@ -260,22 +260,21 @@ const VideoCard: React.FC<VideoCardProps> = ({
           onRequireUnlock?.(video);
           return;
         }
-        if (res.url && res.url !== authorizedSrc) {
-          if (hlsRef.current) {
+        if (res.url) {
+          if (hlsRef.current && res.url !== authorizedSrc) {
             hlsRef.current.destroy();
             hlsRef.current = null;
           }
           setAuthorizedSrc(res.url);
+        } else if (!video.url) {
+          authFetchedRef.current = 'failed';
         }
       })
       .catch(() => {
-        if (!cancelled) setIsAuthorizing(false);
+        authFetchedRef.current = 'failed';
+        setIsAuthorizing(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [hasActivatedPlayback, isHoverPlay, isRatingLocked, locked, video, authorizedSrc, onRequireUnlock]);
+  }, [hasActivatedPlayback, isHoverPlay, playerOnly, isRatingLocked, locked, video, authorizedSrc, onRequireUnlock]);
 
   // Attach and control media playback without unmounting on pause
   useEffect(() => {
@@ -291,6 +290,10 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
     const shouldPlay = isPlaying || isHoverPlay;
     if (shouldPlay && !activeVideoSrc) {
+      if (isAuthorizing || (isBunnyGuid && authFetchedRef.current !== 'failed')) {
+        // Wait for resolveAuthorizedPlaybackUrl to finish populating authorizedSrc
+        return;
+      }
       setIsPlaying(false);
       setIsHoverPlay(false);
       return;
@@ -558,6 +561,34 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
   };
 
+  const stopCardHoverPreview = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setIsHoverPlay(false);
+    setIsPlaying(false);
+    videoRef.current?.pause();
+  };
+
+  const handleCatalogueCardDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isRatingLocked) return;
+    if (locked) {
+      onRequireUnlock?.(video);
+      return;
+    }
+    if (!playerOnly && onSelectVideo) {
+      if (cardClickTimerRef.current) {
+        clearTimeout(cardClickTimerRef.current);
+        cardClickTimerRef.current = null;
+      }
+      lastClickTimeRef.current = 0;
+      stopCardHoverPreview();
+      onSelectVideo(video, { autoPlay: true });
+    }
+  };
+
   const handleCatalogueCardClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isRatingLocked) return;
@@ -567,21 +598,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
 
     if (!playerOnly && onSelectVideo) {
-      if (hoverTimerRef.current) {
-        clearTimeout(hoverTimerRef.current);
-        hoverTimerRef.current = null;
-      }
-      setIsHoverPlay(false);
-      setIsPlaying(false);
-      videoRef.current?.pause();
-
       const now = Date.now();
-      if (now - lastClickTimeRef.current < 280) {
+      if (now - lastClickTimeRef.current < 320) {
         if (cardClickTimerRef.current) {
           clearTimeout(cardClickTimerRef.current);
           cardClickTimerRef.current = null;
         }
         lastClickTimeRef.current = 0;
+        stopCardHoverPreview();
         onSelectVideo(video, { autoPlay: true });
         return;
       }
@@ -592,8 +616,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
       }
       cardClickTimerRef.current = setTimeout(() => {
         cardClickTimerRef.current = null;
+        stopCardHoverPreview();
         onSelectVideo(video, { autoPlay: false });
-      }, 240);
+      }, 220);
       return;
     }
 
@@ -901,7 +926,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`group relative overflow-hidden ${playerOnly ? '' : 'catalogue-video-card'}`}
+      onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : undefined}
+      onDoubleClick={!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined}
+      className={`group relative overflow-hidden ${playerOnly ? '' : 'catalogue-video-card cursor-pointer'}`}
       onMouseEnter={() => setIsHovering(true)}
       onMouseMove={() => {
         if (isHovering && isPlaying) bumpControlsVisibility();
@@ -980,6 +1007,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
             {/* Hover / Tap Actions */}
             <div
               onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : undefined}
+              onDoubleClick={!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined}
               className={`catalogue-video-actions ${!playerOnly && onSelectVideo ? 'cursor-pointer' : ''} ${
                 isRatingLocked ? 'catalogue-video-actions-locked' : ''
               }`}
@@ -987,11 +1015,12 @@ const VideoCard: React.FC<VideoCardProps> = ({
               <button
                 type="button"
                 onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : togglePlay}
-                disabled={!rawVideoSrc && !locked}
+                onDoubleClick={!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined}
+                disabled={!hasPlayableSource && !locked}
                 aria-label={
                   locked
                     ? `${t('player.unlockWithMpesa')}: ${video.title}`
-                    : rawVideoSrc
+                    : hasPlayableSource
                       ? `Play ${video.title}`
                       : `${video.title} is unavailable`
                 }
@@ -1185,7 +1214,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
             {!isPlaying && !isHoverPlay && !isBuffering && !isAuthorizing && !playbackError && (
               <button
                 type="button"
-                onClick={togglePlay}
+                onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : togglePlay}
+                onDoubleClick={!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined}
                 aria-label={`Resume ${video.title}`}
                 className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 transition-opacity"
               >
@@ -1208,7 +1238,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 <p className="mt-1 text-xs text-zinc-400">Check your connection and try again.</p>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setPlaybackError(false);
                     hlsRef.current?.destroy();
                     hlsRef.current = null;
@@ -1223,7 +1254,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
               </div>
             )}
 
-            {/* Custom Controls Overlay */}
+            {/* Custom Controls Overlay (only in modal/full player; on catalogue cards, keep card surface clickable) */}
+            {(playerOnly || !onSelectVideo) && (
             <div
               onClick={(e) => e.stopPropagation()}
               className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-3 pt-12 pb-3 transition-all duration-300 ease-out z-30 ${
@@ -1440,6 +1472,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 </div>
               </div>
             </div>
+            )}
           </div>
         )}
       </div>
@@ -1447,6 +1480,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       {!playerOnly && (
         <div
           onClick={onSelectVideo ? handleCatalogueCardClick : undefined}
+          onDoubleClick={onSelectVideo ? handleCatalogueCardDoubleClick : undefined}
           className={`catalogue-video-info ${onSelectVideo ? 'cursor-pointer' : ''}`}
         >
           <p className="cinema-card-kicker">

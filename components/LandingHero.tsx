@@ -82,7 +82,7 @@ export default function LandingHero({
           }, (LONG_FORMAT_PREVIEW_SECONDS + 2) * 1000)
         : undefined;
 
-    if (dataSaver || !video.url) {
+    if (dataSaver || (!video.url && !video.id)) {
       return () => {
         if (fallbackSlideTimer) window.clearTimeout(fallbackSlideTimer);
       };
@@ -213,7 +213,7 @@ export default function LandingHero({
           trailerReady ? 'opacity-25 scale-105' : 'opacity-100'
         }`}
       />
-      {!dataSaver && video.url && (
+      {!dataSaver && (video.url || video.id) && (
         <video
           ref={videoRef}
           muted={isMuted}
