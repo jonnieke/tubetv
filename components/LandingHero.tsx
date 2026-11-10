@@ -8,6 +8,9 @@ import { LONG_FORMAT_PREVIEW_SECONDS } from '../lib/monetization';
 import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
 import CatalogueArtwork from './CatalogueArtwork';
 
+/** Skip the first 60 seconds (1 minute) of hero movies/episodes to avoid opening studio logos and credits. */
+const HERO_START_OFFSET_SECONDS = 60;
+
 interface Props {
   video: Video;
   featuredVideos?: Video[];
@@ -34,7 +37,6 @@ export default function LandingHero({
   onPlay,
   onMoreInfo,
   onSave,
-  onRequireUnlock,
   count,
   index,
   onSelect,
@@ -42,16 +44,71 @@ export default function LandingHero({
   const { language, t } = useLanguage();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const startOffsetRef = useRef<number>(0);
+  const hasAdvancedRef = useRef<boolean>(false);
+
   const [trailerReady, setTrailerReady] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [previewRemaining, setPreviewRemaining] = useState<number | null>(null);
+  const [slideProgress, setSlideProgress] = useState<number>(0);
+
+  const advanceToNextSlide = () => {
+    if (hasAdvancedRef.current) return;
+    hasAdvancedRef.current = true;
+    if (count > 1) {
+      onSelect((index + 1) % count);
+    } else if (videoRef.current) {
+      // Single hero item: loop back to the 1-minute mark
+      hasAdvancedRef.current = false;
+      videoRef.current.currentTime = startOffsetRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  };
 
   useEffect(() => {
     setTrailerReady(false);
     setPreviewRemaining(null);
-    if (dataSaver || !video.url) return;
+    setSlideProgress(0);
+    startOffsetRef.current = 0;
+    hasAdvancedRef.current = false;
+
+    // Fallback slide timer (e.g. if Data Saver is active or stream doesn't autoplay)
+    const fallbackSlideTimer =
+      count > 1
+        ? window.setTimeout(() => {
+            if (!videoRef.current || videoRef.current.paused) {
+              advanceToNextSlide();
+            }
+          }, (LONG_FORMAT_PREVIEW_SECONDS + 2) * 1000)
+        : undefined;
+
+    if (dataSaver || !video.url) {
+      return () => {
+        if (fallbackSlideTimer) window.clearTimeout(fallbackSlideTimer);
+      };
+    }
 
     let cancelled = false;
+
+    const applyOneMinuteStartOffset = (el: HTMLVideoElement) => {
+      const dur = el.duration;
+      // Start at 60s (1 minute) to skip opening credits if the video is long enough; otherwise 20% in
+      const offset =
+        Number.isFinite(dur) && dur > HERO_START_OFFSET_SECONDS + LONG_FORMAT_PREVIEW_SECONDS + 5
+          ? HERO_START_OFFSET_SECONDS
+          : Number.isFinite(dur) && dur > 20
+            ? Math.floor(dur * 0.2)
+            : 0;
+      startOffsetRef.current = offset;
+      if (offset > 0) {
+        try {
+          el.currentTime = offset;
+        } catch {
+          // Ignore seek errors before buffer is ready
+        }
+      }
+    };
+
     const startTimer = window.setTimeout(async () => {
       if (cancelled) return;
       const resolved = await resolveAuthorizedPlaybackUrl(video.id, video.url, false);
@@ -68,10 +125,17 @@ export default function LandingHero({
       el.muted = true;
       setIsMuted(true);
 
+      const onLoadedMetadata = () => {
+        if (cancelled) return;
+        applyOneMinuteStartOffset(el);
+        el.play().catch(() => {});
+      };
+
+      el.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+
       if (streamUrl.includes('.m3u8')) {
         if (el.canPlayType('application/vnd.apple.mpegurl')) {
           el.src = streamUrl;
-          el.play().catch(() => {});
         } else {
           const HlsClass = await loadHls();
           if (cancelled || !videoRef.current) return;
@@ -79,6 +143,7 @@ export default function LandingHero({
             const hls = new HlsClass({
               enableWorker: true,
               maxBufferLength: 15,
+              startPosition: HERO_START_OFFSET_SECONDS,
             });
             hlsRef.current = hls;
             hls.loadSource(streamUrl);
@@ -92,13 +157,13 @@ export default function LandingHero({
         }
       } else {
         el.src = streamUrl;
-        el.play().catch(() => {});
       }
-    }, 1100);
+    }, 900);
 
     return () => {
       cancelled = true;
       window.clearTimeout(startTimer);
+      if (fallbackSlideTimer) window.clearTimeout(fallbackSlideTimer);
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -108,21 +173,21 @@ export default function LandingHero({
         videoRef.current.removeAttribute('src');
       }
     };
-  }, [video.id, video.url, dataSaver]);
+  }, [video.id, video.url, dataSaver, index, count]);
 
   const handleTimeUpdate = () => {
     const el = videoRef.current;
     if (!el) return;
-    if (!hasActivePass) {
-      const rem = Math.max(0, Math.ceil(LONG_FORMAT_PREVIEW_SECONDS - el.currentTime));
-      setPreviewRemaining(rem);
-      if (el.currentTime >= LONG_FORMAT_PREVIEW_SECONDS) {
-        el.pause();
-        el.currentTime = 0;
-        setTrailerReady(false);
-        setPreviewRemaining(null);
-        onRequireUnlock?.(video);
-      }
+    const elapsed = Math.max(0, el.currentTime - startOffsetRef.current);
+    const rem = Math.max(0, Math.ceil(LONG_FORMAT_PREVIEW_SECONDS - elapsed));
+    setPreviewRemaining(rem);
+    setSlideProgress(Math.min(100, (elapsed / LONG_FORMAT_PREVIEW_SECONDS) * 100));
+
+    if (elapsed >= LONG_FORMAT_PREVIEW_SECONDS) {
+      el.pause();
+      setTrailerReady(false);
+      setPreviewRemaining(null);
+      advanceToNextSlide();
     }
   };
 
@@ -156,7 +221,10 @@ export default function LandingHero({
           preload="metadata"
           onPlaying={() => setTrailerReady(true)}
           onTimeUpdate={handleTimeUpdate}
-          onEnded={() => setTrailerReady(false)}
+          onEnded={() => {
+            setTrailerReady(false);
+            advanceToNextSlide();
+          }}
           className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-700 ${
             trailerReady ? 'opacity-90' : 'opacity-0'
           }`}
@@ -164,12 +232,14 @@ export default function LandingHero({
       )}
       <div className="landing-hero-shade" />
 
-      {/* Top-Right Live Motion Controls & Preview Countdown */}
+      {/* Top-Right Live Motion Controls & 30s Slide Countdown */}
       <div className="absolute top-5 right-5 z-20 flex items-center gap-2.5">
-        {trailerReady && !hasActivePass && previewRemaining !== null && (
+        {trailerReady && previewRemaining !== null && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-black/75 border border-amber-500/40 px-3 py-1 text-[11px] font-bold text-amber-300 backdrop-blur-md">
             <Sparkles size={12} className="text-amber-400" />
-            {language === 'sw' ? `Onyesho · sek ${previewRemaining}` : `Free Preview · ${previewRemaining}s`}
+            {language === 'sw'
+              ? `Onyesho · sek ${previewRemaining}`
+              : `${hasActivePass ? 'Next slide' : 'Free Preview'} · ${previewRemaining}s`}
           </span>
         )}
         {trailerReady && (
@@ -276,7 +346,7 @@ export default function LandingHero({
               type="button"
               className="landing-hero-arrow"
               aria-label="Next featured movie"
-              onClick={() => onSelect((index + 1 + count) % count)}
+              onClick={() => onSelect((index + 1) % count)}
             >
               ›
             </button>
@@ -287,7 +357,7 @@ export default function LandingHero({
         )}
       </div>
 
-      {/* Interactive Mini-Poster Scrubber Dock on Desktop */}
+      {/* Interactive Mini-Poster Scrubber Dock on Desktop with 30s Progress Bar */}
       {featuredVideos.length > 1 && (
         <div
           className="hidden lg:flex items-center gap-2.5 absolute right-8 bottom-7 z-20 bg-black/55 backdrop-blur-md p-2 rounded-xl border border-white/10"
@@ -310,11 +380,16 @@ export default function LandingHero({
               >
                 <CatalogueArtwork src={item.thumbnail} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
-                <span className="absolute bottom-1 left-1.5 right-1.5 text-[9px] font-bold text-white truncate">
+                <span className="absolute bottom-1.5 left-1.5 right-1.5 text-[9px] font-bold text-white truncate">
                   {item.seriesTitle || item.title}
                 </span>
                 {active && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-500" />
+                  <span className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+                    <span
+                      className="block h-full bg-red-500 transition-all duration-300"
+                      style={{ width: `${Math.max(8, slideProgress)}%` }}
+                    />
+                  </span>
                 )}
               </button>
             );
