@@ -183,14 +183,12 @@ export const TopTenCarousel: React.FC<TopTenCarouselProps> = ({
 interface CreatorSpotlightProps {
   videos: Video[];
   onSelectVideo: (video: Video, options?: { autoPlay?: boolean }) => void;
-  onOpenCreatorPortal: () => void;
   onApplyToPublish?: () => void;
 }
 
 export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
   videos,
   onSelectVideo,
-  onOpenCreatorPortal,
   onApplyToPublish,
 }) => {
   const { language } = useLanguage();
@@ -221,8 +219,8 @@ export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
           </h2>
           <p className="text-xs md:text-sm text-zinc-300 leading-relaxed">
             {language === 'sw'
-              ? 'Kila pasi ya TubeTV huwalipa watayarishaji wa filamu moja kwa moja (asilimia 70 ya mgao wa mapato ya jumla kupitia M-Pesa na Benki).'
-              : 'Every TubeTV Pass directly funds African filmmakers and storytellers — with 70% net revenue share and automated M-Pesa & bank royalty payouts.'}
+              ? 'Kila pasi ya TubeTV huwalipa watayarishaji wa filamu moja kwa moja (asilimia 60 ya mgao wa mapato ya jumla kupitia M-Pesa na Benki).'
+              : 'Every TubeTV Pass directly funds African filmmakers and storytellers — with 60% net revenue share and automated M-Pesa & bank royalty payouts.'}
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-1">
             {onApplyToPublish && (
@@ -235,14 +233,6 @@ export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
                 {language === 'sw' ? 'Omba Kuchapisha Filamu Yako' : 'Apply to Publish Your Film'}
               </button>
             )}
-            <button
-              type="button"
-              onClick={onOpenCreatorPortal}
-              className="inline-flex items-center gap-2 rounded-xl bg-white text-black hover:bg-zinc-200 px-4 py-2.5 text-xs font-bold transition cursor-pointer"
-            >
-              <Clapperboard size={15} />
-              {language === 'sw' ? 'Tovuti ya Watayarishaji (70% Mgao)' : 'Creator Portal · 70% Revenue Share'}
-            </button>
             <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
               <ShieldCheck size={14} className="text-emerald-400" />
               {language === 'sw' ? 'Malipo ya Uwazi ya M-Pesa' : 'Verified Royalty Ledger'}

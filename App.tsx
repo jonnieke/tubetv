@@ -1250,7 +1250,6 @@ const App: React.FC = () => {
                 <CreatorOriginalsSpotlight
                   videos={ratingFilteredVideos}
                   onSelectVideo={openVideo}
-                  onOpenCreatorPortal={() => handleNavigate(ViewState.SETTINGS, 'creator')}
                   onApplyToPublish={() => setShowFilmmakerForm(true)}
                 />
 

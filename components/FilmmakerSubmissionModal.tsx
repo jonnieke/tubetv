@@ -96,7 +96,7 @@ export default function FilmmakerSubmissionModal({ onClose }: Props) {
             <h2 className="mt-4 font-serif text-2xl text-white">Thank you — we've got it.</h2>
             <p className="mt-2 max-w-md text-sm text-zinc-300">
               Our curation team reviews every submission. If your project is a fit, we'll email you at{' '}
-              <strong className="text-white">{form.email}</strong> about next steps and the 70% revenue-share agreement.
+              <strong className="text-white">{form.email}</strong> about next steps and the 60% revenue-share agreement.
             </p>
             <button type="button" className="cinema-primary mt-6" onClick={onClose}>
               Back to TubeTV
@@ -112,7 +112,7 @@ export default function FilmmakerSubmissionModal({ onClose }: Props) {
               Apply to publish your film or series
             </h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Kenyan and African filmmakers keep ownership and earn 70% of the net revenue pool, paid out by M-Pesa.
+              Kenyan and African filmmakers keep ownership and earn 60% of the net revenue pool, paid out by M-Pesa.
             </p>
 
             <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
