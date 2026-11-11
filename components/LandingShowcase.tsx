@@ -46,8 +46,8 @@ export const LandingPassRibbon: React.FC<PassRibbonProps> = ({ hasActivePass, on
           </span>
           <span className="font-medium text-white">
             {language === 'sw'
-              ? 'Tazama onyesho la sekunde 30 bure kwa kila filamu & Kipindi 1–2 bure.'
-              : 'Watch 30s previews on every movie + Episodes 1–2 free.'}
+              ? 'Tazama bure Vipindi 1-2 vya microdrama.'
+              : 'Watch free Episodes 1-2 microdrama'}
           </span>
           <span className="hidden sm:inline text-zinc-500">·</span>
           <span className="inline-flex items-center gap-1 text-amber-300 font-semibold text-xs">
