@@ -82,19 +82,46 @@ import {
 import type { SettingsTabId } from './components/SettingsSection';
 import { TranslationKey } from './translations';
 
-const VideoCard = lazy(() => import('./components/VideoCard'));
-const VideoCarousel = lazy(() => import('./components/VideoCarousel'));
-const SeriesCarousel = lazy(() => import('./components/SeriesCarousel'));
-const ShortsPlayer = lazy(() => import('./components/ShortsPlayer'));
-const AnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
-const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
-const UploadSection = lazy(() => import('./components/UploadSection'));
-const WatchLaterSection = lazy(() => import('./components/WatchLaterSection'));
-const AuthModal = lazy(() => import('./components/AuthModal'));
-const PaywallModal = lazy(() => import('./components/PaywallModal'));
-const SettingsSection = lazy(() => import('./components/SettingsSection'));
-const LiveSection = lazy(() => import('./components/LiveSection'));
-const FilmmakerSubmissionModal = lazy(() => import('./components/FilmmakerSubmissionModal'));
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  importer: () => Promise<{ default: T }>,
+): React.LazyExoticComponent<T> {
+  return lazy(async () => {
+    try {
+      return await importer();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isDynamicChunkError =
+        msg.includes('Failed to fetch dynamically imported module') ||
+        msg.includes('Importing a module script failed') ||
+        msg.includes('error loading dynamically imported module') ||
+        (err as any)?.name === 'ChunkLoadError';
+
+      if (isDynamicChunkError && typeof window !== 'undefined') {
+        const lastReload = Number(sessionStorage.getItem('tubetv_chunk_reload_ts') || 0);
+        if (Date.now() - lastReload > 8_000) {
+          sessionStorage.setItem('tubetv_chunk_reload_ts', String(Date.now()));
+          window.location.reload();
+          return new Promise(() => {});
+        }
+      }
+      throw err;
+    }
+  });
+}
+
+const VideoCard = lazyWithRetry(() => import('./components/VideoCard'));
+const VideoCarousel = lazyWithRetry(() => import('./components/VideoCarousel'));
+const SeriesCarousel = lazyWithRetry(() => import('./components/SeriesCarousel'));
+const ShortsPlayer = lazyWithRetry(() => import('./components/ShortsPlayer'));
+const AnalyticsDashboard = lazyWithRetry(() => import('./components/AnalyticsDashboard'));
+const AdminDashboard = lazyWithRetry(() => import('./components/AdminDashboard'));
+const UploadSection = lazyWithRetry(() => import('./components/UploadSection'));
+const WatchLaterSection = lazyWithRetry(() => import('./components/WatchLaterSection'));
+const AuthModal = lazyWithRetry(() => import('./components/AuthModal'));
+const PaywallModal = lazyWithRetry(() => import('./components/PaywallModal'));
+const SettingsSection = lazyWithRetry(() => import('./components/SettingsSection'));
+const LiveSection = lazyWithRetry(() => import('./components/LiveSection'));
+const FilmmakerSubmissionModal = lazyWithRetry(() => import('./components/FilmmakerSubmissionModal'));
 
 const DEMO_VIDEO_URL = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
 const DEMO_VIDEOS = MOCK_VIDEOS.map((video) => ({
