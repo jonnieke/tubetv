@@ -529,6 +529,44 @@ serve(async (req) => {
     }
 
     if (!sub) {
+      // Check if there was an expired subscription for this phone number or receipt
+      try {
+        let expQuery = service
+          .from("subscriptions")
+          .select("id, phone, tier, end_date, mpesa_ref, payment_reference")
+          .order("end_date", { ascending: false })
+          .limit(1);
+
+        if (receipt && sub9) {
+          expQuery = expQuery.or(`phone.ilike.%${sub9},mpesa_ref.ilike.${receipt},payment_reference.ilike.${receipt}`);
+        } else if (receipt) {
+          expQuery = expQuery.or(`mpesa_ref.ilike.${receipt},payment_reference.ilike.${receipt}`);
+        } else if (sub9) {
+          expQuery = expQuery.ilike("phone", `%${sub9}`);
+        }
+
+        const { data: expiredSubs } = await expQuery;
+        const expiredSub = expiredSubs?.[0];
+
+        if (expiredSub) {
+          const expTime = expiredSub.end_date ? Date.parse(expiredSub.end_date) : 0;
+          return jsonReply(
+            req,
+            {
+              expired: true,
+              tier: expiredSub.tier,
+              expiredAt: expTime,
+              phone: parsedPhone?.e164 || expiredSub.phone || "",
+              message: "Your TubeTV pass for this number has expired. Renew your pass to extend watching.",
+            },
+            200,
+            METHODS,
+          );
+        }
+      } catch (err) {
+        console.warn("check_expired_sub_error", err);
+      }
+
       return jsonReply(
         req,
         { error: "No active pass found for this phone number. Choose a pass below to start watching." },
@@ -539,7 +577,18 @@ serve(async (req) => {
 
     const expiresAt = sub.end_date ? Date.parse(sub.end_date) : 0;
     if (!sub.is_active || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-      return jsonReply(req, { error: "That pass has expired. Choose a new pass to continue watching." }, 200, METHODS);
+      return jsonReply(
+        req,
+        {
+          expired: true,
+          tier: sub.tier,
+          expiredAt: expiresAt || null,
+          phone: parsedPhone?.e164 || sub.phone || "",
+          message: "Your TubeTV pass for this number has expired. Renew your pass to extend watching.",
+        },
+        200,
+        METHODS,
+      );
     }
 
     const currentDeviceId = String(sub.active_device_id || "").trim();

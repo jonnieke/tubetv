@@ -9,7 +9,7 @@ vi.mock('./supabase', () => ({
   isSupabaseConfigured: true,
 }));
 
-import { SUBSCRIPTION_PLANS, startMpesaPayment, getRatibaMandateStatus, cancelRatibaMandate } from './subscriptions';
+import { SUBSCRIPTION_PLANS, startMpesaPayment, getRatibaMandateStatus, cancelRatibaMandate, restorePassByPhone } from './subscriptions';
 import { translations } from '../translations';
 import { supabase } from './supabase';
 
@@ -84,5 +84,30 @@ describe('M-Pesa Ratiba (Standing Orders) Monthly Pass', () => {
     const cancelled = await cancelRatibaMandate('0712345678');
     expect(cancelled).toBe(true);
     cancelSpy.mockReset();
+  });
+
+  it('detects an expired pass on restore and surfaces expired: true to trigger Extend Watching', async () => {
+    expect(translations.en['paywall.passExpiredTitle']).toBe('Pass Expired');
+    expect(translations.en['paywall.extendWatching']).toBe('Extend Watching · Pay with M-Pesa');
+    expect(translations.sw['paywall.extendWatching']).toBe('Endelea Kutazama · Lipa kwa M-Pesa');
+
+    const restoreSpy = vi.mocked(supabase.functions.invoke).mockResolvedValueOnce({
+      data: {
+        expired: true,
+        tier: 'monthly',
+        phone: '0712345678',
+        message: 'Your TubeTV pass for this number has expired. Renew your pass to extend watching.',
+      },
+      error: null,
+    });
+
+    const result = await restorePassByPhone({ phone: '0712345678' });
+    expect(result.success).toBe(false);
+    expect(result.expired).toBe(true);
+    expect(result.tier).toBe('monthly');
+    expect(result.phone).toBe('0712345678');
+    expect(result.message).toContain('expired');
+
+    restoreSpy.mockReset();
   });
 });

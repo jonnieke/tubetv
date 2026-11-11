@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
+  Clock,
   Coins,
   Download,
   Film,
@@ -11,6 +12,7 @@ import {
   Monitor,
   Shield,
   Smartphone,
+  Sparkles,
   Ticket,
   Trash2,
   User,
@@ -97,6 +99,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   const [restorePhone, setRestorePhone] = useState(() => getRememberedPhone() || userPhone || '');
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreConflict, setRestoreConflict] = useState<{ message: string; tier?: string } | null>(null);
+  const [restoreExpired, setRestoreExpired] = useState<{ phone: string; tier?: string } | null>(null);
   const [passMessage, setPassMessage] = useState('');
   const [passError, setPassError] = useState('');
 
@@ -146,6 +149,15 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
             'Your pass is currently active on another device. Would you like to log out the other device and watch here?',
           tier: result.tier,
         });
+        return;
+      }
+
+      if (result.expired) {
+        setRestoreExpired({
+          phone: result.phone || cleanPhone,
+          tier: result.tier,
+        });
+        setPassError('');
         return;
       }
 
@@ -541,6 +553,38 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                           className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
                         >
                           Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {restoreExpired && (
+                    <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 space-y-3 animate-in fade-in">
+                      <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                        <Clock size={15} />
+                        <span>Pass Expired</span>
+                      </div>
+                      <p className="text-xs text-zinc-300 leading-relaxed">
+                        Your TubeTV pass for <strong className="text-white">{restoreExpired.phone}</strong> has expired. Renew your pass to extend watching across TubeTV.
+                      </p>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (videos.length > 0) {
+                              onRequireUnlock?.(videos[0]);
+                            }
+                          }}
+                          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 transition shadow cursor-pointer"
+                        >
+                          <Sparkles size={14} />
+                          <span>Extend Watching · Get New Pass</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRestoreExpired(null)}
+                          className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-400 hover:text-white"
+                        >
+                          Dismiss
                         </button>
                       </div>
                     </div>

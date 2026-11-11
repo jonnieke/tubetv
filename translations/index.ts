@@ -123,6 +123,10 @@ export const translations = {
     'paywall.restoreButton': 'Restore Active Pass',
     'paywall.restoring': 'Verifying Details...',
     'paywall.restoreHint': 'Switched devices or cleared browser data? Enter your Paystack reference (e.g. TUBE_...) or M-Pesa receipt code and phone number.',
+    'paywall.passExpiredTitle': 'Pass Expired',
+    'paywall.passExpiredBody': 'Your TubeTV pass for {phone} has expired. Choose a pass to extend watching.',
+    'paywall.extendWatching': 'Extend Watching · Pay with M-Pesa',
+    'paywall.extendWatchingGeneric': 'Extend Watching',
 
     // Watch List & Settings
     'watchlist.title': 'Watch List',
@@ -294,6 +298,10 @@ export const translations = {
     'paywall.restoreButton': 'Rejesha Pasi Iliyo Hai',
     'paywall.restoring': 'Inathibitisha Taarifa...',
     'paywall.restoreHint': 'Umebadilisha kifaa au kufuta kumbukumbu? Weka kumbukumbu ya Paystack (mf. TUBE_...) au risiti ya M-Pesa na nambari ya simu.',
+    'paywall.passExpiredTitle': 'Pasi Imeisha Muda',
+    'paywall.passExpiredBody': 'Pasi yako ya TubeTV ya nambari {phone} imeisha muda wake. Chagua pasi uendelee kutazama.',
+    'paywall.extendWatching': 'Endelea Kutazama · Lipa kwa M-Pesa',
+    'paywall.extendWatchingGeneric': 'Endelea Kutazama',
 
     // Watch List & Settings
     'watchlist.title': 'Orodha Yangu',

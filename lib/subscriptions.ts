@@ -758,6 +758,9 @@ export interface RestorePassResult {
   success: boolean;
   pass?: StoredPass;
   conflict?: boolean;
+  expired?: boolean;
+  expiredAt?: number;
+  phone?: string;
   message?: string;
   tier?: string;
   switched?: boolean;
@@ -791,6 +794,17 @@ export async function restorePassByPhone(options: RestorePassOptions): Promise<R
           data.message ||
           'Your pass is currently active on another device. Would you like to log out the other device and watch here?',
         tier: data.tier,
+      };
+    }
+
+    if (data?.expired) {
+      return {
+        success: false,
+        expired: true,
+        tier: data.tier,
+        expiredAt: data.expiredAt ? Number(data.expiredAt) : undefined,
+        phone: data.phone || cleanPhone,
+        message: data.message || 'Your TubeTV pass for this number has expired. Renew your pass to extend watching.',
       };
     }
 

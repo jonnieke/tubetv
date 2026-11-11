@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   Globe,
+  Clock,
 } from 'lucide-react';
 import { Video } from '../types';
 import { isMicroDrama } from '../lib/series';
@@ -105,6 +106,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const [paystackAuthUrl, setPaystackAuthUrl] = useState('');
   const [paystackRef, setPaystackRef] = useState('');
   const [deviceConflict, setDeviceConflict] = useState(false);
+  const [restoreExpiredInfo, setRestoreExpiredInfo] = useState<{ tier?: string; phone?: string } | null>(null);
   const [showAdvancedRef, setShowAdvancedRef] = useState(false);
 
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -485,6 +487,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
     setErrorMessage('');
     setDeviceConflict(false);
+    setRestoreExpiredInfo(null);
     setStatus('restoring');
 
     try {
@@ -498,6 +501,15 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       if (result.conflict) {
         setStatus('idle');
         setDeviceConflict(true);
+        return;
+      }
+
+      if (result.expired) {
+        setStatus('idle');
+        setRestoreExpiredInfo({
+          tier: result.tier,
+          phone: result.phone || cleanPhone,
+        });
         return;
       }
 
@@ -523,6 +535,21 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       setStatus('error');
       setErrorMessage(message);
     }
+  };
+
+  const handleExtendWatching = (tier?: string) => {
+    const targetPhone = restoreExpiredInfo?.phone || phone;
+    if (targetPhone) {
+      handlePhoneChange(targetPhone);
+    }
+    if (tier === 'daily' || tier === 'weekly' || tier === 'monthly') {
+      setSelectedPlan(tier);
+    }
+    setPaymentMethod('mpesa');
+    setRestoreExpiredInfo(null);
+    setDeviceConflict(false);
+    setErrorMessage('');
+    setMode('buy');
   };
 
   const isBusy = status === 'sending' || status === 'prompt_sent' || status === 'restoring';
@@ -862,8 +889,18 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                 )}
 
                 {errorMessage && (
-                  <div role="alert" className="p-3 bg-red-950/60 border border-red-800/80 rounded-xl text-xs text-red-200">
-                    {errorMessage}
+                  <div role="alert" className="p-3.5 bg-red-950/60 border border-red-800/80 rounded-xl text-xs text-red-200 space-y-2">
+                    <p>{errorMessage}</p>
+                    {errorMessage.toLowerCase().includes('expired') && (
+                      <button
+                        type="button"
+                        onClick={() => handleExtendWatching()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow cursor-pointer"
+                      >
+                        <Sparkles size={13} />
+                        <span>{t('paywall.extendWatching')}</span>
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -969,6 +1006,35 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                   </button>
                 </div>
               </div>
+            ) : restoreExpiredInfo ? (
+              <div className="bg-zinc-900 border border-amber-500/40 rounded-2xl p-5 text-center space-y-3.5 animate-in fade-in zoom-in-95">
+                <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">{t('paywall.passExpiredTitle')}</h4>
+                  <p className="text-xs text-zinc-300 mt-1.5 leading-relaxed">
+                    {t('paywall.passExpiredBody', { phone: restoreExpiredInfo.phone || phone })}
+                  </p>
+                </div>
+                <div className="pt-2 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleExtendWatching(restoreExpiredInfo.tier)}
+                    className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-950/40 cursor-pointer"
+                  >
+                    <Sparkles size={14} />
+                    <span>{t('paywall.extendWatching')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestoreExpiredInfo(null)}
+                    className="w-full py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Try another phone number
+                  </button>
+                </div>
+              </div>
             ) : (
               <form onSubmit={(e) => handleRestore(e, false)} className="space-y-4">
                 <p className="text-xs text-zinc-400 leading-relaxed">
@@ -1023,8 +1089,18 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                 </div>
 
                 {errorMessage && (
-                  <div role="alert" className="p-3 bg-red-950/60 border border-red-800/80 rounded-xl text-xs text-red-200">
-                    {errorMessage}
+                  <div role="alert" className="p-3.5 bg-red-950/60 border border-red-800/80 rounded-xl text-xs text-red-200 space-y-2">
+                    <p>{errorMessage}</p>
+                    {errorMessage.toLowerCase().includes('expired') && (
+                      <button
+                        type="button"
+                        onClick={() => handleExtendWatching()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow cursor-pointer"
+                      >
+                        <Sparkles size={13} />
+                        <span>{t('paywall.extendWatching')}</span>
+                      </button>
+                    )}
                   </div>
                 )}
 
