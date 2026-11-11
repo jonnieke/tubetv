@@ -344,11 +344,31 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                   type="button"
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex shrink-0 items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                    activeTab === tab.id ? 'bg-white text-black' : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'
+                  className={`flex shrink-0 items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+                    activeTab === tab.id
+                      ? tab.id === 'pass'
+                        ? 'bg-gradient-to-r from-red-600 to-amber-600 text-white font-bold shadow-md shadow-red-950/50'
+                        : 'bg-white text-black'
+                      : tab.id === 'pass'
+                        ? 'text-amber-300 bg-amber-950/25 border border-amber-500/30 hover:bg-amber-900/40 hover:text-white'
+                        : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'
                   }`}
                 >
-                  <tab.icon size={18} /> {tab.label}
+                  <span className="flex items-center gap-3">
+                    <tab.icon size={18} className={tab.id === 'pass' && activeTab !== 'pass' ? 'text-amber-400' : undefined} />
+                    {tab.label}
+                  </span>
+                  {tab.id === 'pass' && (
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                        activeTab === 'pass'
+                          ? 'bg-black/30 text-white'
+                          : 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
+                      }`}
+                    >
+                      {storedPass ? 'Active' : 'KSh 10'}
+                    </span>
+                  )}
                 </button>
               ))}
           </nav>
