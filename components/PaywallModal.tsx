@@ -99,6 +99,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     }
   });
   const [receipt, setReceipt] = useState('');
+  const [autoRenewWithMpesa, setAutoRenewWithMpesa] = useState(false);
   const [status, setStatus] = useState<'idle' | 'sending' | 'prompt_sent' | 'restoring' | 'completed' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [paystackAuthUrl, setPaystackAuthUrl] = useState('');
@@ -370,16 +371,17 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     setErrorMessage('');
     setStatus('sending');
 
+    const isAutoRenew = autoRenewWithMpesa && selectedPlan === 'monthly';
     trackEvent('paywall_initiated', {
       videoId: video.id,
       category: video.category,
       isMicroDrama: isMicro,
       plan: selectedPlan,
-      channel: 'mpesa_stk',
+      channel: isAutoRenew ? 'mpesa_ratiba' : 'mpesa_stk',
     });
 
     try {
-      const result = await startMpesaPayment(selectedPlan, cleanPhone);
+      const result = await startMpesaPayment(selectedPlan, cleanPhone, { autoRenew: isAutoRenew });
       if (!result?.id || !result?.checkoutToken) {
         throw new Error('Unable to initialize M-Pesa checkout session.');
       }
@@ -834,6 +836,28 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       <ShieldCheck size={12} className="text-emerald-400 shrink-0" />
                       <span>{t('paywall.promptHint')}</span>
                     </p>
+
+                    {selectedPlan === 'monthly' && (
+                      <div className="mt-3 p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 transition-all">
+                        <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={autoRenewWithMpesa}
+                            onChange={(e) => setAutoRenewWithMpesa(e.target.checked)}
+                            disabled={isBusy}
+                            className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 bg-zinc-900 border-zinc-700 cursor-pointer"
+                          />
+                          <div className="flex-1">
+                            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                              <span>{t('paywall.autoRenewLabel')}</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
+                              {t('paywall.autoRenewHint')}
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -898,6 +922,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                     </>
                   ) : paymentMethod === 'paystack' ? (
                     t('paywall.payButtonPaystack', { amount: activePlan.amountKes })
+                  ) : autoRenewWithMpesa && selectedPlan === 'monthly' ? (
+                    t('paywall.payButtonAutoRenew', { amount: activePlan.amountKes })
                   ) : (
                     t('paywall.payButton', { amount: activePlan.amountKes })
                   )}

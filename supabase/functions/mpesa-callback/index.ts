@@ -77,8 +77,11 @@ serve(async (req) => {
   }
 
   const expectedSecret = Deno.env.get("MPESA_CALLBACK_SECRET") || "";
+  const urlObj = new URL(req.url);
   const suppliedSecret =
-    req.headers.get("X-Callback-Secret") || new URL(req.url).searchParams.get("secret") || "";
+    req.headers.get("X-Callback-Secret") || urlObj.searchParams.get("secret") || "";
+  const mandateId = urlObj.searchParams.get("mandateId");
+  const isRatiba = urlObj.searchParams.get("type") === "ratiba" || Boolean(mandateId);
 
   if (!(await constantTimeSecretEquals(suppliedSecret, expectedSecret))) {
     return new Response("Forbidden", { status: 403 });
@@ -99,6 +102,23 @@ serve(async (req) => {
 
   const resultCode = Number(callback.ResultCode);
   if (resultCode !== 0) {
+    if (isRatiba) {
+      try {
+        const query = service.from("ratiba_mandates").update({
+          status: "failed",
+          failure_reason: String(callback.ResultDesc || "Standing order authorization declined.").slice(0, 240),
+          updated_at: new Date().toISOString(),
+        });
+        if (mandateId) {
+          await query.eq("id", mandateId);
+        } else {
+          await query.eq("standing_order_id", checkoutRequestId);
+        }
+      } catch (ratibaFailErr) {
+        console.warn("ratiba_failure_update_error", ratibaFailErr);
+      }
+    }
+
     const { data: failedTx } = await service
       .from("payment_transactions")
       .update({
@@ -155,6 +175,32 @@ serve(async (req) => {
   }
 
   if (rpcResult?.ok && !rpcResult?.reused) {
+    if (isRatiba) {
+      try {
+        const now = new Date();
+        const nextBilling = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const updatePayload = {
+          status: "active",
+          last_billed_at: now.toISOString(),
+          next_billing_date: nextBilling.toISOString(),
+          last_mpesa_receipt: receipt,
+          updated_at: now.toISOString(),
+        };
+        if (mandateId) {
+          await service.from("ratiba_mandates").update(updatePayload).eq("id", mandateId);
+        } else {
+          const e164 = phoneDigits.startsWith("254") ? `+${phoneDigits}` : `+254${phoneDigits}`;
+          await service
+            .from("ratiba_mandates")
+            .update(updatePayload)
+            .eq("phone_e164", e164)
+            .in("status", ["pending", "active"]);
+        }
+      } catch (ratibaSuccessErr) {
+        console.warn("ratiba_mandate_callback_update_failed", ratibaSuccessErr);
+      }
+    }
+
     await service.from("analytics_events").insert({
       event_name: "subscription_activated",
       properties: { tier: String(rpcResult.tier || ""), amountKes: amount },

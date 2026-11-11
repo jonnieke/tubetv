@@ -577,11 +577,43 @@ export async function restorePaystackPass(reference: string, emailOrPhone?: stri
   return stored;
 }
 
-export async function startMpesaPayment(planCode: SubscriptionPlanCode, phone: string) {
+export async function startMpesaPayment(
+  planCode: SubscriptionPlanCode,
+  phone: string,
+  options?: { autoRenew?: boolean },
+) {
   if (!isSupabaseConfigured) {
     throw new Error('M-Pesa payments are not configured in this environment.');
   }
   const idempotencyKey = crypto.randomUUID();
+
+  // If autoRenew is requested for the monthly pass, invoke mpesa-ratiba (Standing Order)
+  if (options?.autoRenew && planCode === 'monthly') {
+    try {
+      const { data, error } = await supabase.functions.invoke('mpesa-ratiba', {
+        body: { action: 'initiate', planCode, phone },
+        headers: { 'Idempotency-Key': idempotencyKey },
+      });
+
+      if (!error && data?.transaction?.id && !data?.error) {
+        return data.transaction as {
+          id: string;
+          status: string;
+          checkoutToken: string;
+          checkoutRequestId?: string;
+          reference?: string;
+          authorizationUrl?: string;
+          message?: string;
+          isRatiba?: boolean;
+        };
+      }
+      if (data?.error) {
+        console.warn('mpesa_ratiba_returned_error_falling_back', data.error);
+      }
+    } catch (err) {
+      console.warn('mpesa_ratiba_invoke_fallback', err);
+    }
+  }
 
   // Primary: call mpesa-stk-push
   try {
@@ -685,6 +717,34 @@ export async function fetchPaymentStatus(transactionId: string, checkoutToken: s
     };
     pass?: StoredPass;
   };
+}
+
+export async function getRatibaMandateStatus(phone: string) {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase.functions.invoke('mpesa-ratiba', {
+      body: { action: 'status', phone },
+    });
+    if (!error && data?.mandate) {
+      return data.mandate;
+    }
+  } catch (e) {
+    console.warn('get_ratiba_status_error', e);
+  }
+  return null;
+}
+
+export async function cancelRatibaMandate(phone: string) {
+  if (!isSupabaseConfigured) return false;
+  try {
+    const { data, error } = await supabase.functions.invoke('mpesa-ratiba', {
+      body: { action: 'cancel', phone },
+    });
+    return Boolean(!error && data?.ok);
+  } catch (e) {
+    console.warn('cancel_ratiba_error', e);
+    return false;
+  }
 }
 
 export interface RestorePassOptions {
