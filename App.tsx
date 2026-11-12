@@ -43,6 +43,7 @@ import {
   Anchor,
   Zap,
   Film,
+  Shield,
   type LucideIcon,
 } from 'lucide-react';
 import { fetchBunnyVideos, fetchBunnyVideoById, bunnyVideoToVideo } from './services/bunnyService';
@@ -187,6 +188,9 @@ const App: React.FC = () => {
   const { t, language } = useLanguage();
   const [currentView, setCurrentView] = useState<ViewStateOrString>(() => {
     if (typeof window === 'undefined') return ViewState.HOME;
+    if (window.location.pathname === '/admin') {
+      return ViewState.ADMIN;
+    }
     const params = new URLSearchParams(window.location.search);
     if (params.get('creator_code')) {
       return ViewState.SETTINGS;
@@ -243,9 +247,21 @@ const App: React.FC = () => {
         setCurrentUser(user);
         setIsAuthenticated(Boolean(user));
         setIsAuthLoading(false);
+        if (window.location.pathname === '/admin') {
+          if (user && isAdminUser(user)) {
+            setCurrentView(ViewState.ADMIN);
+          } else {
+            setShowLogin(true);
+          }
+        }
       })
       .catch(() => {
-        if (active) setIsAuthLoading(false);
+        if (active) {
+          setIsAuthLoading(false);
+          if (window.location.pathname === '/admin') {
+            setShowLogin(true);
+          }
+        }
       });
     const {
       data: { subscription },
@@ -686,6 +702,14 @@ const App: React.FC = () => {
         setSelectedShortId(shortParam || undefined);
       }
 
+      if (window.location.pathname === '/admin') {
+        setCurrentView(ViewState.ADMIN);
+        if (!isAdmin && !isAuthLoading) {
+          setShowLogin(true);
+        }
+        return;
+      }
+
       const match = window.location.pathname.match(/^\/watch\/([^/]+)$/);
       const queryVideoId = params.get('v') || params.get('watch');
       const seriesParam = params.get('series') || params.get('drama');
@@ -740,7 +764,7 @@ const App: React.FC = () => {
       active = false;
       window.removeEventListener('popstate', syncRoute);
     };
-  }, [videos, hasActivePass]);
+  }, [videos, hasActivePass, isAdmin, isAuthLoading]);
 
   useEffect(() => {
     const pathname = window.location.pathname;
@@ -882,8 +906,19 @@ const App: React.FC = () => {
       const validTabs: SettingsTabId[] = ['general', 'pass', 'account', 'privacy'];
       setSettingsInitialTab(validTabs.includes(category as SettingsTabId) ? (category as SettingsTabId) : 'general');
     }
-    if (view === ViewState.ADMIN && !isAdmin) {
-      return;
+    if (view === ViewState.ADMIN) {
+      if (!isAuthenticated) {
+        setShowLogin(true);
+        return;
+      }
+      if (!isAdmin) {
+        return;
+      }
+      if (window.location.pathname !== '/admin') {
+        window.history.pushState({}, '', '/admin');
+      }
+    } else if (window.location.pathname === '/admin') {
+      window.history.pushState({}, '', '/');
     }
     if (view !== ViewState.SHORTS) {
       setSelectedShortId(undefined);
@@ -911,6 +946,9 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setHasActivePass(false);
     setCurrentView(ViewState.HOME);
+    if (window.location.pathname === '/admin') {
+      window.history.pushState({}, '', '/');
+    }
   };
 
   const userPhone = currentUser?.phone || null;
@@ -1059,7 +1097,35 @@ const App: React.FC = () => {
           />
         );
       case ViewState.ADMIN:
-        if (!isAdmin) return null;
+        if (!isAuthenticated) {
+          return (
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center min-h-[50vh]">
+              <Shield className="w-12 h-12 text-zinc-600 mb-4" />
+              <h2 className="text-2xl font-bold text-white mb-2">Admin sign-in required</h2>
+              <p className="text-zinc-400 max-w-md mb-6">
+                Please sign in with your TubeTV administrator account to access the admin dashboard.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowLogin(true)}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2.5 rounded-lg transition-colors"
+              >
+                Sign in
+              </button>
+            </div>
+          );
+        }
+        if (!isAdmin) {
+          return (
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center min-h-[50vh]">
+              <Shield className="w-12 h-12 text-red-500 mb-4" />
+              <h2 className="text-2xl font-bold text-white mb-2">Admin access restricted</h2>
+              <p className="text-zinc-400 max-w-md">
+                This account ({currentUser?.email || 'signed in'}) does not have administrator privileges.
+              </p>
+            </div>
+          );
+        }
         return (
           <AdminDashboard
             onUploadComplete={handleUploadComplete}
@@ -1531,9 +1597,22 @@ const App: React.FC = () => {
                 setCurrentUser(user);
                 setIsAuthenticated(true);
                 setShowLogin(false);
-                setCurrentView(ViewState.HOME);
+                if (isAdminUser(user)) {
+                  setCurrentView(ViewState.ADMIN);
+                  if (window.location.pathname !== '/admin') {
+                    window.history.pushState({}, '', '/admin');
+                  }
+                } else {
+                  setCurrentView(ViewState.HOME);
+                }
               }}
-              onCancel={() => setShowLogin(false)}
+              onCancel={() => {
+                setShowLogin(false);
+                if (window.location.pathname === '/admin' && !isAdmin) {
+                  setCurrentView(ViewState.HOME);
+                  window.history.pushState({}, '', '/');
+                }
+              }}
             />
           </Suspense>
         )}

@@ -20,6 +20,9 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
   const [showSetupKey, setShowSetupKey] = useState(false);
   const [code, setCode] = useState('');
   const [pendingUser, setPendingUser] = useState<User | null>(null);
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
 
@@ -143,6 +146,35 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!isSupabaseConfigured) {
+      setResetError('Admin sign-in is unavailable until Supabase is configured.');
+      return;
+    }
+    const targetEmail = email.trim();
+    if (!targetEmail) {
+      setResetError('Enter your admin email address above first.');
+      return;
+    }
+    setResetLoading(true);
+    setResetError('');
+    setResetMessage('');
+    try {
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(targetEmail, {
+        redirectTo: `${window.location.origin}/admin/setup`,
+      });
+      if (resetErr) {
+        setResetError(resetErr.message);
+      } else {
+        setResetMessage(`Password reset link sent to ${targetEmail}. Check your inbox.`);
+      }
+    } catch {
+      setResetError('Unable to send password reset email. Please try again.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
@@ -231,6 +263,21 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
                   className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 tracking-[.3em] focus:border-red-500 focus:outline-none"
                 />
               </label>
+              <div className="mt-3 flex justify-start">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingUser(null);
+                    setQr('');
+                    setSetupKey('');
+                    setCode('');
+                    setError('');
+                  }}
+                  className="text-xs text-zinc-400 hover:text-white underline underline-offset-2 transition-colors"
+                >
+                  ← Back to email sign in
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -257,6 +304,26 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
                   className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 focus:border-red-500 focus:outline-none"
                 />
               </label>
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  disabled={resetLoading}
+                  onClick={handleResetPassword}
+                  className="text-xs text-zinc-400 hover:text-white underline underline-offset-2 transition-colors disabled:opacity-50"
+                >
+                  {resetLoading ? 'Sending link…' : 'Forgot password?'}
+                </button>
+              </div>
+              {resetMessage && (
+                <p role="status" className="mt-2 text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 rounded-md p-2">
+                  {resetMessage}
+                </p>
+              )}
+              {resetError && (
+                <p role="alert" className="mt-2 text-xs text-red-400">
+                  {resetError}
+                </p>
+              )}
             </>
           )}
           {error && (
