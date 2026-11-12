@@ -80,7 +80,7 @@ function loadPaystackInline(): Promise<boolean> {
 }
 
 export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, onClose }) => {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [mode, setMode] = useState<'buy' | 'restore'>('buy');
   const [regionCode, setRegionCode] = useState<RegionCode>(() => detectDefaultRegion());
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'mpesa'>('paystack');
@@ -233,8 +233,13 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     });
 
     try {
-      const cleanPhone = phone.trim() ? validateGlobalPhone(phone) : null;
       const cleanEmail = email.trim();
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        setErrorMessage(t('paywall.emailRequiredError'));
+        setStatus('idle');
+        return;
+      }
+      const cleanPhone = phone.trim() ? validateGlobalPhone(phone) : null;
       if (cleanPhone) {
         saveRememberedPhone(cleanPhone);
         try { localStorage.setItem('tubetv_user_phone', cleanPhone); } catch {}
@@ -794,12 +799,18 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                 {paymentMethod === 'paystack' ? (
                   <div className="space-y-3">
                     <div>
-                      <label htmlFor="paystack-email" className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                        {t('paywall.emailLabel')}
-                      </label>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <label htmlFor="paystack-email" className="block text-xs font-semibold text-zinc-200">
+                          {t('paywall.emailLabel')}
+                        </label>
+                        <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          * {t('paywall.emailRequiredForCard')}
+                        </span>
+                      </div>
                       <input
                         id="paystack-email"
                         type="email"
+                        required
                         inputMode="email"
                         autoComplete="email"
                         placeholder="viewer@example.com"
@@ -808,6 +819,9 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                         disabled={isBusy}
                         className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
                       />
+                      <p className="mt-1 text-[11px] text-zinc-400 leading-tight">
+                        {t('paywall.emailCardHint')}
+                      </p>
                     </div>
 
                     <div>
