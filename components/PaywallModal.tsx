@@ -234,9 +234,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
     try {
       const cleanEmail = email.trim();
-      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
         setErrorMessage(t('paywall.emailRequiredError'));
         setStatus('idle');
+        document.getElementById('paystack-email')?.focus();
         return;
       }
       const cleanPhone = phone.trim() ? validateGlobalPhone(phone) : null;
@@ -256,6 +257,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         phone: cleanPhone || undefined,
         regionCode,
         currency: activeRegion.currency,
+        returnPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
       });
 
       if (!result?.reference || !result?.checkoutToken) {
@@ -266,28 +268,45 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       if (result.authorizationUrl) {
         setPaystackAuthUrl(result.authorizationUrl);
       }
-      setStatus('prompt_sent');
 
-      // Attempt to launch Paystack Inline iframe
-      void loadPaystackInline().then((loaded) => {
+      // Check if Paystack Inline popup can be launched
+      let inlineOpened = false;
+      const publicKey = (result.publicKey || (import.meta.env.VITE_PAYSTACK_PUBLIC_KEY as string) || '').trim();
+
+      if (publicKey && typeof window !== 'undefined') {
+        const loaded = await loadPaystackInline().catch(() => false);
         if (loaded && window.PaystackPop?.setup) {
           try {
             const handler = window.PaystackPop.setup({
-              key: result.publicKey || (import.meta.env.VITE_PAYSTACK_PUBLIC_KEY as string) || '',
+              key: publicKey,
               access_code: result.accessCode,
               callback: () => {
-                // Verified instantly through polling
+                // Polling below will verify and complete
               },
               onClose: () => {
-                // Polling continues if user finished in external tab or mobile app
+                // Polling continues
               },
             });
             handler.openIframe();
-          } catch {
-            // If iframe fails to open, authorizationUrl button is displayed
+            inlineOpened = true;
+          } catch (popupErr) {
+            console.warn('Paystack inline iframe failed, redirecting to hosted checkout', popupErr);
           }
         }
-      });
+      }
+
+      // If inline iframe is not available (e.g. no public key configured) or failed to open:
+      // Immediately navigate to the secure Paystack checkout page where the credit card form is hosted!
+      if (!inlineOpened && result.authorizationUrl) {
+        try {
+          localStorage.setItem('tubetv_last_watched_video_id', video.id);
+          sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+        } catch {}
+        window.location.href = result.authorizationUrl;
+        return;
+      }
+
+      setStatus('prompt_sent');
 
       // Poll status until verified
       let attempts = 0;
@@ -760,16 +779,25 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       onClick={() => {
                         setPaymentMethod('paystack');
                         setErrorMessage('');
+                        setTimeout(() => {
+                          const input = document.getElementById('paystack-email');
+                          input?.focus();
+                        }, 50);
                       }}
-                      className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all ${
+                      className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
                         paymentMethod === 'paystack'
-                          ? 'bg-blue-950/40 border-blue-500 text-white shadow-sm'
+                          ? 'bg-blue-950/40 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
                           : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
                     >
                       <CreditCard className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
                       <div>
-                        <div className="text-xs font-bold text-white leading-tight">{t('paywall.methodPaystack')}</div>
+                        <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
+                          <span>{t('paywall.methodPaystack')}</span>
+                          {paymentMethod === 'paystack' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                          )}
+                        </div>
                         <div className="text-[10px] text-zinc-400 mt-0.5">{activeRegion.paymentMethodsLabel}</div>
                       </div>
                     </button>
@@ -780,16 +808,25 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       onClick={() => {
                         setPaymentMethod('mpesa');
                         setErrorMessage('');
+                        setTimeout(() => {
+                          const input = document.getElementById('mpesa-buy-phone');
+                          input?.focus();
+                        }, 50);
                       }}
-                      className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all ${
+                      className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
                         paymentMethod === 'mpesa'
-                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm'
+                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50'
                           : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
                     >
                       <Smartphone className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
                       <div>
-                        <div className="text-xs font-bold text-white leading-tight">{t('paywall.methodMpesa')}</div>
+                        <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
+                          <span>{t('paywall.methodMpesa')}</span>
+                          {paymentMethod === 'mpesa' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          )}
+                        </div>
                         <div className="text-[10px] text-zinc-400 mt-0.5">Instant Kenya STK</div>
                       </div>
                     </button>
@@ -803,17 +840,16 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                         <label htmlFor="paystack-email" className="block text-xs font-semibold text-zinc-200">
                           {t('paywall.emailLabel')}
                         </label>
-                        <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                          * {t('paywall.emailRequiredForCard')}
+                        <span className="text-[10px] font-bold text-blue-300 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          For Card Receipt
                         </span>
                       </div>
                       <input
                         id="paystack-email"
                         type="email"
-                        required
                         inputMode="email"
                         autoComplete="email"
-                        placeholder="viewer@example.com"
+                        placeholder="viewer@example.com (optional)"
                         value={email}
                         onChange={(e) => handleEmailChange(e.target.value)}
                         disabled={isBusy}
@@ -967,20 +1003,23 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                     paymentMethod === 'paystack'
                       ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-950/50'
                       : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-950/50'
-                  } disabled:bg-zinc-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg`}
+                  } disabled:bg-zinc-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg cursor-pointer`}
                 >
                   {status === 'sending' ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      {paymentMethod === 'paystack' ? 'Opening Paystack...' : t('paywall.sendingPrompt')}
+                      <span>{paymentMethod === 'paystack' ? 'Opening Card Payment Form...' : t('paywall.sendingPrompt')}</span>
                     </>
                   ) : status === 'prompt_sent' ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      {t('paywall.waitingConfirm')}
+                      <span>{paymentMethod === 'paystack' ? 'Redirecting to Card Form...' : t('paywall.waitingConfirm')}</span>
                     </>
                   ) : paymentMethod === 'paystack' ? (
-                    t('paywall.payButtonPaystack', { amount: activePlan.amountKes })
+                    <>
+                      <CreditCard size={16} />
+                      <span>{language === 'sw' ? `Lipa KSh ${activePlan.amountKes} kwa Kadi (Visa / Mastercard)` : `Pay KSh ${activePlan.amountKes} with Card (Visa / Mastercard)`}</span>
+                    </>
                   ) : autoRenewWithMpesa && selectedPlan === 'monthly' ? (
                     t('paywall.payButtonAutoRenew', { amount: activePlan.amountKes })
                   ) : (

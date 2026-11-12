@@ -280,6 +280,11 @@ serve(async (req) => {
       }
     }
 
+    const rawReturnPath = String(requestBody.returnPath || "").trim();
+    const safeReturnPath = rawReturnPath.startsWith("/") && !rawReturnPath.startsWith("//") ? rawReturnPath : "/";
+    const callbackSeparator = safeReturnPath.includes("?") ? "&" : "?";
+    const callbackUrl = `${siteUrl}${safeReturnPath}${callbackSeparator}paystack_ref=${encodeURIComponent(reference)}`;
+
     // 2. Call Paystack Initialize API
     const paystackRes = await fetch("https://api.paystack.co/transaction/initialize", {
       method: "POST",
@@ -292,7 +297,7 @@ serve(async (req) => {
         amount: plan.amount * 100, // Paystack KES subunit is cents (10 KES = 1000)
         currency: "KES",
         reference,
-        callback_url: `${siteUrl}/?paystack_ref=${encodeURIComponent(reference)}`,
+        callback_url: callbackUrl,
         metadata: {
           plan_code: planCode,
           transaction_id: tx.id,

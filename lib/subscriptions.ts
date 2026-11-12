@@ -483,12 +483,21 @@ function cleanFunctionErrorMessage(error: any, payload: any, fallback: string): 
 
 export async function startPaystackPayment(
   planCode: SubscriptionPlanCode,
-  options: { email?: string; phone?: string; regionCode?: RegionCode; currency?: string } = {},
+  options: {
+    email?: string;
+    phone?: string;
+    regionCode?: RegionCode;
+    currency?: string;
+    returnPath?: string;
+  } = {},
 ): Promise<PaystackInitiateResponse> {
   if (!isSupabaseConfigured) {
     throw new Error('Paystack payments are not configured in this environment.');
   }
   const idempotencyKey = crypto.randomUUID();
+  const returnPath =
+    options.returnPath ||
+    (typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : undefined);
   const { data: rawData, error } = await supabase.functions.invoke('paystack-checkout', {
     body: {
       action: 'initiate',
@@ -497,6 +506,7 @@ export async function startPaystackPayment(
       phone: options.phone,
       regionCode: options.regionCode || detectDefaultRegion(),
       currency: options.currency || 'KES',
+      returnPath,
     },
     headers: { 'Idempotency-Key': idempotencyKey },
   });
