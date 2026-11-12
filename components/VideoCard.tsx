@@ -975,12 +975,6 @@ const VideoCard: React.FC<VideoCardProps> = ({
             </div>
 
             <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10">
-              {locked && (
-                <span className="rounded px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 bg-amber-500 text-black shadow-md">
-                  <Lock size={10} />
-                  {t('player.premium')}
-                </span>
-              )}
               <div className="rounded bg-black/85 px-2 py-1 text-xs font-bold text-white">{contentRating}</div>
             </div>
 

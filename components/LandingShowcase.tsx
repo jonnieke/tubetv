@@ -24,61 +24,8 @@ interface PassRibbonProps {
   onUnlockPass: () => void;
 }
 
-export const LandingPassRibbon: React.FC<PassRibbonProps> = ({ hasActivePass, onUnlockPass }) => {
-  const { language } = useLanguage();
-  const region = useMemo(() => {
-    const code = detectDefaultRegion();
-    return REGIONAL_PRICING[code] || REGIONAL_PRICING.KE;
-  }, []);
-
-  if (hasActivePass) return null;
-
-  return (
-    <section
-      aria-label="TubeTV Pass Highlights"
-      className="mb-7 rounded-2xl border border-red-500/25 bg-gradient-to-r from-zinc-900/95 via-red-950/35 to-zinc-900/95 px-4 py-3.5 md:px-6 shadow-xl backdrop-blur-md"
-    >
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5">
-        <div className="flex flex-wrap items-center gap-2.5 text-xs md:text-sm text-zinc-200">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-600/20 border border-red-500/40 px-2.5 py-1 text-[11px] font-bold text-red-300">
-            <Zap size={13} className="text-red-400" />
-            {language === 'sw' ? 'Bila Akaunti' : 'Zero Sign-Up Friction'}
-          </span>
-          <span className="font-medium text-white">
-            {language === 'sw'
-              ? 'Tazama bure Vipindi 1-2 vya microdrama.'
-              : 'Watch free Episodes 1-2 microdrama'}
-          </span>
-          <span className="hidden sm:inline text-zinc-500">·</span>
-          <span className="inline-flex items-center gap-1 text-amber-300 font-semibold text-xs">
-            <Globe size={13} />
-            {language === 'sw'
-              ? `Pasi kuanzia ${region.prices.daily}/siku · ${region.prices.weekly}/wiki · ${region.prices.monthly}/mwezi`
-              : `Pass from ${region.prices.daily}/day · ${region.prices.weekly}/wk · ${region.prices.monthly}/mo`}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onUnlockPass}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-500 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition cursor-pointer"
-          >
-            <Sparkles size={13} />
-            {language === 'sw' ? 'Fungua Pasi Sasa' : 'Get Unlimited Pass'}
-          </button>
-          <button
-            type="button"
-            onClick={onUnlockPass}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-200 transition cursor-pointer"
-          >
-            <KeyRound size={13} className="text-amber-400" />
-            {language === 'sw' ? 'Rejesha Pasi kwa Nambari' : 'Paid? Restore by Phone'}
-          </button>
-        </div>
-      </div>
-    </section>
-  );
+export const LandingPassRibbon: React.FC<PassRibbonProps> = () => {
+  return null;
 };
 
 interface TopTenCarouselProps {

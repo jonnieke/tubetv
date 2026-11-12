@@ -4,7 +4,6 @@ import LandingHero from './components/LandingHero';
 import LandingFooter from './components/LandingFooter';
 import {
   CreatorOriginalsSpotlight,
-  LandingPassRibbon,
   TopTenCarousel,
 } from './components/LandingShowcase';
 import MicroDramaComingSoon from './components/MicroDramaComingSoon';
@@ -1128,10 +1127,6 @@ const App: React.FC = () => {
                       index={heroIndex % featuredVideos.length}
                       onSelect={setHeroIndex}
                     />
-                    <LandingPassRibbon
-                      hasActivePass={hasActivePass}
-                      onUnlockPass={() => setPaywallVideo(hero)}
-                    />
                   </>
                 );
               })()}
@@ -1686,11 +1681,6 @@ const App: React.FC = () => {
                     <span className="rounded border border-zinc-700 px-2 py-1">
                       {activeHeroVideo.contentRating || 'UNRATED'}
                     </span>
-                    {isVideoLocked(activeHeroVideo, false) && (
-                      <span className="rounded border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 font-bold text-amber-300">
-                        {t('player.premium')}
-                      </span>
-                    )}
                     <span>{activeHeroVideo.category}</span>
                     <span>{activeHeroVideo.author}</span>
                   </div>
@@ -1816,11 +1806,6 @@ const App: React.FC = () => {
                               <span className="absolute bottom-1 right-1 bg-black/80 px-1.5 py-0.5 rounded text-[10px] text-zinc-300 font-mono">
                                 {rec.duration}
                               </span>
-                              {recLocked && (
-                                <span className="absolute top-1 left-1 bg-amber-500/90 text-black px-1.5 py-0.5 rounded text-[9px] font-bold">
-                                  {t('player.premium')}
-                                </span>
-                              )}
                             </div>
                             <div className="p-2 flex flex-col gap-0.5">
                               <span className="text-xs font-semibold text-white line-clamp-1 group-hover:text-red-400 transition-colors">
