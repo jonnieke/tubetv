@@ -14,12 +14,6 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [factorId, setFactorId] = useState('');
-  const [qr, setQr] = useState('');
-  const [setupKey, setSetupKey] = useState('');
-  const [showSetupKey, setShowSetupKey] = useState(false);
-  const [code, setCode] = useState('');
-  const [pendingUser, setPendingUser] = useState<User | null>(null);
   const [resetMessage, setResetMessage] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
@@ -77,70 +71,12 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
       }
       if (!isAdminUser(data.user)) {
         await supabase.auth.signOut();
-        setError('This account has no TubeTV admin role.');
+        setError('This account does not have administrator privileges.');
         return;
       }
-      const { data: level, error: levelError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (levelError) {
-        setError('Unable to verify account security.');
-        return;
-      }
-      if (level.currentLevel === 'aal2') {
-        onSuccess(data.user);
-        return;
-      }
-      setPendingUser(data.user);
-      if (level.nextLevel === 'aal2') {
-        const { data: factors, error: factorError } = await supabase.auth.mfa.listFactors();
-        const existing = factors?.totp?.[0];
-        if (factorError || !existing) {
-          setError('Unable to find your authenticator. Contact the project owner.');
-          return;
-        }
-        setFactorId(existing.id);
-      } else {
-        const { data: factor, error: enrollError } = await supabase.auth.mfa.enroll({
-          factorType: 'totp',
-          friendlyName: 'TubeTV admin',
-        });
-        if (enrollError || !factor?.totp) {
-          setError(enrollError?.message || 'Unable to set up an authenticator.');
-          return;
-        }
-        setFactorId(factor.id);
-        setQr(factor.totp.qr_code);
-        setSetupKey(factor.totp.secret);
-      }
+      onSuccess(data.user);
     } catch {
       setError('Unable to connect to the sign-in service.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyFactor = async () => {
-    if (!pendingUser || !factorId || !/^\d{6}$/.test(code)) {
-      setError('Enter the six-digit code from your authenticator.');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const { error: mfaError } = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
-      if (mfaError) {
-        setError(mfaError.message);
-        return;
-      }
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!isAdminUser(user)) {
-        setError('Admin role could not be verified.');
-        return;
-      }
-      onSuccess(user!);
-    } catch {
-      setError('Could not verify the authenticator code.');
     } finally {
       setLoading(false);
     }
@@ -199,7 +135,7 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            void (pendingUser ? verifyFactor() : signIn());
+            void signIn();
           }}
         >
           <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-red-600/15 text-red-500">
@@ -209,134 +145,67 @@ const AuthModal: React.FC<Props> = ({ onSuccess, onCancel }) => {
             Admin access
           </h2>
           <p className="mt-2 text-sm text-zinc-400">
-            {pendingUser
-              ? qr
-                ? 'Add TubeTV to your authenticator app by scanning the QR code or entering the setup key manually, then enter its code.'
-                : 'Enter the code from your authenticator app.'
-              : 'Sign in with your TubeTV administrator account.'}
+            Sign in with your email and password to access the TubeTV dashboard.
           </p>
-          {pendingUser ? (
-            <>
-              {qr && (
-                <img
-                  alt="Authenticator setup QR code"
-                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr)}`}
-                  className="mx-auto mt-5 h-40 w-40 bg-white p-2"
-                />
-              )}
-              {setupKey && (
-                <div className="mt-5 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                  <p className="text-sm font-medium">Can’t scan the QR code?</p>
-                  <p className="mt-1 text-xs text-zinc-400">
-                    Choose “Enter a setup key” in your authenticator app. Use TubeTV as the account name and a time-based code.
-                  </p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <input
-                      aria-label="Authenticator setup key"
-                      readOnly
-                      type={showSetupKey ? 'text' : 'password'}
-                      value={setupKey}
-                      autoComplete="off"
-                      className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs tracking-wider"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowSetupKey((value) => !value)}
-                      className="rounded border border-zinc-700 px-3 py-2 text-xs hover:border-zinc-500"
-                    >
-                      {showSetupKey ? 'Hide key' : 'Show key'}
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs text-amber-300">Keep this key private. It is shown only during setup.</p>
-                </div>
-              )}
-              <label className="mt-5 block text-sm">
-                Authenticator code
-                <input
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  required
-                  value={code}
-                  onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 tracking-[.3em] focus:border-red-500 focus:outline-none"
-                />
-              </label>
-              <div className="mt-3 flex justify-start">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingUser(null);
-                    setQr('');
-                    setSetupKey('');
-                    setCode('');
-                    setError('');
-                  }}
-                  className="text-xs text-zinc-400 hover:text-white underline underline-offset-2 transition-colors"
-                >
-                  ← Back to email sign in
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <label className="mt-6 block text-sm">
-                Email
-                <input
-                  ref={emailRef}
-                  type="email"
-                  autoComplete="username"
-                  required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 focus:border-red-500 focus:outline-none"
-                />
-              </label>
-              <label className="mt-5 block text-sm">
-                Password
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 focus:border-red-500 focus:outline-none"
-                />
-              </label>
-              <div className="mt-2 flex justify-end">
-                <button
-                  type="button"
-                  disabled={resetLoading}
-                  onClick={handleResetPassword}
-                  className="text-xs text-zinc-400 hover:text-white underline underline-offset-2 transition-colors disabled:opacity-50"
-                >
-                  {resetLoading ? 'Sending link…' : 'Forgot password?'}
-                </button>
-              </div>
-              {resetMessage && (
-                <p role="status" className="mt-2 text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 rounded-md p-2">
-                  {resetMessage}
-                </p>
-              )}
-              {resetError && (
-                <p role="alert" className="mt-2 text-xs text-red-400">
-                  {resetError}
-                </p>
-              )}
-            </>
+
+          <label className="mt-6 block text-sm">
+            Email
+            <input
+              ref={emailRef}
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 focus:border-red-500 focus:outline-none"
+            />
+          </label>
+          <label className="mt-5 block text-sm">
+            Password
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 focus:border-red-500 focus:outline-none"
+            />
+          </label>
+
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              disabled={resetLoading}
+              onClick={handleResetPassword}
+              className="text-xs text-zinc-400 hover:text-white underline underline-offset-2 transition-colors disabled:opacity-50"
+            >
+              {resetLoading ? 'Sending link…' : 'Forgot password?'}
+            </button>
+          </div>
+
+          {resetMessage && (
+            <p role="status" className="mt-2 text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 rounded-md p-2">
+              {resetMessage}
+            </p>
           )}
+          {resetError && (
+            <p role="alert" className="mt-2 text-xs text-red-400">
+              {resetError}
+            </p>
+          )}
+
           {error && (
             <p role="alert" className="mt-3 text-sm text-red-400">
               {error}
             </p>
           )}
+
           <button
             disabled={loading}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 py-3 font-bold disabled:opacity-50"
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 py-3 font-bold disabled:opacity-50 hover:bg-red-700 transition-colors"
           >
             {loading ? <Loader2 className="animate-spin" size={18} /> : <ShieldCheck size={18} />}
-            {pendingUser ? 'Verify and open admin' : 'Sign in'}
+            Sign in
           </button>
         </form>
       </div>

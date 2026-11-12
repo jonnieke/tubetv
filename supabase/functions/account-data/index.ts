@@ -73,11 +73,11 @@ serve(async (req) => {
       return jsonReply(req, { error: "Type DELETE to confirm account deletion." }, 400, METHODS);
     }
 
-    // Require MFA (aal2) before deleting an administrator account
+    // Require verified admin privileges before deleting an administrator account
     if (user.app_metadata?.role === "admin") {
-      const mfaAdmin = await verifiedAdminId(req);
-      if (!mfaAdmin) {
-        return jsonReply(req, { error: "MFA verification is required to delete an admin account." }, 403, METHODS);
+      const adminId = await verifiedAdminId(req);
+      if (!adminId) {
+        return jsonReply(req, { error: "Admin verification is required to delete an admin account." }, 403, METHODS);
       }
     }
 

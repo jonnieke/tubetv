@@ -24,7 +24,7 @@ serve(async (req) => {
 
   const adminId = await verifiedAdminId(req);
   if (!adminId) {
-    return jsonReply(req, { error: "Verified MFA admin access is required." }, 403, METHODS);
+    return jsonReply(req, { error: "Verified admin access is required." }, 403, METHODS);
   }
 
   try {

@@ -132,7 +132,7 @@ serve(async (req) => {
 
   // ─── Admin: review queue ───
   const adminId = await verifiedAdminId(req);
-  if (!adminId) return jsonReply(req, { ok: false, error: "Verified MFA admin access is required." }, 200, METHODS);
+  if (!adminId) return jsonReply(req, { ok: false, error: "Verified admin access is required." }, 200, METHODS);
 
   if (action === "list") {
     const status = clean(body.status, 20);

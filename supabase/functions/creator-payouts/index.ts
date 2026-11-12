@@ -50,7 +50,7 @@ serve(async (req) => {
 
   const adminId = await verifiedAdminId(req);
   if (!adminId) {
-    return jsonReply(req, { ok: false, error: "Verified MFA admin access is required." }, 200, METHODS);
+    return jsonReply(req, { ok: false, error: "Verified admin access is required." }, 200, METHODS);
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
