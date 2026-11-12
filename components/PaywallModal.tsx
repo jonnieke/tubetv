@@ -832,10 +832,18 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       </div>
                     </div>
 
-                    <p className="text-[11px] text-zinc-500 flex items-center gap-1">
-                      <ShieldCheck size={12} className="text-blue-400 shrink-0" />
-                      <span>{t('paywall.paystackHint')}</span>
-                    </p>
+                    <div className="rounded-xl border border-blue-500/25 bg-blue-950/20 p-2.5 space-y-1.5">
+                      <p className="text-[11px] text-zinc-300 flex items-start gap-1.5 leading-snug">
+                        <ShieldCheck size={14} className="text-blue-400 shrink-0 mt-0.5" />
+                        <span>{t('paywall.paystackHint')}</span>
+                      </p>
+                      <div className="flex items-center gap-1.5 pt-0.5 text-[10px] font-bold text-zinc-400">
+                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-200">VISA</span>
+                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-200">Mastercard</span>
+                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-200">Amex</span>
+                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-200">Apple Pay</span>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div>
