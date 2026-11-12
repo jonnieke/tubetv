@@ -10,19 +10,26 @@ export function videoPath(videoId: string) {
 
 export function videoStructuredData(video: Video) {
   const locked = isVideoLocked(video, false);
+  const image = video.seriesPosterUrl || video.thumbnail || DEFAULT_OG_IMAGE;
   return {
     '@context': 'https://schema.org',
     '@type': 'VideoObject',
-    name: video.title,
-    description: video.description || `Watch ${video.title} on TubeTV.`,
-    thumbnailUrl: [video.thumbnail || DEFAULT_OG_IMAGE],
+    name: video.seriesTitle || video.title,
+    description:
+      video.episodeSynopsis || video.seriesSynopsis || video.description || `Watch ${video.title} on TubeTV.`,
+    thumbnailUrl: [image],
     uploadDate: video.uploadDate,
     ...(locked || !video.url ? {} : { contentUrl: video.url }),
     isAccessibleForFree: !locked,
     url: `${SITE_URL}${videoPath(video.id)}`,
     isFamilyFriendly: video.contentRating === 'GE' || video.contentRating === 'PG',
     inLanguage: ['en-KE', 'sw-KE'],
-    publisher: { '@type': 'Organization', name: 'TubeTV', url: SITE_URL },
+    publisher: {
+      '@type': 'Organization',
+      name: 'TubeTV',
+      url: SITE_URL,
+      logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon-512.png` },
+    },
   };
 }
 
@@ -70,6 +77,7 @@ export function setPageMetadata({
   upsertMeta('meta[property="og:description"]', 'property', description);
   upsertMeta('meta[property="og:url"]', 'property', fullUrl);
   upsertMeta('meta[property="og:image"]', 'property', ogImage);
+  upsertMeta('meta[property="og:image:secure_url"]', 'property', ogImage);
   upsertMeta('meta[name="twitter:title"]', 'name', title);
   upsertMeta('meta[name="twitter:description"]', 'name', description);
   upsertMeta('meta[name="twitter:image"]', 'name', ogImage);
@@ -78,16 +86,20 @@ export function setPageMetadata({
 
 export function setVideoMetadata(video?: Video) {
   if (typeof document === 'undefined') return;
-  const title = video ? `${video.title} | TubeTV` : 'TubeTV | Kenyan videos, news, comedy and education';
+  const title = video ? `${video.seriesTitle || video.title} | TubeTV` : 'TubeTV | Kenyan videos, news, comedy and education';
   const description =
-    video?.description || "Kenya's home for original content, education, farming, faith and live streams.";
+    video?.episodeSynopsis ||
+    video?.seriesSynopsis ||
+    video?.description ||
+    "Kenya's home for original content, education, farming, faith and live streams.";
   const path = video ? videoPath(video.id) : '/';
+  const image = video?.seriesPosterUrl || video?.thumbnail || DEFAULT_OG_IMAGE;
 
   setPageMetadata({
     title,
     description,
     path,
-    image: video?.thumbnail || DEFAULT_OG_IMAGE,
+    image,
   });
 
   let schema = document.getElementById('tubetv-video-schema');

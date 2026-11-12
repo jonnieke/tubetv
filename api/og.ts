@@ -21,9 +21,16 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
 
   const rawSiteUrl = (process.env.VITE_SITE_URL || 'https://www.tube.co.ke').replace(/\/$/, '');
   const siteUrl = /^https:\/\//i.test(rawSiteUrl) ? rawSiteUrl : 'https://www.tube.co.ke';
-  const pullZone = (process.env.VITE_BUNNY_PULL_ZONE || '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
-  const supabaseUrl = process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  const pullZone = (
+    process.env.VITE_BUNNY_PULL_ZONE ||
+    process.env.BUNNY_PULL_ZONE ||
+    'vz-0fe79b1a-8ad.b-cdn.net'
+  ).replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  const supabaseUrl =
+    process.env.VITE_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    'https://bbwtdnsgojztxckmkhpz.supabase.co';
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
   let title = 'TubeTV | Watch Kenyan Stories';
   let description = 'Watch Kenyan micro dramas, series, movies and originals on TubeTV.';
@@ -48,7 +55,7 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
               ?.value || '';
           description =
             getMeta('episodeSynopsis') || getMeta('description') || getMeta('seriesSynopsis') || description;
-          const customThumb = getMeta('thumbnailUrl').trim();
+          const customThumb = getMeta('seriesPosterUrl').trim() || getMeta('thumbnailUrl').trim();
           if (/^https:\/\//i.test(customThumb)) {
             thumbnail = customThumb;
           } else if (pullZone) {
@@ -71,6 +78,25 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
   const safeDescription = escapeHtml(description);
   const safeThumbnail = escapeHtml(thumbnail);
 
+  const videoSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'VideoObject',
+    name: title.replace(/\s*\|\s*TubeTV$/i, ''),
+    description,
+    thumbnailUrl: [thumbnail],
+    url: `${siteUrl}/watch/${encodeURIComponent(id)}`,
+    inLanguage: ['en-KE', 'sw-KE'],
+    publisher: {
+      '@type': 'Organization',
+      name: 'TubeTV',
+      url: siteUrl,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${siteUrl}/icon-512.png`,
+      },
+    },
+  };
+
   const html = `<!doctype html>
 <html lang="en-KE">
   <head>
@@ -80,26 +106,37 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
     <meta name="description" content="${safeDescription}" />
     <link rel="canonical" href="${safeVideoUrl}" />
 
-    <!-- Open Graph / WhatsApp / Facebook -->
+    <!-- Open Graph / WhatsApp / Facebook / Apple Messages -->
     <meta property="og:type" content="video.other" />
     <meta property="og:url" content="${safeVideoUrl}" />
     <meta property="og:title" content="${safeTitle}" />
     <meta property="og:description" content="${safeDescription}" />
     <meta property="og:image" content="${safeThumbnail}" />
+    <meta property="og:image:secure_url" content="${safeThumbnail}" />
+    <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:width" content="1280" />
     <meta property="og:image:height" content="720" />
+    <meta property="og:image:alt" content="${safeTitle}" />
+    <meta property="og:locale" content="en_KE" />
     <meta property="og:site_name" content="TubeTV" />
 
     <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="${safeVideoUrl}" />
     <meta name="twitter:title" content="${safeTitle}" />
     <meta name="twitter:description" content="${safeDescription}" />
     <meta name="twitter:image" content="${safeThumbnail}" />
+    <meta name="twitter:image:alt" content="${safeTitle}" />
+
+    <!-- JSON-LD Video Structured Data for Google Search & Discover -->
+    <script type="application/ld+json">
+${JSON.stringify(videoSchema, null, 2)}
+    </script>
   </head>
   <body style="background:#09090b;color:#fff;font-family:sans-serif;padding:2rem;text-align:center;">
     <h1>${safeTitle}</h1>
     <p>${safeDescription}</p>
-    <p><a href="${safePath}" style="color:#ef4444;">Watch on TubeTV</a></p>
+    <p><a href="${safePath}" style="color:#ef4444;font-weight:bold;text-decoration:none;">Watch on TubeTV &rarr;</a></p>
   </body>
 </html>`;
 

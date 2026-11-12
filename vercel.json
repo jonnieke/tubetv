@@ -91,7 +91,7 @@
         {
           "type": "header",
           "key": "user-agent",
-          "value": ".*(facebookexternalhit|WhatsApp|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview).*"
+          "value": ".*(facebookexternalhit|WhatsApp|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview|Applebot|Googlebot|bingbot|BingPreview|Pinterest|redditbot|TikTokBot|Bytespider|Meta-ExternalAgent).*"
         }
       ],
       "destination": "/api/og?id=$1"
