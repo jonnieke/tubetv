@@ -49,7 +49,7 @@ import { fetchBunnyVideos, fetchBunnyVideoById, bunnyVideoToVideo } from './serv
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useLanguage } from './contexts/LanguageContext';
 import { isAdminUser } from './lib/authorization';
-import { featuredMovies } from './lib/featured';
+import { featuredMicroDramas, featuredMovies } from './lib/featured';
 import { clearLocalAuthSession } from './lib/localAuth';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { verifiedActiveAdminUser } from './lib/adminSession';
@@ -559,7 +559,7 @@ const App: React.FC = () => {
   }, [navItems]);
 
   const [heroIndex, setHeroIndex] = useState(0);
-  const heroMovies = useMemo(() => featuredMovies(ratingFilteredVideos), [ratingFilteredVideos]);
+  const heroDramas = useMemo(() => featuredMicroDramas(ratingFilteredVideos), [ratingFilteredVideos]);
   const [activeHeroVideo, setActiveHeroVideo] = useState<Video | null>(null);
 
   useEffect(() => {
@@ -1107,7 +1107,7 @@ const App: React.FC = () => {
             {currentView === ViewState.HOME &&
               !searchQuery &&
               (() => {
-                const featuredVideos = heroMovies.length ? heroMovies : !isRealContent ? ratingFilteredVideos.slice(0, 5) : [];
+                const featuredVideos = heroDramas.length ? heroDramas : !isRealContent ? ratingFilteredVideos.slice(0, 5) : [];
                 const hero = featuredVideos.length ? featuredVideos[heroIndex % featuredVideos.length] : null;
                 if (!hero) return null;
                 return (

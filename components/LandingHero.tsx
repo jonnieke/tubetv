@@ -6,6 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { loadHls } from '../lib/hlsLoader';
 import { LONG_FORMAT_PREVIEW_SECONDS } from '../lib/monetization';
 import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
+import { isMicroDrama } from '../lib/series';
 import CatalogueArtwork from './CatalogueArtwork';
 
 /** Skip the first 60 seconds (1 minute) of hero movies/episodes to avoid opening studio logos and credits. */
@@ -90,7 +91,17 @@ export default function LandingHero({
 
     let cancelled = false;
 
+    const isMicro = isMicroDrama(video);
     const applyOneMinuteStartOffset = (el: HTMLVideoElement) => {
+      if (isMicro) {
+        startOffsetRef.current = 0;
+        try {
+          el.currentTime = 0;
+        } catch {
+          // Ignore seek errors before buffer is ready
+        }
+        return;
+      }
       const dur = el.duration;
       // Start at 60s (1 minute) to skip opening credits if the video is long enough; otherwise 20% in
       const offset =
@@ -143,7 +154,7 @@ export default function LandingHero({
             const hls = new HlsClass({
               enableWorker: true,
               maxBufferLength: 15,
-              startPosition: HERO_START_OFFSET_SECONDS,
+              startPosition: isMicro ? 0 : HERO_START_OFFSET_SECONDS,
             });
             hlsRef.current = hls;
             hls.loadSource(streamUrl);
@@ -200,6 +211,8 @@ export default function LandingHero({
     setIsMuted(nextMuted);
   };
 
+  const isMicro = isMicroDrama(video);
+
   return (
     <section
       className="landing-hero group"
@@ -207,7 +220,7 @@ export default function LandingHero({
       onDoubleClick={onPlay}
     >
       <CatalogueArtwork
-        src={video.thumbnail}
+        src={video.seriesPosterUrl || video.thumbnail}
         priority
         className={`landing-hero-art transition-opacity duration-700 ${
           trailerReady ? 'opacity-25 scale-105' : 'opacity-100'
@@ -267,11 +280,16 @@ export default function LandingHero({
         {/* Rich Cinema Metadata Strip */}
         <div className="flex flex-wrap items-center gap-2 mb-2.5">
           <span className="inline-flex items-center gap-1 rounded bg-red-600 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow">
-            {real ? 'TUBE ORIGINAL' : 'DEMO PREMIERE'}
+            {isMicro ? 'MICRO DRAMA' : (real ? 'TUBE ORIGINAL' : 'DEMO PREMIERE')}
           </span>
           <span className="inline-flex items-center gap-1 rounded bg-amber-500/20 border border-amber-400/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
-            #{index + 1} {language === 'sw' ? 'INAYOVUMA LEO' : 'IN KENYA & DIASPORA'}
+            #{index + 1} {language === 'sw' ? 'INAYOVUMA NCHINI KENYA' : 'TRENDING IN KENYA'}
           </span>
+          {video.episode && (
+            <span className="rounded border border-red-500/40 bg-red-950/60 px-2 py-0.5 text-[10px] font-bold text-red-200">
+              {language === 'sw' ? `Kipindi cha ${video.episode}` : `Ep ${video.episode}`}
+            </span>
+          )}
           <span className="rounded border border-white/25 bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200">
             {video.contentRating || 'PG'}
           </span>
@@ -287,16 +305,21 @@ export default function LandingHero({
         </div>
 
         <p className="cinema-eyebrow">
-          {real ? video.author || 'TubeTV Studios' : language === 'sw' ? 'Orodha ya majaribio' : 'Demo catalogue'} ·{' '}
-          {video.genre || video.category}
+          {isMicro
+            ? language === 'sw'
+              ? 'Mfululizo Asili wa Kenya · Drama Fupi'
+              : 'Kenyan Original · Micro Drama Series'
+            : (real ? video.author || 'TubeTV Studios' : language === 'sw' ? 'Orodha ya majaribio' : 'Demo catalogue') +
+              ` · ${video.genre || video.category}`}
         </p>
         <h1>{video.seriesTitle || video.title}</h1>
         <p className="landing-hero-synopsis">
           {video.seriesSynopsis ||
+            video.episodeSynopsis ||
             video.description ||
             (language === 'sw'
-              ? 'Hadithi za kweli za Kenya. Tazama sekunde 30 bure au fungua filamu kamili kwa pasi ya TubeTV.'
-              : 'Real stories. Bigger tomorrows. Stream the first 30 seconds free or unlock unlimited cinema with a TubeTV Pass.')}
+              ? 'Hadithi za kusisimua za Kenya. Tazama sekunde 30 bure au fungua mfululizo kamili kwa pasi ya TubeTV.'
+              : 'Fast-paced Kenyan micro-dramas. Stream free previews or unlock the entire story with a TubeTV Pass.')}
         </p>
 
         {/* 3-Action Conversion Bar */}
@@ -305,9 +328,11 @@ export default function LandingHero({
             <Play size={16} fill="currentColor" />
             {video.episode
               ? language === 'sw'
-                ? `Tazama Kipindi ${video.episode}`
-                : `Stream Episode ${video.episode}`
-              : t('hero.watchNow')}
+                ? `Tazama Kipindi cha ${video.episode}`
+                : `Watch Episode ${video.episode}`
+              : isMicro
+                ? (language === 'sw' ? 'Tazama Kipindi cha 1' : 'Watch Episode 1')
+                : t('hero.watchNow')}
           </button>
           <button
             type="button"
@@ -315,7 +340,7 @@ export default function LandingHero({
             onClick={onMoreInfo || onPlay}
           >
             <Info size={16} />
-            {language === 'sw' ? 'Maelezo & Pendekezo' : 'More Info & Similar'}
+            {language === 'sw' ? 'Maelezo & Vipindi' : 'Episodes & Info'}
           </button>
           <button type="button" className="cinema-secondary" onClick={onSave}>
             {saved ? <Check size={16} /> : <Plus size={16} />}
@@ -328,7 +353,7 @@ export default function LandingHero({
             <button
               type="button"
               className="landing-hero-arrow"
-              aria-label="Previous featured movie"
+              aria-label="Previous featured title"
               onClick={() => onSelect((index - 1 + count) % count)}
             >
               ‹
@@ -345,7 +370,7 @@ export default function LandingHero({
             <button
               type="button"
               className="landing-hero-arrow"
-              aria-label="Next featured movie"
+              aria-label="Next featured title"
               onClick={() => onSelect((index + 1) % count)}
             >
               ›
@@ -378,8 +403,13 @@ export default function LandingHero({
                 }`}
                 title={item.seriesTitle || item.title}
               >
-                <CatalogueArtwork src={item.thumbnail} className="w-full h-full object-cover" />
+                <CatalogueArtwork src={item.seriesPosterUrl || item.thumbnail} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+                {item.episode && (
+                  <span className="absolute top-1 left-1 rounded bg-red-600/90 px-1 py-0.5 text-[8px] font-extrabold uppercase text-white shadow">
+                    Ep {item.episode}
+                  </span>
+                )}
                 <span className="absolute bottom-1.5 left-1.5 right-1.5 text-[9px] font-bold text-white truncate">
                   {item.seriesTitle || item.title}
                 </span>
