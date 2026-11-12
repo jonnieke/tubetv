@@ -13,11 +13,15 @@ import CatalogueArtwork from './components/CatalogueArtwork';
 import BrowseIntro from './components/BrowseIntro';
 import CatalogueEmptyState from './components/CatalogueEmptyState';
 import ShortsShelf from './components/ShortsShelf';
+import PWAInstallBanner from './components/PWAInstallBanner';
+import PushNotificationPrompt from './components/PushNotificationPrompt';
 import { ViewState, Video, NavItem, ViewStateOrString } from './types';
 import { CONTENT_RATING_ENFORCED, MOCK_VIDEOS, MOCK_SHORTS } from './constants';
 import {
   X,
   Loader2,
+  Check,
+  Share2,
   GraduationCap,
   Sprout,
   Heart,
@@ -614,6 +618,43 @@ const App: React.FC = () => {
     setActiveHeroVideo(null);
   }, []);
 
+  const [playerShareCopied, setPlayerShareCopied] = useState(false);
+
+  const handleShareCurrentVideo = async (video: Video) => {
+    const shareUrl = `${window.location.origin}/watch/${encodeURIComponent(video.id)}`;
+    const shareTitle = video.seriesTitle || video.title;
+    const shareText = `Watch "${shareTitle}" on TubeTV: ${shareUrl}`;
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: `Watch ${video.title} on TubeTV`,
+          url: shareUrl,
+        });
+        trackEvent('video_shared', { videoId: video.id, method: 'native_share' });
+        return;
+      } catch {
+        // Fallback to clipboard
+      }
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setPlayerShareCopied(true);
+        setTimeout(() => setPlayerShareCopied(false), 2500);
+        trackEvent('video_shared', { videoId: video.id, method: 'clipboard' });
+      } catch {
+        const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+        window.open(waUrl, '_blank', 'noopener');
+      }
+    } else {
+      const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+      window.open(waUrl, '_blank', 'noopener');
+    }
+  };
+
   const handleVideoEnded = (videoId: string) => {
     // Only auto-advance modal playback, never hijack screen when an inline browse card ends
     if (!activeHeroVideo || activeHeroVideo.id !== videoId) return;
@@ -647,11 +688,28 @@ const App: React.FC = () => {
       }
 
       const match = window.location.pathname.match(/^\/watch\/([^/]+)$/);
-      if (!match) {
+      const queryVideoId = params.get('v') || params.get('watch');
+      const seriesParam = params.get('series') || params.get('drama');
+
+      let id = match ? decodeURIComponent(match[1]) : queryVideoId ? decodeURIComponent(queryVideoId) : '';
+
+      if (!id && seriesParam) {
+        const needle = decodeURIComponent(seriesParam).toLowerCase();
+        const matched = videos
+          .filter((v) =>
+            (v.seriesTitle && v.seriesTitle.toLowerCase().includes(needle)) ||
+            (v.title && v.title.toLowerCase().includes(needle))
+          )
+          .sort(compareEpisodes);
+        if (matched[0]) {
+          id = matched[0].id;
+        }
+      }
+
+      if (!id) {
         setActiveHeroVideo(null);
         return;
       }
-      const id = decodeURIComponent(match[1]);
       const video = videos.find((item) => item.id === id);
       if (video) {
         if (!isLongFormatVideo(video) && isVideoLocked(video, hasActivePass)) {
@@ -1541,7 +1599,17 @@ const App: React.FC = () => {
                 <span className="cinema-logo">
                   Tube<span>TV</span>
                 </span>
-                <span />
+                <div className="flex items-center gap-2 mr-7">
+                  <button
+                    type="button"
+                    onClick={() => handleShareCurrentVideo(activeHeroVideo)}
+                    title={language === 'sw' ? 'Shiriki kipindi hiki' : 'Share this video'}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/90 px-3 py-1 text-xs font-bold text-zinc-200 hover:border-zinc-500 hover:text-white transition-all active:scale-95 cursor-pointer"
+                  >
+                    {playerShareCopied ? <Check size={13} className="text-emerald-400" /> : <Share2 size={13} />}
+                    <span>{playerShareCopied ? (language === 'sw' ? 'Imenakiliwa!' : 'Copied!') : (language === 'sw' ? 'Shiriki' : 'Share')}</span>
+                  </button>
+                </div>
               </div>
               <button
                 type="button"
@@ -1670,6 +1738,9 @@ const App: React.FC = () => {
                       {isVideoLocked(nextEpisode(ratingFilteredVideos, activeHeroVideo.id)!, hasActivePass) ? '🔒' : ''}
                     </button>
                   )}
+                  <div className="mt-4">
+                    <PushNotificationPrompt inline seriesTitle={activeHeroVideo.seriesTitle} />
+                  </div>
                   {activeHeroVideo.transcript && (
                     <details className="mt-4 border-t border-zinc-800 pt-4">
                       <summary className="cursor-pointer font-medium">{t('player.transcript')}</summary>
@@ -1942,6 +2013,9 @@ const App: React.FC = () => {
               </button>
             )}
           </div>
+
+          {/* Smart PWA Install Banner */}
+          <PWAInstallBanner />
         </div>
       </div>
     </PlaybackProvider>

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ChevronDown, Globe, Search, Ticket, UserRound, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Globe, Search, Smartphone, Ticket, UserRound, X } from 'lucide-react';
 import { NavItem, ViewState, ViewStateOrString } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getStoredPass, type StoredPass } from '../lib/subscriptions';
 import type { TranslationKey } from '../translations';
+import { triggerPwaPrompt } from './PWAInstallBanner';
 
 interface Props {
   view: ViewStateOrString;
@@ -284,6 +285,18 @@ export default function CinemaNavigation(props: Props) {
 
           <button type="button" onClick={() => navigate(ViewState.SETTINGS)}>
             {t('nav.settings')}
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              const installed = await triggerPwaPrompt();
+              if (installed) setMore(false);
+            }}
+            className="flex items-center gap-2 text-amber-300 hover:text-amber-200 font-medium"
+          >
+            <Smartphone size={14} className="text-amber-400" />
+            <span>{language === 'sw' ? 'Sakinisha App (0 MB)' : 'Install App (0 MB)'}</span>
           </button>
 
           <button

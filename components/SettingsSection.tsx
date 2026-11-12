@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Bell,
+  BellRing,
   CheckCircle2,
   Clock,
   Coins,
@@ -40,6 +42,14 @@ import {
 import { useLanguage } from '../contexts/LanguageContext';
 import { deleteAccount, exportAccountData } from '../lib/privacy';
 import { trackEvent } from '../lib/analytics';
+import {
+  isPushSupported,
+  getPushPermissionState,
+  subscribeToPushNotifications,
+  unsubscribeFromPushNotifications,
+  type PushPermissionState,
+} from '../lib/pushNotifications';
+import { triggerPwaPrompt } from './PWAInstallBanner';
 
 export type SettingsTabId = 'general' | 'pass' | 'creator' | 'account' | 'privacy';
 
@@ -102,6 +112,36 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   const [restoreExpired, setRestoreExpired] = useState<{ phone: string; tier?: string } | null>(null);
   const [passMessage, setPassMessage] = useState('');
   const [passError, setPassError] = useState('');
+  const [pushState, setPushState] = useState<PushPermissionState>('unsupported');
+  const [pushLoading, setPushLoading] = useState(false);
+  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsStandaloneApp(
+        window.matchMedia('(display-mode: standalone)').matches ||
+          Boolean((window.navigator as unknown as { standalone?: boolean }).standalone)
+      );
+      setPushState(getPushPermissionState());
+      const onPushUpdate = () => setPushState(getPushPermissionState());
+      window.addEventListener('tubetv:push-updated', onPushUpdate);
+      return () => window.removeEventListener('tubetv:push-updated', onPushUpdate);
+    }
+  }, []);
+
+  const handleTogglePush = async () => {
+    if (pushState === 'granted') {
+      setPushLoading(true);
+      await unsubscribeFromPushNotifications();
+      setPushState(getPushPermissionState());
+      setPushLoading(false);
+    } else {
+      setPushLoading(true);
+      await subscribeToPushNotifications();
+      setPushState(getPushPermissionState());
+      setPushLoading(false);
+    }
+  };
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -464,6 +504,110 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                       <option value="en">English</option>
                       <option value="sw">Kiswahili</option>
                     </select>
+                  </div>
+
+                  {/* Push Notifications */}
+                  <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <Bell className="text-zinc-500" size={20} />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">
+                            {language === 'sw' ? 'Taarifa za vipindi vipya' : 'New episode alerts'}
+                          </p>
+                          {pushState === 'granted' && (
+                            <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 text-[10px] font-bold text-emerald-300 uppercase">
+                              {language === 'sw' ? 'Zimewashwa' : 'Active'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-zinc-400">
+                          {language === 'sw'
+                            ? 'Pokea arifa za simu papo hapo vipindi vipya na drama zinapozinduliwa.'
+                            : 'Get push notifications when new micro-dramas and episodes drop.'}
+                        </p>
+                      </div>
+                    </div>
+                    {pushState === 'unsupported' ? (
+                      <span className="text-xs text-zinc-500 italic">
+                        {language === 'sw' ? 'Haipatikani kwenye kivinjari hiki' : 'Not supported in this browser'}
+                      </span>
+                    ) : pushState === 'denied' ? (
+                      <span className="text-xs text-rose-400">
+                        {language === 'sw' ? 'Imezuiwa na kivinjari' : 'Blocked in browser settings'}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleTogglePush}
+                        disabled={pushLoading}
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
+                          pushState === 'granted'
+                            ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white'
+                            : 'bg-gradient-to-r from-red-600 to-amber-600 text-white hover:from-red-500 hover:to-amber-500 shadow-md'
+                        } disabled:opacity-50`}
+                      >
+                        {pushLoading ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : pushState === 'granted' ? (
+                          <BellRing size={13} className="text-emerald-400" />
+                        ) : (
+                          <Bell size={13} />
+                        )}
+                        <span>
+                          {pushLoading
+                            ? (language === 'sw' ? 'Inapakia...' : 'Updating...')
+                            : pushState === 'granted'
+                            ? (language === 'sw' ? 'Zima arifa' : 'Disable alerts')
+                            : (language === 'sw' ? 'Washa arifa' : 'Enable alerts')}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* TubeTV Standalone App / PWA */}
+                  <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <Smartphone className="text-zinc-500" size={20} />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">
+                            {language === 'sw' ? 'App ya TubeTV (0 MB)' : 'TubeTV App (0 MB)'}
+                          </p>
+                          {isStandaloneApp ? (
+                            <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 text-[10px] font-bold text-emerald-300 uppercase">
+                              {language === 'sw' ? 'Imesakinishwa' : 'Installed'}
+                            </span>
+                          ) : (
+                            <span className="rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.2 text-[10px] font-bold text-amber-300 uppercase">
+                              {language === 'sw' ? 'Bure' : 'Free'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-zinc-400">
+                          {language === 'sw'
+                            ? 'Sakinisha TubeTV kwenye skrini ya simu yako bila kutumia Play Store.'
+                            : 'Install TubeTV directly to your home screen for instant full-screen playback.'}
+                        </p>
+                      </div>
+                    </div>
+                    {isStandaloneApp ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                        <CheckCircle2 size={14} />
+                        {language === 'sw' ? 'Inafanya kazi kama App' : 'Running as Installed App'}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await triggerPwaPrompt();
+                        }}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20 hover:text-white transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Download size={13} />
+                        <span>{language === 'sw' ? 'Sakinisha (0 MB)' : 'Install to Home Screen'}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </section>
