@@ -9,6 +9,9 @@ export function isConstrainedConnection(connection?: NetworkInformationLike | nu
 }
 
 export function shouldSaveData(preference: boolean) {
-  const connection = (navigator as Navigator & { connection?: NetworkInformationLike }).connection;
+  const connection =
+    typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { connection?: NetworkInformationLike }).connection
+      : undefined;
   return preference || isConstrainedConnection(connection);
 }
