@@ -589,7 +589,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
       onClick={onClose}
     >
       <div
@@ -597,37 +597,37 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         role="dialog"
         aria-modal="true"
         aria-labelledby="tubetv-paywall-title"
-        className="relative w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-md my-auto max-h-[92vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={onClose}
           aria-label={t('paywall.close')}
-          className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+          className="absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white transition-colors cursor-pointer"
         >
-          <X size={16} />
+          <X size={15} />
         </button>
 
         {/* Header Banner */}
         <div
-          className={`p-6 text-center ${
+          className={`px-5 py-3.5 text-center shrink-0 ${
             isMicro
               ? 'bg-gradient-to-b from-purple-950/60 to-zinc-950'
               : 'bg-gradient-to-b from-amber-950/60 to-zinc-950'
           } border-b border-zinc-900`}
         >
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-inner mb-3">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 shadow-inner mb-2">
             {status === 'completed' ? (
-              <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
             ) : isMicro ? (
-              <Sparkles className="w-6 h-6 text-purple-400" />
+              <Sparkles className="w-5 h-5 text-purple-400" />
             ) : (
-              <Lock className="w-6 h-6 text-amber-400" />
+              <Lock className="w-5 h-5 text-amber-400" />
             )}
           </div>
 
-          <h2 id="tubetv-paywall-title" className="text-xl font-black text-white tracking-tight">
+          <h2 id="tubetv-paywall-title" className="text-lg font-black text-white tracking-tight">
             {status === 'completed'
               ? t('paywall.passActivated')
               : isMicro
@@ -635,7 +635,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                 : t('paywall.premiumPass')}
           </h2>
 
-          <p className="text-zinc-400 text-xs mt-1.5 max-w-xs mx-auto leading-relaxed">
+          <p className="text-zinc-400 text-xs mt-1 max-w-xs mx-auto leading-relaxed">
             {status === 'completed'
               ? t('paywall.confirmedResume')
               : isMicro
@@ -649,7 +649,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         </div>
 
         {status !== 'completed' && (
-          <div className="p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto px-5 py-3.5 space-y-3 no-scrollbar">
             {/* Buy vs Restore Switcher */}
             <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-zinc-900 border border-zinc-800" role="tablist">
               <button
@@ -688,13 +688,13 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
             </div>
 
             {mode === 'buy' ? (
-              <form onSubmit={handlePay} className="space-y-4">
+              <form onSubmit={handlePay} className="space-y-3">
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
                     <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400">
                       {t('paywall.choosePass')}
                     </label>
-                    <div className="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1">
+                    <div className="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-0.5">
                       <Globe size={11} className="text-emerald-400 shrink-0" />
                       <select
                         aria-label="Region and currency"
@@ -711,69 +711,69 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       </select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
                       disabled={isBusy}
                       onClick={() => setSelectedPlan('daily')}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                      className={`p-2 rounded-xl border text-left transition-all ${
                         selectedPlan === 'daily'
-                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm'
+                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50'
                           : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
                     >
-                      <span className="inline-block text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold mb-1">
+                      <span className="inline-block text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold mb-0.5">
                         24H
                       </span>
                       <div className="text-xs font-bold text-white leading-tight">{t('paywall.planDaily')}</div>
-                      <div className="text-base font-black text-white mt-0.5">
+                      <div className="text-sm font-black text-white mt-0.5">
                         {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.daily.amountKes}` : activeRegion.prices.daily}
                       </div>
-                      <div className="text-[10px] text-zinc-400 mt-0.5">{t('paywall.planDailySub')}</div>
+                      <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">{t('paywall.planDailySub')}</div>
                     </button>
 
                     <button
                       type="button"
                       disabled={isBusy}
                       onClick={() => setSelectedPlan('weekly')}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                      className={`p-2 rounded-xl border text-left transition-all ${
                         selectedPlan === 'weekly'
-                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm'
+                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50'
                           : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
                     >
-                      <span className="inline-block text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold mb-1">
+                      <span className="inline-block text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold mb-0.5">
                         POPULAR
                       </span>
                       <div className="text-xs font-bold text-white leading-tight">{t('paywall.planWeekly')}</div>
-                      <div className="text-base font-black text-white mt-0.5">
+                      <div className="text-sm font-black text-white mt-0.5">
                         {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.weekly.amountKes}` : activeRegion.prices.weekly}
                       </div>
-                      <div className="text-[10px] text-zinc-400 mt-0.5">{t('paywall.planWeeklySub')}</div>
+                      <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">{t('paywall.planWeeklySub')}</div>
                     </button>
 
                     <button
                       type="button"
                       disabled={isBusy}
                       onClick={() => setSelectedPlan('monthly')}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                      className={`p-2 rounded-xl border text-left transition-all ${
                         selectedPlan === 'monthly'
-                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm'
+                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50'
                           : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
                     >
-                      <span className="inline-block text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded font-bold mb-1">
+                      <span className="inline-block text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded font-bold mb-0.5">
                         30 DAYS
                       </span>
                       <div className="text-xs font-bold text-white leading-tight">{t('paywall.planMonthly')}</div>
-                      <div className="text-base font-black text-white mt-0.5">
+                      <div className="text-sm font-black text-white mt-0.5">
                         {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.monthly.amountKes}` : activeRegion.prices.monthly}
                       </div>
-                      <div className="text-[10px] text-zinc-400 mt-0.5">{t('paywall.planMonthlySub')}</div>
+                      <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">{t('paywall.planMonthlySub')}</div>
                     </button>
                   </div>
                   {regionCode !== 'KE' && (
-                    <p className="mt-1.5 text-[10px] text-zinc-400">
+                    <p className="mt-1 text-[10px] text-zinc-400">
                       {activeRegion.flag} {activeRegion.paymentMethodsLabel} · Settled at KSh {activePlan.amountKes} equivalent via Paystack.
                     </p>
                   )}
@@ -781,10 +781,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
                 {/* Payment Channel Selector */}
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
                     {t('paywall.paymentMethodLabel')}
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
                       disabled={isBusy}
@@ -796,7 +796,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                           input?.focus();
                         }, 50);
                       }}
-                      className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
+                      className={`p-2 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
                         paymentMethod === 'paystack'
                           ? 'bg-blue-950/40 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
                           : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
@@ -825,7 +825,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                           input?.focus();
                         }, 50);
                       }}
-                      className={`p-2.5 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
+                      className={`p-2 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
                         paymentMethod === 'mpesa'
                           ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50'
                           : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
@@ -846,13 +846,13 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                 </div>
 
                 {paymentMethod === 'paystack' ? (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div>
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center justify-between gap-2 mb-1">
                         <label htmlFor="paystack-email" className="block text-xs font-semibold text-zinc-200">
                           {t('paywall.emailLabel')}
                         </label>
-                        <span className="text-[10px] font-bold text-blue-300 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        <span className="text-[9px] font-bold text-blue-300 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
                           For Card Receipt
                         </span>
                       </div>
@@ -865,51 +865,29 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                         value={email}
                         onChange={(e) => handleEmailChange(e.target.value)}
                         disabled={isBusy}
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
                       />
-                      <p className="mt-1 text-[11px] text-zinc-400 leading-tight">
+                      <p className="mt-1 text-[10px] text-zinc-400 leading-tight">
                         {t('paywall.emailCardHint')}
                       </p>
                     </div>
 
-                    <div>
-                      <label htmlFor="paystack-phone" className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                        {t('paywall.phoneLabel')} <span className="text-zinc-500 font-normal">(optional)</span>
-                      </label>
-                      <div className="relative">
-                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-emerald-400">
-                          <Smartphone size={16} />
-                        </div>
-                        <input
-                          id="paystack-phone"
-                          type="tel"
-                          inputMode="tel"
-                          autoComplete="tel"
-                          placeholder="0712 345 678"
-                          value={phone}
-                          onChange={(e) => handlePhoneChange(e.target.value)}
-                          disabled={isBusy}
-                          className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-blue-500/25 bg-blue-950/20 p-2.5 space-y-1.5">
+                    <div className="rounded-xl border border-blue-500/25 bg-blue-950/20 p-2 space-y-1">
                       <p className="text-[11px] text-zinc-300 flex items-start gap-1.5 leading-snug">
                         <ShieldCheck size={14} className="text-blue-400 shrink-0 mt-0.5" />
                         <span>{t('paywall.paystackHint')}</span>
                       </p>
-                      <div className="flex items-center gap-1.5 pt-0.5 text-[10px] font-bold text-zinc-400">
-                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-200">VISA</span>
-                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-200">Mastercard</span>
-                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-200">Amex</span>
-                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-200">Apple Pay</span>
+                      <div className="flex items-center gap-1.5 pt-0.5 text-[9px] font-bold text-zinc-400">
+                        <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">VISA</span>
+                        <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">Mastercard</span>
+                        <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">Amex</span>
+                        <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">Apple Pay</span>
                       </div>
                     </div>
                   </div>
                 ) : (
                   <div>
-                    <label htmlFor="mpesa-buy-phone" className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    <label htmlFor="mpesa-buy-phone" className="block text-xs font-semibold text-zinc-300 mb-1">
                       {t('paywall.phoneLabel')}
                     </label>
                     <div className="relative">
@@ -926,16 +904,16 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                         value={phone}
                         onChange={(e) => handlePhoneChange(e.target.value)}
                         disabled={isBusy}
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
                       />
                     </div>
-                    <p className="text-[11px] text-zinc-500 mt-1.5 flex items-center gap-1">
+                    <p className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1">
                       <ShieldCheck size={12} className="text-emerald-400 shrink-0" />
                       <span>{t('paywall.promptHint')}</span>
                     </p>
 
                     {selectedPlan === 'monthly' && (
-                      <div className="mt-3 p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 transition-all">
+                      <div className="mt-2.5 p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 transition-all">
                         <label className="flex items-start gap-2.5 cursor-pointer select-none">
                           <input
                             type="checkbox"
@@ -948,7 +926,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                             <div className="text-xs font-bold text-white flex items-center gap-1.5">
                               <span>{t('paywall.autoRenewLabel')}</span>
                             </div>
-                            <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
+                            <p className="text-[10px] text-zinc-400 mt-0.5 leading-snug">
                               {t('paywall.autoRenewHint')}
                             </p>
                           </div>
@@ -1011,7 +989,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                 <button
                   type="submit"
                   disabled={isBusy}
-                  className={`w-full py-3.5 rounded-xl ${
+                  className={`w-full py-3 rounded-xl ${
                     paymentMethod === 'paystack'
                       ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-950/50'
                       : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-950/50'
@@ -1180,7 +1158,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                 <button
                   type="submit"
                   disabled={isBusy || !phone.trim()}
-                  className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-950/50"
+                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-950/50 cursor-pointer"
                 >
                   {status === 'restoring' ? (
                     <>
