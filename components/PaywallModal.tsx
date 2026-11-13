@@ -39,7 +39,7 @@ import { trackEvent } from '../lib/analytics';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface PaywallModalProps {
-  video: Video;
+  video?: Video | null;
   onSuccess: () => void;
   onClose: () => void;
 }
@@ -113,9 +113,11 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isMicro = isMicroDrama(video) || video.category === 'Micro Dramas' || video.seriesFormat === 'micro-drama';
-  const showTitle = video.seriesTitle || video.title;
-  const episodeNumber = video.episode || 3;
+  const isMicro = Boolean(
+    video && (isMicroDrama(video) || video.category === 'Micro Dramas' || video.seriesFormat === 'micro-drama')
+  );
+  const showTitle = video ? (video.seriesTitle || video.title) : 'TubeTV Unlimited Pass';
+  const episodeNumber = video?.episode || 1;
 
   const handlePhoneChange = (val: string) => {
     setPhone(val);
@@ -154,14 +156,14 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
   useEffect(() => {
     trackEvent('paywall_view', {
-      videoId: video.id,
-      category: video.category,
+      videoId: video?.id || 'pass_direct',
+      category: video?.category || 'Pass',
       isMicroDrama: isMicro,
     });
     return () => {
       clearTimers();
     };
-  }, [video.id, video.category, isMicro]);
+  }, [video?.id, video?.category, isMicro]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -225,8 +227,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     setPaystackAuthUrl('');
 
     trackEvent('paywall_initiated', {
-      videoId: video.id,
-      category: video.category,
+      videoId: video?.id || 'pass_direct',
+      category: video?.category || 'Pass',
       isMicroDrama: isMicro,
       plan: selectedPlan,
       channel: 'paystack',
@@ -249,8 +251,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         try { localStorage.setItem('tubetv_user_email', cleanEmail); } catch {}
       }
       try {
-        localStorage.setItem('tubetv_last_watched_video_id', video.id);
-        sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+        if (video?.id) {
+          localStorage.setItem('tubetv_last_watched_video_id', video.id);
+          sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+        }
       } catch {}
       const result = await startPaystackPayment(selectedPlan, {
         email: cleanEmail || undefined,
@@ -299,8 +303,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       // Immediately navigate to the secure Paystack checkout page where the credit card form is hosted!
       if (!inlineOpened && result.authorizationUrl) {
         try {
-          localStorage.setItem('tubetv_last_watched_video_id', video.id);
-          sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+          if (video?.id) {
+            localStorage.setItem('tubetv_last_watched_video_id', video.id);
+            sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+          }
         } catch {}
         window.location.href = result.authorizationUrl;
         return;
@@ -321,7 +327,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
             clearTimers();
             setStatus('completed');
             trackEvent('paywall_completed', {
-              videoId: video.id,
+              videoId: video?.id || 'pass_direct',
               plan: selectedPlan,
               channel: 'paystack',
             });
@@ -338,7 +344,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
               poll.transaction.result_description || 'Payment was declined or cancelled. You were not charged.',
             );
             trackEvent('paywall_failed', {
-              videoId: video.id,
+              videoId: video?.id || 'pass_direct',
               plan: selectedPlan,
               channel: 'paystack',
               reason: 'declined',
@@ -356,7 +362,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
             'Payment verification timed out. If you received a confirmation SMS or debit, click "Restore Pass" to activate immediately.',
           );
           trackEvent('paywall_failed', {
-            videoId: video.id,
+            videoId: video?.id || 'pass_direct',
             plan: selectedPlan,
             channel: 'paystack',
             reason: 'poll_timeout',
@@ -372,7 +378,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       setStatus('error');
       setErrorMessage(message);
       trackEvent('paywall_failed', {
-        videoId: video.id,
+        videoId: video?.id || 'pass_direct',
         plan: selectedPlan,
         channel: 'paystack',
         reason: 'initiation_error',
@@ -389,8 +395,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
     try {
       localStorage.setItem('tubetv_user_phone', cleanPhone);
-      localStorage.setItem('tubetv_last_watched_video_id', video.id);
-      sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+      if (video?.id) {
+        localStorage.setItem('tubetv_last_watched_video_id', video.id);
+        sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+      }
     } catch {}
 
     clearTimers();
@@ -399,8 +407,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
     const isAutoRenew = autoRenewWithMpesa && selectedPlan === 'monthly';
     trackEvent('paywall_initiated', {
-      videoId: video.id,
-      category: video.category,
+      videoId: video?.id || 'pass_direct',
+      category: video?.category || 'Pass',
       isMicroDrama: isMicro,
       plan: selectedPlan,
       channel: isAutoRenew ? 'mpesa_ratiba' : 'mpesa_stk',
@@ -432,7 +440,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
             clearTimers();
             setStatus('completed');
             trackEvent('paywall_completed', {
-              videoId: video.id,
+              videoId: video?.id || 'pass_direct',
               plan: selectedPlan,
               channel: 'mpesa_stk',
             });
@@ -449,7 +457,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
               poll.transaction.result_description || 'M-Pesa payment was cancelled or declined. You were not charged.',
             );
             trackEvent('paywall_failed', {
-              videoId: video.id,
+              videoId: video?.id || 'pass_direct',
               plan: selectedPlan,
               channel: 'mpesa_stk',
               reason: txStatus,
@@ -467,7 +475,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
             'Still waiting for M-Pesa confirmation. If you entered your PIN and received an M-Pesa SMS receipt, use "Restore Pass" above to activate immediately.',
           );
           trackEvent('paywall_failed', {
-            videoId: video.id,
+            videoId: video?.id || 'pass_direct',
             plan: selectedPlan,
             channel: 'mpesa_stk',
             reason: 'poll_timeout',
@@ -483,7 +491,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       setStatus('error');
       setErrorMessage(message);
       trackEvent('paywall_failed', {
-        videoId: video.id,
+        videoId: video?.id || 'pass_direct',
         plan: selectedPlan,
         channel: 'mpesa_stk',
         reason: 'initiation_error',
@@ -545,7 +553,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
       setStatus('completed');
       trackEvent('pass_restored', {
-        videoId: video.id,
+        videoId: video?.id || 'pass_direct',
         tier: result.pass.tier,
       });
       completeTimerRef.current = setTimeout(() => {
@@ -632,7 +640,11 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
               ? t('paywall.confirmedResume')
               : isMicro
                 ? t('paywall.microPitch', { title: showTitle, episode: episodeNumber })
-                : t('paywall.moviePitch', { title: showTitle })}
+                : video
+                  ? t('paywall.moviePitch', { title: showTitle })
+                  : language === 'sw'
+                    ? 'Pata pasi ya TubeTV kwa utazamaji usio na kikomo wa filamu, tamthilia fupi, na vipindi vyote vya Kenya.'
+                    : 'Get unlimited access to all premium Kenyan movies, series, and cliffhangers across TubeTV.'}
           </p>
         </div>
 

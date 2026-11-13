@@ -17,6 +17,7 @@ interface Props {
   navigate: (view: ViewStateOrString, category?: string) => void;
   login: () => void;
   logout: () => void;
+  onOpenBuyPass?: () => void;
 }
 
 export default function CinemaNavigation(props: Props) {
@@ -104,7 +105,13 @@ export default function CinemaNavigation(props: Props) {
           <button
             type="button"
             aria-current={props.view === ViewState.SETTINGS && props.subcategory === 'pass' ? 'page' : undefined}
-            onClick={() => navigate(ViewState.SETTINGS, 'pass')}
+            onClick={() => {
+              if (!activePass && props.onOpenBuyPass) {
+                props.onOpenBuyPass();
+              } else {
+                navigate(ViewState.SETTINGS, 'pass');
+              }
+            }}
             title="TubeTV Pass — From KSh 10"
             className="flex items-center gap-1.5 font-bold text-amber-400 hover:text-amber-300 transition-colors"
           >
@@ -148,7 +155,13 @@ export default function CinemaNavigation(props: Props) {
           ) : (
             <button
               type="button"
-              onClick={() => navigate(ViewState.SETTINGS, 'pass')}
+              onClick={() => {
+                if (props.onOpenBuyPass) {
+                  props.onOpenBuyPass();
+                } else {
+                  navigate(ViewState.SETTINGS, 'pass');
+                }
+              }}
               title="Get or restore your TubeTV Pass from KSh 10"
               className="relative inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs px-3.5 py-1.5 shadow-lg shadow-red-950/60 border border-amber-400/50 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
             >
@@ -221,13 +234,25 @@ export default function CinemaNavigation(props: Props) {
 
           {/* Featured TubeTV Pass Hero Card */}
           <div
-            onClick={() => navigate(ViewState.SETTINGS, 'pass')}
+            onClick={() => {
+              if (!activePass && props.onOpenBuyPass) {
+                setMore(false);
+                props.onOpenBuyPass();
+              } else {
+                navigate(ViewState.SETTINGS, 'pass');
+              }
+            }}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                navigate(ViewState.SETTINGS, 'pass');
+                if (!activePass && props.onOpenBuyPass) {
+                  setMore(false);
+                  props.onOpenBuyPass();
+                } else {
+                  navigate(ViewState.SETTINGS, 'pass');
+                }
               }
             }}
             className="group relative cursor-pointer overflow-hidden rounded-xl border border-red-500/50 bg-gradient-to-br from-red-950/80 via-zinc-900 to-amber-950/50 p-3.5 shadow-xl shadow-black/80 transition-all hover:border-amber-400/80 hover:shadow-red-950/60 hover:brightness-110 active:scale-[0.99] mb-1"

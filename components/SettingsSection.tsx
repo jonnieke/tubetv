@@ -63,6 +63,7 @@ interface SettingsSectionProps {
   onLocalDataCleared?: () => void;
   preferences: PlaybackPreferences;
   onPreferencesChange: (preferences: PlaybackPreferences) => void;
+  onOpenBuyPass?: () => void;
 }
 
 const SettingsSection: React.FC<SettingsSectionProps> = ({
@@ -75,6 +76,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   initialCreatorCode = '',
   videos = [],
   onPreferencesChange,
+  onOpenBuyPass,
 }) => {
   const { language, setLanguage, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<SettingsTabId>(
@@ -628,9 +630,21 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
 
                 {storedPass ? (
                   <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/25 p-5 space-y-3">
-                    <div className="flex items-center gap-2 text-emerald-400 font-bold">
-                      <CheckCircle2 size={18} />
-                      <span>Active {storedPass.tier.toUpperCase()} Pass</span>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                        <CheckCircle2 size={18} />
+                        <span>Active {storedPass.tier.toUpperCase()} Pass</span>
+                      </div>
+                      {onOpenBuyPass && (
+                        <button
+                          type="button"
+                          onClick={onOpenBuyPass}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/50 bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-500/25 transition-colors cursor-pointer"
+                        >
+                          <Ticket size={13} />
+                          <span>{language === 'sw' ? 'Ongeza Muda' : 'Extend / Top Up'}</span>
+                        </button>
+                      )}
                     </div>
                     <p className="text-sm text-zinc-300">
                       Valid until{' '}
@@ -651,9 +665,31 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 text-sm text-zinc-400">
-                    No active M-Pesa pass is saved on this browser right now. Select any locked episode to purchase a
-                    24-Hour (KSh 10), Weekly (KSh 50), or Monthly (KSh 149) pass, or restore an existing pass below.
+                  <div className="rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-zinc-900 to-zinc-950 p-5 space-y-3.5 shadow-lg shadow-black/40">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-amber-400 font-bold">
+                        <Ticket size={20} />
+                        <span>{language === 'sw' ? 'Nunua Pasi ya TubeTV' : 'Get a TubeTV Pass'}</span>
+                      </div>
+                      <span className="text-xs font-black text-amber-300 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                        From KSh 10
+                      </span>
+                    </div>
+                    <p className="text-sm text-zinc-300 leading-relaxed">
+                      {language === 'sw'
+                        ? 'Tazama filamu, tamthilia fupi, na vipindi vyote bila kikomo. Chagua pasi ya Masaa 24 (KSh 10), Wiki (KSh 50), au Mwezi (KSh 149). Lipa papo hapo kwa Safaricom M-Pesa STK Push au Kadi ya Benki.'
+                        : 'Unlock all premium Kenyan movies, series, and cliffhangers. Choose 24-Hour (KSh 10), Weekly (KSh 50), or Monthly (KSh 149). Pay instantly via Safaricom M-Pesa STK Push or Debit / Credit Card.'}
+                    </p>
+                    {onOpenBuyPass && (
+                      <button
+                        type="button"
+                        onClick={onOpenBuyPass}
+                        className="cinema-primary w-full sm:w-auto px-6 py-2.5 font-bold flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-950/50"
+                      >
+                        <Ticket size={16} />
+                        <span>{language === 'sw' ? 'Nunua Pasi Sasa (KSh 10)' : 'Buy Pass Now (From KSh 10)'}</span>
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -663,7 +699,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                     <h3>{t('paywall.tabRestore')}</h3>
                   </div>
                   <p className="text-xs text-zinc-400">
-                    Enter the phone number you paid with to restore your pass on this device (1 active device at a time).
+                    {language === 'sw'
+                      ? 'Ulipia tayari kwenye simu au kifaa kingine? Weka nambari ya simu uliyolipia ili kurejesha pasi yako hapa.'
+                      : 'Already paid on another phone or device? Enter the phone number you paid with to restore your pass on this device (1 active device at a time).'}
                   </p>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>

@@ -292,6 +292,7 @@ const App: React.FC = () => {
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
   const [hasActivePass, setHasActivePass] = useState<boolean>(() => Boolean(getStoredPass()));
   const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
+  const [showBuyPassModal, setShowBuyPassModal] = useState<boolean>(false);
   const [deviceSwitchedNotice, setDeviceSwitchedNotice] = useState<{ phone?: string; tier?: string } | null>(null);
   const [reclaimingPass, setReclaimingPass] = useState(false);
   const [expiringSoonMinutes, setExpiringSoonMinutes] = useState<number | null>(null);
@@ -1032,6 +1033,7 @@ const App: React.FC = () => {
             }}
             preferences={preferences}
             onPreferencesChange={handlePreferencesChange}
+            onOpenBuyPass={() => setShowBuyPassModal(true)}
           />
         );
       case ViewState.UPLOAD:
@@ -1624,7 +1626,7 @@ const App: React.FC = () => {
           </Suspense>
         )}
 
-        {paywallVideo && (
+        {(paywallVideo || showBuyPassModal) && (
           <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
             <PaywallModal
               video={paywallVideo}
@@ -1635,6 +1637,7 @@ const App: React.FC = () => {
                   localStorage.getItem('tubetv_last_watched_video_id');
                 const target = paywallVideo || (returnId ? videos.find((v) => v.id === returnId) : null);
                 setPaywallVideo(null);
+                setShowBuyPassModal(false);
                 setHasActivePass(true);
                 if (target) {
                   window.history.pushState({}, '', videoPath(target.id));
@@ -1647,7 +1650,10 @@ const App: React.FC = () => {
                   }
                 });
               }}
-              onClose={() => setPaywallVideo(null)}
+              onClose={() => {
+                setPaywallVideo(null);
+                setShowBuyPassModal(false);
+              }}
             />
           </Suspense>
         )}
@@ -1927,6 +1933,7 @@ const App: React.FC = () => {
             navigate={handleNavigate}
             login={() => setShowLogin(true)}
             logout={handleLogout}
+            onOpenBuyPass={() => setShowBuyPassModal(true)}
           />
 
           {deviceSwitchedNotice && (
