@@ -132,6 +132,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClickTimeRef = useRef<number>(0);
   const lastProgressSaveRef = useRef(0);
   const startAtRef = useRef(performance.now());
@@ -741,10 +742,17 @@ const VideoCard: React.FC<VideoCardProps> = ({
         } else if (typeof videoEl.webkitEnterFullscreen === 'function') {
           videoEl.webkitEnterFullscreen();
         }
-      } else if (document.exitFullscreen) {
-        await document.exitFullscreen();
-      } else if (doc.webkitExitFullscreen) {
-        await doc.webkitExitFullscreen();
+        const isVertical = video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas';
+        if (!isVertical) {
+          (screen.orientation as { lock?: (o: string) => Promise<void> } | undefined)?.lock?.('landscape')?.catch?.(() => {});
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        }
+        (screen.orientation as { unlock?: () => void } | undefined)?.unlock?.();
       }
     } catch (error) {
       console.error('Fullscreen toggle failed:', error);
@@ -764,30 +772,36 @@ const VideoCard: React.FC<VideoCardProps> = ({
     }
 
     const now = Date.now();
-    if (now - lastClickTimeRef.current < 300) {
+    if (now - lastClickTimeRef.current < 280) {
       lastClickTimeRef.current = 0;
-      if (!isPlaying) {
-        togglePlay(e);
-      } else {
-        void toggleFullScreen();
+      if (videoClickTimerRef.current) {
+        clearTimeout(videoClickTimerRef.current);
+        videoClickTimerRef.current = null;
       }
+      void toggleFullScreen();
       return;
     }
     lastClickTimeRef.current = now;
 
-    // On touch screens, if controls are hidden while playing, tap reveals controls first
-    const isCoarsePointer = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
-    if (isCoarsePointer && isPlaying && !controlsVisible) {
-      bumpControlsVisibility();
-      return;
+    if (videoClickTimerRef.current) {
+      clearTimeout(videoClickTimerRef.current);
     }
+    videoClickTimerRef.current = setTimeout(() => {
+      videoClickTimerRef.current = null;
+      // On touch screens, if controls are hidden while playing, tap reveals controls first
+      const isCoarsePointer = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+      if (isCoarsePointer && isPlaying && !controlsVisible) {
+        bumpControlsVisibility();
+        return;
+      }
 
-    if (!isPlaying) {
-      togglePlay(e);
-      return;
-    }
+      if (!isPlaying) {
+        togglePlay(e);
+        return;
+      }
 
-    setIsPlaying(false);
+      setIsPlaying(false);
+    }, 230);
   };
 
   const saveCurrentProgress = (completedOverride?: boolean) => {
@@ -963,7 +977,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       ref={containerRef}
       onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : undefined}
       onDoubleClick={!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined}
-      className={`group relative overflow-hidden ${playerOnly ? '' : 'catalogue-video-card cursor-pointer'}`}
+      className={`video-card-root group relative overflow-hidden ${playerOnly ? '' : 'catalogue-video-card cursor-pointer'}`}
       onMouseEnter={() => setIsHovering(true)}
       onMouseMove={() => {
         if (isHovering && isPlaying) bumpControlsVisibility();
@@ -995,7 +1009,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       }}
     >
       <div
-        className={`relative ${
+        className={`video-stage-frame relative ${
           video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas' ? 'aspect-[9/16]' : 'aspect-video'
         } bg-black overflow-hidden`}
       >
