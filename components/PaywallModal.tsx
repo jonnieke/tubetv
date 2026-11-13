@@ -135,6 +135,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   );
   const showTitle = video ? (video.seriesTitle || video.title) : 'TubeTV Unlimited Pass';
   const episodeNumber = video?.episode || 1;
+  const isEpisodicCliffhanger =
+    isMicro || Boolean(video?.episode && video.episode > (video.freeEpisodes ?? 2));
 
   const currentTier = (activePass?.tier || '').toLowerCase();
   const currentTierRank = TIER_RANKS[currentTier] || 0;
@@ -741,7 +743,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
           <h2 id="tubetv-paywall-title" className="text-lg font-black text-white tracking-tight">
             {status === 'completed'
               ? t('paywall.passActivated')
-              : isMicro
+              : isEpisodicCliffhanger
                 ? t('paywall.cliffhangerLocked', { episode: episodeNumber })
                 : t('paywall.premiumPass')}
           </h2>
@@ -749,7 +751,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
           <p className="text-zinc-400 text-xs mt-1 max-w-xs mx-auto leading-relaxed">
             {status === 'completed'
               ? t('paywall.confirmedResume')
-              : isMicro
+              : isEpisodicCliffhanger
                 ? t('paywall.microPitch', { title: showTitle, episode: episodeNumber })
                 : video
                   ? t('paywall.moviePitch', { title: showTitle })

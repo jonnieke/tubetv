@@ -1128,7 +1128,11 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 {canSkipOutro && (
                   <button
                     type="button"
-                    className="rounded-md border border-white/50 bg-black/80 px-3 py-2 text-xs font-semibold text-white hover:bg-black focus-visible:outline-2 focus-visible:outline-red-500"
+                    className={`rounded-md border px-3 py-2 text-xs font-semibold text-white focus-visible:outline-2 focus-visible:outline-red-500 ${
+                      nextEpisode && onNextEpisode && isLocked?.(nextEpisode)
+                        ? 'border-emerald-400/70 bg-emerald-950/90 hover:bg-emerald-900'
+                        : 'border-white/50 bg-black/80 hover:bg-black'
+                    }`}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (nextEpisode && onNextEpisode) {
@@ -1145,7 +1149,11 @@ const VideoCard: React.FC<VideoCardProps> = ({
                       }
                     }}
                   >
-                    {nextEpisode && onNextEpisode ? 'Play next episode' : 'Skip outro'}
+                    {nextEpisode && onNextEpisode
+                      ? isLocked?.(nextEpisode)
+                        ? `Unlock Ep ${nextEpisode.episode || 'next'} • KSh 10`
+                        : 'Play next episode'
+                      : 'Skip outro'}
                   </button>
                 )}
               </div>
