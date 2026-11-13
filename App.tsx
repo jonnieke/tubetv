@@ -82,6 +82,7 @@ import {
   fetchActiveSubscription,
   getRememberedPhone,
   getStoredPass,
+  resolveAuthorizedPlaybackUrl,
   restorePassByPhone,
   restorePaystackPass,
 } from './lib/subscriptions';
