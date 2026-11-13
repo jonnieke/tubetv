@@ -24,6 +24,16 @@ export function videoStructuredData(video: Video) {
     url: `${SITE_URL}${videoPath(video.id)}`,
     isFamilyFriendly: video.contentRating === 'GE' || video.contentRating === 'PG',
     inLanguage: ['en-KE', 'sw-KE'],
+    ...(video.genre || video.category ? { genre: video.genre || video.category } : {}),
+    ...(video.transcript ? { transcript: video.transcript.slice(0, 600) } : {}),
+    ...(video.seriesTitle
+      ? {
+          partOfSeries: {
+            '@type': 'TVSeries',
+            name: video.seriesTitle,
+          },
+        }
+      : {}),
     publisher: {
       '@type': 'Organization',
       name: 'TubeTV',

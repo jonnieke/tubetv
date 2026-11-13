@@ -15,7 +15,8 @@ export type AnalyticsEventName =
   | 'checkout_submitted'
   | 'subscription_activated'
   | 'checkout_failed'
-  | 'qualified_view';
+  | 'qualified_view'
+  | 'video_shared';
 
 type EventProperties = Record<string, string | number | boolean | undefined>;
 

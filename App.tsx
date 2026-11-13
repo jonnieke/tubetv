@@ -662,7 +662,7 @@ const App: React.FC = () => {
   const handleShareCurrentVideo = async (video: Video) => {
     const shareUrl = `${window.location.origin}/watch/${encodeURIComponent(video.id)}`;
     const shareTitle = video.seriesTitle || video.title;
-    const shareText = `Watch "${shareTitle}" on TubeTV: ${shareUrl}`;
+    const shareText = `Watch "${shareTitle}" on TubeTV (Ep 1 & 2 free): ${shareUrl}`;
 
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
@@ -694,6 +694,14 @@ const App: React.FC = () => {
     }
   };
 
+  const handleWhatsAppShareCurrentVideo = (video: Video) => {
+    const shareUrl = `${window.location.origin}/watch/${encodeURIComponent(video.id)}`;
+    const shareTitle = video.seriesTitle || video.title;
+    const shareText = `Watch "${shareTitle}" on TubeTV (Ep 1 & 2 free): ${shareUrl}`;
+    trackEvent('video_shared', { videoId: video.id, method: 'whatsapp' });
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener');
+  };
+
   const handleVideoEnded = (videoId: string) => {
     // Only auto-advance modal playback, never hijack screen when an inline browse card ends
     if (!activeHeroVideo || activeHeroVideo.id !== videoId) return;
@@ -709,6 +717,19 @@ const App: React.FC = () => {
       }
     }
   };
+
+  // Preload the next unlocked episode's artwork & signed playback URL for instant binge transitions.
+  useEffect(() => {
+    if (!activeHeroVideo || shouldSaveData(preferences.dataSaver)) return;
+    const upcoming = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
+    if (!upcoming || isVideoLocked(upcoming, hasActivePass)) return;
+    if (upcoming.thumbnail && typeof Image !== 'undefined') {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = upcoming.thumbnail;
+    }
+    void resolveAuthorizedPlaybackUrl(upcoming).catch(() => {});
+  }, [activeHeroVideo, ratingFilteredVideos, hasActivePass, preferences.dataSaver]);
 
   const playerRecommendations = useMemo(() => {
     if (!activeHeroVideo) return [];
@@ -1703,6 +1724,15 @@ const App: React.FC = () => {
                   Tube<span>TV</span>
                 </span>
                 <div className="flex items-center gap-2 mr-7">
+                  <button
+                    type="button"
+                    onClick={() => handleWhatsAppShareCurrentVideo(activeHeroVideo)}
+                    title={language === 'sw' ? 'Shiriki kwenye WhatsApp' : 'Share on WhatsApp'}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-950/60 px-3 py-1 text-xs font-bold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Share2 size={13} />
+                    <span>WhatsApp</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleShareCurrentVideo(activeHeroVideo)}
