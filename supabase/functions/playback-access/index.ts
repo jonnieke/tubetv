@@ -13,12 +13,11 @@ function getTag(tags: Array<{ property?: string; value?: string }>, name: string
 
 function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; value?: string }>; title?: unknown }): boolean {
   const tags = Array.isArray(item.metaTags) ? item.metaTags : [];
-  const seriesFormat = getTag(tags, "seriesformat").toLowerCase();
   const category = getTag(tags, "category").toLowerCase();
-  const isMicroDrama = seriesFormat === "micro-drama" || category === "micro dramas";
+  const isShort = category === "shorts" || getTag(tags, "isshort").toLowerCase() === "true";
 
-  // Long-format videos allow a 30-second preview before triggering the paywall in the player
-  if (!isMicroDrama) {
+  // Shorts are free by default
+  if (isShort) {
     return false;
   }
 
@@ -34,15 +33,18 @@ function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; val
       ? Number(titleMatch[1])
       : undefined;
 
-  // Enforced: Micro-drama triggers immediate paywall after episode 2 (episode 3+)
+  // Enforced: Episodic content triggers paywall after episode 2 (episode 3+)
   if (episodeNum !== undefined && episodeNum > 0) {
     return episodeNum > freeCount;
   }
 
   const accessTier = getTag(tags, "accesstier").toLowerCase();
-  if (accessTier === "free") return false;
+  if (accessTier === "free" || getTag(tags, "ispremium").toLowerCase() === "false") {
+    return false;
+  }
 
-  return accessTier === "premium" || getTag(tags, "ispremium").toLowerCase() === "true";
+  // By default: all videos are premium except shorts and episodes 1 & 2
+  return true;
 }
 
 async function hasValidEntitlement(req: Request): Promise<boolean> {

@@ -465,17 +465,18 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
 
   const rawTier = getMeta(activeItem.metaTags, 'accessTier').toLowerCase().trim();
   const rawIsPremium = getMeta(activeItem.metaTags, 'isPremium').toLowerCase().trim();
-  const isMicro = category === 'Micro Dramas' || seriesFormat === 'micro-drama';
+  const isShort = category === 'Shorts' || activeItem.isShort === true;
 
   let isPremium: boolean;
-  if (rawTier === 'free' || rawIsPremium === 'false') {
+  if (isShort) {
+    isPremium = false;
+  } else if (rawTier === 'free' || rawIsPremium === 'false') {
     isPremium = false;
   } else if (rawTier === 'premium' || rawIsPremium === 'true') {
     isPremium = true;
   } else {
-    // Model 1: Micro Dramas are premium by default (episodes 1 & 2 free teaser, cliffhanger thereafter)
-    // Model 2: Other shows are free by default unless classified as premium
-    isPremium = isMicro;
+    // By default: all videos are premium except shorts (episodes 1 & 2 remain free teaser hooks)
+    isPremium = true;
   }
   const accessTier = isPremium ? ('premium' as const) : ('free' as const);
   const rawFreeEpisodes = getMeta(activeItem.metaTags, 'freeEpisodes');
@@ -492,6 +493,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     duration: formatDuration(activeItem.length),
     views: activeItem.views ?? 0,
     isPremium,
+    isShort,
     accessTier,
     freeEpisodes,
     author: getMeta(activeItem.metaTags, 'author') || getMeta(activeItem.metaTags, 'creator') || 'Tube Creator',

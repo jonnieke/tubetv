@@ -42,6 +42,7 @@ export interface Video {
   views: number;
   duration: string;
   isPremium: boolean;
+  isShort?: boolean;
   accessTier?: 'free' | 'premium';
   freeEpisodes?: number;
   author: string;

@@ -25,6 +25,9 @@ export function getEpisodeNumber(video: Video): number | undefined {
 }
 
 export function isContentFree(video: Video): boolean {
+  // Shorts are free by default
+  if (video.category === 'Shorts' || video.isShort) return true;
+
   const currentEpisodeNumber = getEpisodeNumber(video);
   if (currentEpisodeNumber !== undefined) {
     const freeCount = typeof video.freeEpisodes === 'number' && Number.isFinite(video.freeEpisodes)
@@ -33,9 +36,10 @@ export function isContentFree(video: Video): boolean {
     return currentEpisodeNumber <= freeCount;
   }
 
-  if (video.accessTier === 'free') return true;
-  if (video.accessTier === 'premium') return false;
-  return video.isPremium === false;
+  // Standalone non-episodic content is free only if explicitly classified as free;
+  // all other videos are premium by default.
+  if (video.accessTier === 'free' || video.isPremium === false) return true;
+  return false;
 }
 
 export function isVideoLocked(
@@ -49,6 +53,9 @@ export function isVideoLocked(
   // Unlocked specifically in this session / device
   if (unlockedVideoIds.includes(video.id)) return false;
 
+  // Shorts are free by default
+  if (video.category === 'Shorts' || video.isShort) return false;
+
   const currentEpisodeNumber = getEpisodeNumber(video);
 
   // ENFORCED: Any episodic content (Micro Dramas, Series, or episodic shorts)
@@ -61,7 +68,8 @@ export function isVideoLocked(
   }
 
   // Standalone non-episodic content (Movies, Specials):
-  if (video.accessTier === 'free') return false;
-  return video.accessTier === 'premium' || Boolean(video.isPremium);
+  // Free only if explicitly marked as free; all videos are premium by default.
+  if (video.accessTier === 'free' || video.isPremium === false) return false;
+  return true;
 }
 

@@ -82,5 +82,26 @@ describe('monetization rules', () => {
       const premiumMovie: Video = { ...baseVideo, id: 'movie-100', category: 'Movies', isPremium: true };
       expect(isVideoLocked(premiumMovie, false, ['movie-100'])).toBe(false);
     });
+
+    it('locks movies by default when not explicitly marked free', () => {
+      const defaultMovie: Video = {
+        ...baseVideo,
+        id: 'movie-default',
+        category: 'Movies',
+        isPremium: true,
+        accessTier: 'premium',
+      };
+      expect(isVideoLocked(defaultMovie, false)).toBe(true);
+      expect(isContentFree(defaultMovie)).toBe(false);
+    });
+
+    it('keeps shorts free by default', () => {
+      const shortVideoByCategory: Video = { ...baseVideo, id: 'short-1', category: 'Shorts', isPremium: false };
+      const shortVideoByProp: Video = { ...baseVideo, id: 'short-2', category: 'Shorts', isShort: true, isPremium: true };
+      expect(isVideoLocked(shortVideoByCategory, false)).toBe(false);
+      expect(isContentFree(shortVideoByCategory)).toBe(true);
+      expect(isVideoLocked(shortVideoByProp, false)).toBe(false);
+      expect(isContentFree(shortVideoByProp)).toBe(true);
+    });
   });
 });

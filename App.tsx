@@ -613,7 +613,7 @@ const App: React.FC = () => {
         localStorage.setItem('tubetv_last_watched_video_id', video.id);
       } catch {}
 
-      if (!isLongFormatVideo(video) && isVideoLocked(video, hasActivePass)) {
+      if (isVideoLocked(video, hasActivePass)) {
         setPaywallVideo(video);
         return;
       }
@@ -677,7 +677,7 @@ const App: React.FC = () => {
     if (!preferences.autoplay || shouldSaveData(preferences.dataSaver)) return;
     const nextVideo = nextEpisode(ratingFilteredVideos, videoId);
     if (nextVideo) {
-      if (!isLongFormatVideo(nextVideo) && isVideoLocked(nextVideo, hasActivePass)) {
+      if (isVideoLocked(nextVideo, hasActivePass)) {
         setPaywallVideo(nextVideo);
       } else {
         trackEvent('episode_next', { fromVideoId: videoId, toVideoId: nextVideo.id, automatic: true });
@@ -735,7 +735,7 @@ const App: React.FC = () => {
       }
       const video = videos.find((item) => item.id === id);
       if (video) {
-        if (!isLongFormatVideo(video) && isVideoLocked(video, hasActivePass)) {
+        if (isVideoLocked(video, hasActivePass)) {
           setPaywallVideo(video);
         } else {
           setActiveHeroVideo(video);
@@ -748,7 +748,7 @@ const App: React.FC = () => {
         if (active && item) {
           const directVideo = bunnyVideoToVideo(item) as Video;
           if (directVideo.muted || normalizeContentRating(directVideo.contentRating) === '18') return;
-          if (!isLongFormatVideo(directVideo) && isVideoLocked(directVideo, hasActivePass)) {
+          if (isVideoLocked(directVideo, hasActivePass)) {
             setPaywallVideo(directVideo);
           } else {
             setActiveHeroVideo(directVideo);
@@ -1580,7 +1580,7 @@ const App: React.FC = () => {
         onEnded: handleVideoEnded,
         onProgress: handleWatchProgress,
         hasActivePass,
-        isLocked: (video) => !isLongFormatVideo(video) && isVideoLocked(video, hasActivePass),
+        isLocked: (video) => isVideoLocked(video, hasActivePass),
         onRequireUnlock: (video) => setPaywallVideo(video),
         onSelectVideo: openVideo,
         onOpenSettings: () => {

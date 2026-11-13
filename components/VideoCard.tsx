@@ -249,7 +249,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (!authorizedSrc && !video.url) {
       setIsAuthorizing(true);
     }
-    const requiresEntitlement = !isLongFormatVideo(video) && isVideoLocked(video, false);
+    const requiresEntitlement = isVideoLocked(video, false);
     void resolveAuthorizedPlaybackUrl(video.id, video.url, requiresEntitlement)
       .then((res) => {
         setIsAuthorizing(false);
