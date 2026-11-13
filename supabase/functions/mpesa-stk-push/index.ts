@@ -694,6 +694,38 @@ serve(async (req) => {
     );
   }
 
+  const TIER_RANKS: Record<string, number> = { daily: 1, weekly: 2, monthly: 3 };
+  const requestedRank = TIER_RANKS[planCode] || 1;
+
+  // Check if subscriber already has an active subscription for this phone
+  const sub9 = parsedPhone.sub9;
+  const { data: existingActiveSub } = await service
+    .from("subscriptions")
+    .select("id, tier, end_date")
+    .eq("is_active", true)
+    .gt("end_date", new Date().toISOString())
+    .ilike("phone", `%${sub9}`)
+    .order("end_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingActiveSub) {
+    const existingRank = TIER_RANKS[existingActiveSub.tier?.toLowerCase()] || 1;
+    if (requestedRank <= existingRank) {
+      const expDate = existingActiveSub.end_date ? new Date(existingActiveSub.end_date).toLocaleString() : "active";
+      return jsonReply(
+        req,
+        {
+          error: `You already have an active ${existingActiveSub.tier.toUpperCase()} pass (valid until ${expDate}). You cannot subscribe to the same or lower tier. You can only upgrade to a bigger tier.`,
+          currentTier: existingActiveSub.tier,
+          activeUntil: existingActiveSub.end_date,
+        },
+        409,
+        METHODS,
+      );
+    }
+  }
+
   // Check existing idempotent request
   const { data: existing } = await service
     .from("payment_transactions")

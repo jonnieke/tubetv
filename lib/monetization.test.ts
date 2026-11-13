@@ -104,4 +104,39 @@ describe('monetization rules', () => {
       expect(isContentFree(shortVideoByProp)).toBe(true);
     });
   });
+
+  describe('Subscription Tier Hierarchy & Upgrade Rules', () => {
+    const TIER_RANKS: Record<string, number> = { daily: 1, weekly: 2, monthly: 3 };
+
+    function canSubscribeTier(activeTier: string | null, targetTier: string): boolean {
+      if (!activeTier) return true;
+      const currentRank = TIER_RANKS[activeTier.toLowerCase()] || 0;
+      const targetRank = TIER_RANKS[targetTier.toLowerCase()] || 0;
+      return targetRank > currentRank;
+    }
+
+    it('allows subscribing to any tier if user has no active pass', () => {
+      expect(canSubscribeTier(null, 'daily')).toBe(true);
+      expect(canSubscribeTier(null, 'weekly')).toBe(true);
+      expect(canSubscribeTier(null, 'monthly')).toBe(true);
+    });
+
+    it('prevents subscribing again to the same tier', () => {
+      expect(canSubscribeTier('daily', 'daily')).toBe(false);
+      expect(canSubscribeTier('weekly', 'weekly')).toBe(false);
+      expect(canSubscribeTier('monthly', 'monthly')).toBe(false);
+    });
+
+    it('prevents downgrading to a lower tier while active', () => {
+      expect(canSubscribeTier('weekly', 'daily')).toBe(false);
+      expect(canSubscribeTier('monthly', 'daily')).toBe(false);
+      expect(canSubscribeTier('monthly', 'weekly')).toBe(false);
+    });
+
+    it('allows upgrading only to a strictly higher tier', () => {
+      expect(canSubscribeTier('daily', 'weekly')).toBe(true);
+      expect(canSubscribeTier('daily', 'monthly')).toBe(true);
+      expect(canSubscribeTier('weekly', 'monthly')).toBe(true);
+    });
+  });
 });

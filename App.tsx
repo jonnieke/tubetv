@@ -324,7 +324,29 @@ const App: React.FC = () => {
   const refreshAccessState = useCallback(async () => {
     try {
       const sub = await fetchActiveSubscription(currentUser?.id);
-      setHasActivePass(Boolean(sub?.is_active));
+      if (sub?.is_active) {
+        setHasActivePass(true);
+        return;
+      }
+      const localPass = getStoredPass();
+      if (localPass) {
+        setHasActivePass(true);
+        return;
+      }
+      // If no stored signed pass on this browser instance, check if remembered phone has an active pass in ledger
+      const rememberedPhone =
+        getRememberedPhone() ||
+        (typeof window !== 'undefined' ? localStorage.getItem('tubetv_user_phone') : null);
+      if (rememberedPhone && rememberedPhone.trim()) {
+        const restoreRes = await restorePassByPhone({ phone: rememberedPhone.trim(), forceSwitch: false }).catch(
+          () => null,
+        );
+        if (restoreRes?.success && restoreRes.pass) {
+          setHasActivePass(true);
+          return;
+        }
+      }
+      setHasActivePass(Boolean(getStoredPass()));
     } catch {
       setHasActivePass(Boolean(getStoredPass()));
     }

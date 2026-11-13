@@ -34,6 +34,9 @@ import {
   fetchPaystackStatus,
   restorePaystackPass,
   restorePassByPhone,
+  getStoredPass,
+  getRememberedPhone,
+  type StoredPass,
 } from '../lib/subscriptions';
 import { trackEvent } from '../lib/analytics';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -85,8 +88,16 @@ function loadPaystackInline(): Promise<boolean> {
   });
 }
 
+const TIER_RANKS: Record<string, number> = {
+  daily: 1,
+  weekly: 2,
+  monthly: 3,
+};
+
 export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, onClose }) => {
   const { language, t } = useLanguage();
+  const [activePass, setActivePass] = useState<StoredPass | null>(() => getStoredPass());
+  const [isAutoCheckingPhone, setIsAutoCheckingPhone] = useState(false);
   const [mode, setMode] = useState<'buy' | 'restore'>('buy');
   const [regionCode, setRegionCode] = useState<RegionCode>(() => detectDefaultRegion());
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'mpesa'>('paystack');
@@ -125,12 +136,77 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const showTitle = video ? (video.seriesTitle || video.title) : 'TubeTV Unlimited Pass';
   const episodeNumber = video?.episode || 1;
 
+  const currentTier = (activePass?.tier || '').toLowerCase();
+  const currentTierRank = TIER_RANKS[currentTier] || 0;
+  const isAlreadyMaxTier = currentTierRank >= 3;
+
+  useEffect(() => {
+    if (currentTierRank === 1 && selectedPlan === 'daily') {
+      setSelectedPlan('weekly');
+    } else if (currentTierRank === 2 && (selectedPlan === 'daily' || selectedPlan === 'weekly')) {
+      setSelectedPlan('monthly');
+    }
+  }, [currentTierRank]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const local = getStoredPass();
+    if (local) {
+      setActivePass(local);
+      return;
+    }
+
+    const cleanPhone = (phone || (typeof window !== 'undefined' ? localStorage.getItem('tubetv_user_phone') : '') || '').trim();
+    if (cleanPhone) {
+      setIsAutoCheckingPhone(true);
+      restorePassByPhone({ phone: cleanPhone, forceSwitch: false })
+        .then((res) => {
+          if (!isMounted) return;
+          if (res.success && res.pass) {
+            setActivePass(res.pass);
+            if (video?.id) {
+              setStatus('completed');
+              completeTimerRef.current = setTimeout(() => {
+                onSuccess();
+              }, 700);
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (isMounted) setIsAutoCheckingPhone(false);
+        });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handlePhoneChange = (val: string) => {
     setPhone(val);
     saveRememberedPhone(val);
     try {
       localStorage.setItem('tubetv_user_phone', val);
     } catch {}
+
+    const clean = validateKenyanPhone(val);
+    if (clean && clean.length >= 9) {
+      restorePassByPhone({ phone: clean, forceSwitch: false })
+        .then((res) => {
+          if (res.success && res.pass) {
+            setActivePass(res.pass);
+            setErrorMessage('');
+            if (video?.id) {
+              setStatus('completed');
+              completeTimerRef.current = setTimeout(() => {
+                onSuccess();
+              }, 700);
+            }
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   const handleRegionChange = (nextRegion: RegionCode) => {
@@ -532,6 +608,11 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
   const handlePay = (e: React.FormEvent) => {
     e.preventDefault();
+    const requestedRank = TIER_RANKS[selectedPlan] || 1;
+    if (currentTierRank > 0 && requestedRank <= currentTierRank) {
+      setErrorMessage(t('paywall.alreadySubscribedError'));
+      return;
+    }
     if (paymentMethod === 'paystack') {
       return handlePaystackCheckout();
     }
@@ -718,90 +799,197 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
             </div>
 
             {mode === 'buy' ? (
-              <form onSubmit={handlePay} className="space-y-3">
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                      {t('paywall.choosePass')}
-                    </label>
-                    <div className="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-0.5">
-                      <Globe size={11} className="text-emerald-400 shrink-0" />
-                      <select
-                        aria-label="Region and currency"
-                        disabled={isBusy}
-                        value={regionCode}
-                        onChange={(e) => handleRegionChange(e.target.value as RegionCode)}
-                        className="bg-transparent text-[11px] font-semibold text-zinc-200 focus:outline-none cursor-pointer"
-                      >
-                        {(Object.keys(REGIONAL_PRICING) as RegionCode[]).map((code) => (
-                          <option key={code} value={code} className="bg-zinc-900 text-white">
-                            {REGIONAL_PRICING[code].flag} {REGIONAL_PRICING[code].label}
-                          </option>
-                        ))}
-                      </select>
+              isAlreadyMaxTier ? (
+                <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-center space-y-3 animate-in fade-in">
+                  <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center">
+                    <CheckCircle2 size={26} />
+                  </div>
+                  <h3 className="text-base font-bold text-white">
+                    {language === 'sw' ? 'Tayari Una Pasi ya Mwezi' : 'You Already Have an Active Monthly Pass'}
+                  </h3>
+                  <p className="text-xs text-zinc-300 leading-relaxed max-w-xs mx-auto">
+                    {language === 'sw'
+                      ? `Nambari yako ${phone ? `(${phone})` : ''} tayari ina pasi ya mwezi inayotumika hadi ${new Date(activePass!.expiresAt).toLocaleDateString()}. Una utazamaji usio na kikomo kwa vipindi vyote.`
+                      : `Your subscription ${phone ? `for ${phone}` : ''} is active until ${new Date(activePass!.expiresAt).toLocaleDateString()}. You already have the highest tier with unlimited access to all content.`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onSuccess}
+                    className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition shadow-lg shadow-emerald-950/50 cursor-pointer"
+                  >
+                    {language === 'sw' ? 'Endelea Kutazama Sasa' : 'Continue Watching Now'}
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handlePay} className="space-y-3">
+                  {currentTierRank > 0 && (
+                    <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/40 flex items-center justify-between text-xs text-blue-200 animate-in fade-in">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={14} className="text-blue-400 shrink-0" />
+                        <span>
+                          {t('paywall.upgradeNotice', { tier: currentTier.toUpperCase() })}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-zinc-400">
+                        {new Date(activePass!.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => setSelectedPlan('daily')}
-                      className={`p-2 rounded-xl border text-left transition-all ${
-                        selectedPlan === 'daily'
-                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50'
-                          : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                      }`}
-                    >
-                      <span className="inline-block text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold mb-0.5">
-                        24H
-                      </span>
-                      <div className="text-xs font-bold text-white leading-tight">{t('paywall.planDaily')}</div>
-                      <div className="text-sm font-black text-white mt-0.5">
-                        {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.daily.amountKes}` : activeRegion.prices.daily}
-                      </div>
-                      <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">{t('paywall.planDailySub')}</div>
-                    </button>
+                  )}
 
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => setSelectedPlan('weekly')}
-                      className={`p-2 rounded-xl border text-left transition-all ${
-                        selectedPlan === 'weekly'
-                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50'
-                          : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                      }`}
-                    >
-                      <span className="inline-block text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold mb-0.5">
-                        POPULAR
-                      </span>
-                      <div className="text-xs font-bold text-white leading-tight">{t('paywall.planWeekly')}</div>
-                      <div className="text-sm font-black text-white mt-0.5">
-                        {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.weekly.amountKes}` : activeRegion.prices.weekly}
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                        {currentTierRank > 0
+                          ? (language === 'sw' ? 'Chagua Daraja la Kupandisha' : 'Choose Upgrade Pass')
+                          : t('paywall.choosePass')}
+                      </label>
+                      <div className="inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-0.5">
+                        <Globe size={11} className="text-emerald-400 shrink-0" />
+                        <select
+                          aria-label="Region and currency"
+                          disabled={isBusy}
+                          value={regionCode}
+                          onChange={(e) => handleRegionChange(e.target.value as RegionCode)}
+                          className="bg-transparent text-[11px] font-semibold text-zinc-200 focus:outline-none cursor-pointer"
+                        >
+                          {(Object.keys(REGIONAL_PRICING) as RegionCode[]).map((code) => (
+                            <option key={code} value={code} className="bg-zinc-900 text-white">
+                              {REGIONAL_PRICING[code].flag} {REGIONAL_PRICING[code].label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                      <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">{t('paywall.planWeeklySub')}</div>
-                    </button>
+                    </div>
 
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => setSelectedPlan('monthly')}
-                      className={`p-2 rounded-xl border text-left transition-all ${
-                        selectedPlan === 'monthly'
-                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50'
-                          : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                      }`}
-                    >
-                      <span className="inline-block text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded font-bold mb-0.5">
-                        30 DAYS
-                      </span>
-                      <div className="text-xs font-bold text-white leading-tight">{t('paywall.planMonthly')}</div>
-                      <div className="text-sm font-black text-white mt-0.5">
-                        {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.monthly.amountKes}` : activeRegion.prices.monthly}
-                      </div>
-                      <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">{t('paywall.planMonthlySub')}</div>
-                    </button>
-                  </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {/* Daily Plan Button */}
+                      {(() => {
+                        const isCurrent = currentTierRank === 1;
+                        const isLower = currentTierRank > 1;
+                        const isDisabled = isBusy || isCurrent || isLower;
+                        return (
+                          <button
+                            type="button"
+                            disabled={isDisabled}
+                            onClick={() => setSelectedPlan('daily')}
+                            className={`p-2 rounded-xl border text-left transition-all ${
+                              isCurrent
+                                ? 'bg-emerald-950/30 border-emerald-500/60 ring-1 ring-emerald-500/40 opacity-90 cursor-default'
+                                : isLower
+                                  ? 'bg-zinc-900/40 border-zinc-800/60 text-zinc-600 opacity-40 cursor-not-allowed'
+                                  : selectedPlan === 'daily'
+                                    ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50 cursor-pointer'
+                                    : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700 cursor-pointer'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="inline-block text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">
+                                24H
+                              </span>
+                              {isCurrent && (
+                                <span className="text-[7.5px] uppercase tracking-wider font-extrabold text-emerald-400 bg-emerald-500/20 px-1 py-0.5 rounded">
+                                  {t('paywall.currentPlanActive')}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs font-bold text-white leading-tight">{t('paywall.planDaily')}</div>
+                            <div className="text-sm font-black text-white mt-0.5">
+                              {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.daily.amountKes}` : activeRegion.prices.daily}
+                            </div>
+                            <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">
+                              {isCurrent ? `Active until ${new Date(activePass!.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : t('paywall.planDailySub')}
+                            </div>
+                          </button>
+                        );
+                      })()}
+
+                      {/* Weekly Plan Button */}
+                      {(() => {
+                        const isCurrent = currentTierRank === 2;
+                        const isLower = currentTierRank > 2;
+                        const isUpgrade = currentTierRank === 1;
+                        const isDisabled = isBusy || isCurrent || isLower;
+                        return (
+                          <button
+                            type="button"
+                            disabled={isDisabled}
+                            onClick={() => setSelectedPlan('weekly')}
+                            className={`p-2 rounded-xl border text-left transition-all ${
+                              isCurrent
+                                ? 'bg-emerald-950/30 border-emerald-500/60 ring-1 ring-emerald-500/40 opacity-90 cursor-default'
+                                : isLower
+                                  ? 'bg-zinc-900/40 border-zinc-800/60 text-zinc-600 opacity-40 cursor-not-allowed'
+                                  : selectedPlan === 'weekly'
+                                    ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50 cursor-pointer'
+                                    : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700 cursor-pointer'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="inline-block text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">
+                                POPULAR
+                              </span>
+                              {isCurrent ? (
+                                <span className="text-[7.5px] uppercase tracking-wider font-extrabold text-emerald-400 bg-emerald-500/20 px-1 py-0.5 rounded">
+                                  {t('paywall.currentPlanActive')}
+                                </span>
+                              ) : isUpgrade ? (
+                                <span className="text-[7.5px] uppercase tracking-wider font-extrabold text-blue-400 bg-blue-500/20 px-1 py-0.5 rounded">
+                                  {t('paywall.upgradeBadge')}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="text-xs font-bold text-white leading-tight">{t('paywall.planWeekly')}</div>
+                            <div className="text-sm font-black text-white mt-0.5">
+                              {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.weekly.amountKes}` : activeRegion.prices.weekly}
+                            </div>
+                            <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">
+                              {isCurrent ? `Active until ${new Date(activePass!.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : t('paywall.planWeeklySub')}
+                            </div>
+                          </button>
+                        );
+                      })()}
+
+                      {/* Monthly Plan Button */}
+                      {(() => {
+                        const isCurrent = currentTierRank === 3;
+                        const isUpgrade = currentTierRank > 0 && currentTierRank < 3;
+                        const isDisabled = isBusy || isCurrent;
+                        return (
+                          <button
+                            type="button"
+                            disabled={isDisabled}
+                            onClick={() => setSelectedPlan('monthly')}
+                            className={`p-2 rounded-xl border text-left transition-all ${
+                              isCurrent
+                                ? 'bg-emerald-950/30 border-emerald-500/60 ring-1 ring-emerald-500/40 opacity-90 cursor-default'
+                                : selectedPlan === 'monthly'
+                                  ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-sm ring-1 ring-emerald-500/50 cursor-pointer'
+                                  : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700 cursor-pointer'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="inline-block text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded font-bold">
+                                30 DAYS
+                              </span>
+                              {isCurrent ? (
+                                <span className="text-[7.5px] uppercase tracking-wider font-extrabold text-emerald-400 bg-emerald-500/20 px-1 py-0.5 rounded">
+                                  {t('paywall.currentPlanActive')}
+                                </span>
+                              ) : isUpgrade ? (
+                                <span className="text-[7.5px] uppercase tracking-wider font-extrabold text-purple-400 bg-purple-500/20 px-1 py-0.5 rounded">
+                                  {t('paywall.upgradeBadge')}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="text-xs font-bold text-white leading-tight">{t('paywall.planMonthly')}</div>
+                            <div className="text-sm font-black text-white mt-0.5">
+                              {regionCode === 'KE' ? `KSh ${SUBSCRIPTION_PLANS.monthly.amountKes}` : activeRegion.prices.monthly}
+                            </div>
+                            <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">{t('paywall.planMonthlySub')}</div>
+                          </button>
+                        );
+                      })()}
+                    </div>
                   {regionCode !== 'KE' && (
                     <p className="mt-1 text-[10px] text-zinc-400">
                       {activeRegion.flag} {activeRegion.paymentMethodsLabel} · Settled at KSh {activePlan.amountKes} equivalent via Paystack.
@@ -1046,8 +1234,23 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                   ) : paymentMethod === 'paystack' ? (
                     <>
                       <CreditCard size={16} />
-                      <span>{language === 'sw' ? `Lipa KSh ${activePlan.amountKes} kwa Kadi (Visa / Mastercard)` : `Pay KSh ${activePlan.amountKes} with Card (Visa / Mastercard)`}</span>
+                      <span>
+                        {currentTierRank > 0
+                          ? (language === 'sw'
+                              ? `Pandisha hadi KSh ${activePlan.amountKes} kwa Kadi`
+                              : `Upgrade with Card (KSh ${activePlan.amountKes})`)
+                          : (language === 'sw'
+                              ? `Lipa KSh ${activePlan.amountKes} kwa Kadi (Visa / Mastercard)`
+                              : `Pay KSh ${activePlan.amountKes} with Card (Visa / Mastercard)`)}
+                      </span>
                     </>
+                  ) : currentTierRank > 0 ? (
+                    <span>
+                      {t('paywall.upgradeButton', {
+                        plan: t(`paywall.plan${selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)}` as any),
+                        amount: activePlan.amountKes,
+                      })}
+                    </span>
                   ) : autoRenewWithMpesa && selectedPlan === 'monthly' ? (
                     t('paywall.payButtonAutoRenew', { amount: activePlan.amountKes })
                   ) : (
@@ -1055,7 +1258,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                   )}
                 </button>
               </form>
-            ) : deviceConflict ? (
+            )) : deviceConflict ? (
               <div className="bg-zinc-900 border border-amber-500/40 rounded-2xl p-5 text-center space-y-3 animate-in fade-in zoom-in-95">
                 <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
                   <Laptop className="w-6 h-6" />

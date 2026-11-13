@@ -154,6 +154,47 @@ serve(async (req) => {
     }
     const email = suppliedEmail;
 
+    const TIER_RANKS: Record<string, number> = { daily: 1, weekly: 2, monthly: 3 };
+    const requestedRank = TIER_RANKS[planCode] || 1;
+
+    // Check if subscriber already has an active subscription for this phone or email
+    const sub9 = parsedPhone?.sub9;
+    let activeSubQuery = service
+      .from("subscriptions")
+      .select("id, tier, end_date")
+      .eq("is_active", true)
+      .gt("end_date", new Date().toISOString());
+
+    if (sub9 && email) {
+      activeSubQuery = activeSubQuery.or(`phone.ilike.%${sub9},user_email.ilike.${email}`);
+    } else if (sub9) {
+      activeSubQuery = activeSubQuery.ilike("phone", `%${sub9}`);
+    } else if (email) {
+      activeSubQuery = activeSubQuery.ilike("user_email", email);
+    }
+
+    const { data: existingActiveSub } = await activeSubQuery
+      .order("end_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingActiveSub) {
+      const existingRank = TIER_RANKS[existingActiveSub.tier?.toLowerCase()] || 1;
+      if (requestedRank <= existingRank) {
+        const expDate = existingActiveSub.end_date ? new Date(existingActiveSub.end_date).toLocaleString() : "active";
+        return jsonReply(
+          req,
+          {
+            error: `You already have an active ${existingActiveSub.tier.toUpperCase()} pass (valid until ${expDate}). You cannot subscribe to the same or lower tier. You can only upgrade to a higher tier.`,
+            currentTier: existingActiveSub.tier,
+            activeUntil: existingActiveSub.end_date,
+          },
+          409,
+          METHODS,
+        );
+      }
+    }
+
     const regionCode = String(requestBody.regionCode || req.headers.get("cf-ipcountry") || "KE").toUpperCase().slice(0, 8);
     const currencyCode = String(requestBody.currency || "KES").toUpperCase().slice(0, 8);
 
