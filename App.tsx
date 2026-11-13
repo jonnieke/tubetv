@@ -88,6 +88,8 @@ import {
 } from './lib/subscriptions';
 import type { SettingsTabId } from './components/SettingsSection';
 import { TranslationKey } from './translations';
+import { SectionErrorBoundary } from './components/ErrorBoundary';
+import { isDynamicChunkLoadError, triggerChunkRecoveryReload } from './lib/chunkRecovery';
 
 function lazyWithRetry<T extends React.ComponentType<any>>(
   importer: () => Promise<{ default: T }>,
@@ -96,20 +98,8 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
     try {
       return await importer();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const isDynamicChunkError =
-        msg.includes('Failed to fetch dynamically imported module') ||
-        msg.includes('Importing a module script failed') ||
-        msg.includes('error loading dynamically imported module') ||
-        (err as any)?.name === 'ChunkLoadError';
-
-      if (isDynamicChunkError && typeof window !== 'undefined') {
-        const lastReload = Number(sessionStorage.getItem('tubetv_chunk_reload_ts') || 0);
-        if (Date.now() - lastReload > 8_000) {
-          sessionStorage.setItem('tubetv_chunk_reload_ts', String(Date.now()));
-          window.location.reload();
-          return new Promise(() => {});
-        }
+      if (isDynamicChunkLoadError(err) && triggerChunkRecoveryReload()) {
+        return new Promise(() => {});
       }
       throw err;
     }
@@ -375,20 +365,27 @@ const App: React.FC = () => {
 
     // Auto-restore pass if returning from a Paystack redirect callback
     const searchParams = new URLSearchParams(window.location.search);
-    const paystackRef = searchParams.get('paystack_ref') || searchParams.get('reference');
+    const paystackRef =
+      searchParams.get('paystack_ref') ||
+      searchParams.get('reference') ||
+      searchParams.get('trxref');
     if (paystackRef && /^TUBE_[A-Z0-9_-]+$/i.test(paystackRef)) {
       restorePaystackPass(paystackRef)
         .then(() => {
           searchParams.delete('paystack_ref');
           searchParams.delete('reference');
+          searchParams.delete('trxref');
           const cleanSearch = searchParams.toString() ? `?${searchParams.toString()}` : '';
           setHasActivePass(true);
           void refreshAccessState();
 
           // Restore where the viewer left off
-          const returnVideoId =
-            sessionStorage.getItem('tubetv_paywall_target_video_id') ||
-            localStorage.getItem('tubetv_last_watched_video_id');
+          let returnVideoId: string | null = null;
+          try {
+            returnVideoId =
+              sessionStorage.getItem('tubetv_paywall_target_video_id') ||
+              localStorage.getItem('tubetv_last_watched_video_id');
+          } catch {}
           if (returnVideoId) {
             const targetVideo = videos.find((v) => v.id === returnVideoId);
             if (targetVideo) {
@@ -730,7 +727,7 @@ const App: React.FC = () => {
       img.decoding = 'async';
       img.src = upcoming.thumbnail;
     }
-    void resolveAuthorizedPlaybackUrl(upcoming).catch(() => {});
+    void resolveAuthorizedPlaybackUrl(upcoming.id, upcoming.url, false).catch(() => {});
   }, [activeHeroVideo, ratingFilteredVideos, hasActivePass, preferences.dataSaver]);
 
   const playerRecommendations = useMemo(() => {
@@ -1654,68 +1651,83 @@ const App: React.FC = () => {
     >
       <div className="flex h-screen bg-zinc-950 text-white font-sans selection:bg-red-500 selection:text-white">
         {showLogin && !isAuthenticated && (
-          <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
-            <AuthModal
-              onSuccess={(user) => {
-                setCurrentUser(user);
-                setIsAuthenticated(true);
-                setShowLogin(false);
-                if (isAdminUser(user)) {
-                  setCurrentView(ViewState.ADMIN);
-                  if (window.location.pathname !== '/admin') {
-                    window.history.pushState({}, '', '/admin');
+          <SectionErrorBoundary label="sign-in dialog" onReset={() => setShowLogin(false)}>
+            <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+              <AuthModal
+                onSuccess={(user) => {
+                  setCurrentUser(user);
+                  setIsAuthenticated(true);
+                  setShowLogin(false);
+                  if (isAdminUser(user)) {
+                    setCurrentView(ViewState.ADMIN);
+                    if (window.location.pathname !== '/admin') {
+                      window.history.pushState({}, '', '/admin');
+                    }
+                  } else {
+                    setCurrentView(ViewState.HOME);
                   }
-                } else {
-                  setCurrentView(ViewState.HOME);
-                }
-              }}
-              onCancel={() => {
-                setShowLogin(false);
-                if (window.location.pathname === '/admin' && !isAdmin) {
-                  setCurrentView(ViewState.HOME);
-                  window.history.pushState({}, '', '/');
-                }
-              }}
-            />
-          </Suspense>
+                }}
+                onCancel={() => {
+                  setShowLogin(false);
+                  if (window.location.pathname === '/admin' && !isAdmin) {
+                    setCurrentView(ViewState.HOME);
+                    window.history.pushState({}, '', '/');
+                  }
+                }}
+              />
+            </Suspense>
+          </SectionErrorBoundary>
         )}
 
         {showFilmmakerForm && (
-          <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
-            <FilmmakerSubmissionModal onClose={() => setShowFilmmakerForm(false)} />
-          </Suspense>
+          <SectionErrorBoundary label="filmmaker submission" onReset={() => setShowFilmmakerForm(false)}>
+            <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+              <FilmmakerSubmissionModal onClose={() => setShowFilmmakerForm(false)} />
+            </Suspense>
+          </SectionErrorBoundary>
         )}
 
         {(paywallVideo || showBuyPassModal) && (
-          <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
-            <PaywallModal
-              video={paywallVideo}
-              onSuccess={() => {
-                const returnId =
-                  paywallVideo?.id ||
-                  sessionStorage.getItem('tubetv_paywall_target_video_id') ||
-                  localStorage.getItem('tubetv_last_watched_video_id');
-                const target = paywallVideo || (returnId ? videos.find((v) => v.id === returnId) : null);
-                setPaywallVideo(null);
-                setShowBuyPassModal(false);
-                setHasActivePass(true);
-                if (target) {
-                  window.history.pushState({}, '', videoPath(target.id));
-                  setActiveHeroVideo(target);
-                }
-                void refreshAccessState().then(() => {
+          <SectionErrorBoundary
+            label="checkout"
+            onReset={() => {
+              setPaywallVideo(null);
+              setShowBuyPassModal(false);
+            }}
+          >
+            <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+              <PaywallModal
+                video={paywallVideo}
+                onSuccess={() => {
+                  let storedTargetId: string | null = null;
+                  try {
+                    storedTargetId =
+                      sessionStorage.getItem('tubetv_paywall_target_video_id') ||
+                      localStorage.getItem('tubetv_last_watched_video_id');
+                  } catch {}
+                  const returnId = paywallVideo?.id || storedTargetId;
+                  const target = paywallVideo || (returnId ? videos.find((v) => v.id === returnId) : null);
+                  setPaywallVideo(null);
+                  setShowBuyPassModal(false);
                   setHasActivePass(true);
                   if (target) {
+                    window.history.pushState({}, '', videoPath(target.id));
                     setActiveHeroVideo(target);
                   }
-                });
-              }}
-              onClose={() => {
-                setPaywallVideo(null);
-                setShowBuyPassModal(false);
-              }}
-            />
-          </Suspense>
+                  void refreshAccessState().then(() => {
+                    setHasActivePass(true);
+                    if (target) {
+                      setActiveHeroVideo(target);
+                    }
+                  });
+                }}
+                onClose={() => {
+                  setPaywallVideo(null);
+                  setShowBuyPassModal(false);
+                }}
+              />
+            </Suspense>
+          </SectionErrorBoundary>
         )}
 
         {activeHeroVideo && (
@@ -2077,25 +2089,27 @@ const App: React.FC = () => {
               currentView === ViewState.HOME && !searchQuery ? 'landing-main' : ''
             } ${currentView === ViewState.SHORTS ? 'shorts-main' : ''}`}
           >
-            <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
-              {renderContent()}
-              {(currentView === ViewState.HOME ||
-                currentView === ViewState.ORIGINALS ||
-                currentView === ViewState.MICRO_DRAMAS ||
-                currentView === ViewState.GENRES ||
-                [
-                  ViewState.EDUCATION,
-                  ViewState.FARMERS,
-                  ViewState.FAITH,
-                  ViewState.KIDS,
-                  ViewState.DIASPORA,
-                  ViewState.LIVE,
-                  ViewState.WATCH_LATER,
-                ].includes(currentView as ViewState) ||
-                navItems.some((item) => item.id === currentView && item.isCustom)) && (
-                <LandingFooter navigate={handleNavigate} />
-              )}
-            </Suspense>
+            <SectionErrorBoundary label="this view" onReset={() => handleNavigate(ViewState.HOME)}>
+              <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+                {renderContent()}
+                {(currentView === ViewState.HOME ||
+                  currentView === ViewState.ORIGINALS ||
+                  currentView === ViewState.MICRO_DRAMAS ||
+                  currentView === ViewState.GENRES ||
+                  [
+                    ViewState.EDUCATION,
+                    ViewState.FARMERS,
+                    ViewState.FAITH,
+                    ViewState.KIDS,
+                    ViewState.DIASPORA,
+                    ViewState.LIVE,
+                    ViewState.WATCH_LATER,
+                  ].includes(currentView as ViewState) ||
+                  navItems.some((item) => item.id === currentView && item.isCustom)) && (
+                  <LandingFooter navigate={handleNavigate} />
+                )}
+              </Suspense>
+            </SectionErrorBoundary>
           </main>
 
           {/* Mobile Bottom Nav */}
