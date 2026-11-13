@@ -39,6 +39,8 @@ interface VideoCardProps {
   onToggleWatchLater?: (id: string) => void;
   autoPlay?: boolean;
   playerOnly?: boolean;
+  onPlay?: () => void;
+  isLocked?: (video: Video) => boolean;
 }
 
 type SafariVideoElement = HTMLVideoElement & {
@@ -66,6 +68,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
   onToggleWatchLater,
   autoPlay = false,
   playerOnly = false,
+  onPlay,
+  isLocked: propIsLocked,
 }) => {
   const { t } = useLanguage();
   const {
@@ -82,7 +86,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const contentRating = normalizeContentRating(video.contentRating);
   const isUnratedAllowedInTest = !CONTENT_RATING_ENFORCED && contentRating === 'UNRATED' && preferences.maximumRating === '16';
   const isRatingLocked = !isUnratedAllowedInTest && !canWatchContent(contentRating, preferences.maximumRating);
-  const locked = isLocked ? isLocked(video) : isVideoLocked(video, false);
+  const locked = propIsLocked ? propIsLocked(video) : isLocked ? isLocked(video) : isVideoLocked(video, false);
   const requiresThirtySecondPaywall = !hasActivePass && isLongFormatVideo(video);
 
   const savedProgress = getProgress(video.id);
@@ -92,7 +96,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const canAutoStart = Boolean(autoPlay && !isRatingLocked && !locked);
   const [isPlaying, setIsPlaying] = useState(canAutoStart);
   const [hasActivatedPlayback, setHasActivatedPlayback] = useState(
-    Boolean((canAutoStart || playerOnly) && !isRatingLocked && !locked),
+    Boolean(canAutoStart && !isRatingLocked && !locked),
   );
   const [authorizedSrc, setAuthorizedSrc] = useState<string>(video.url || '');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
@@ -102,7 +106,22 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(1);
+  const [volume, setVolume] = useState<number>(() => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem('tubetv_player_volume');
+        if (stored !== null) {
+          const parsed = parseFloat(stored);
+          if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) {
+            return parsed;
+          }
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return 0.35;
+  });
   const [isPiP, setIsPiP] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [quality, setQuality] = useState(preferredQuality);
@@ -316,6 +335,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
     const wantMuted = isHoverPlay && !isPlaying ? true : isMuted;
     videoEl.muted = wantMuted;
+    videoEl.volume = volume;
 
     // Resume already-initialized stream instead of re-creating HLS on pause -> play!
     if (hlsRef.current) {
@@ -625,8 +645,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
     togglePlay(e);
   };
 
-  const togglePlay = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const togglePlay = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (isRatingLocked) return;
     if (locked) {
       onRequireUnlock?.(video);
@@ -644,6 +664,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
         trackEvent('playback_start', { videoId: video.id, category: video.category, dataSaver: effectiveDataSaver });
       }
       setIsPlaying(true);
+      onPlay?.();
       bumpControlsVisibility();
     } else {
       setIsPlaying(false);
@@ -842,6 +863,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
   };
 
   const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
+    }
     if (!videoRef.current || !savedProgress || savedProgress.completed) return;
     if (requiresThirtySecondPaywall && savedProgress.positionSeconds >= LONG_FORMAT_PREVIEW_SECONDS - 2) {
       videoRef.current.currentTime = 0;
@@ -872,6 +896,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
     setIsMuted(nextMuted);
     if (videoRef.current) {
       videoRef.current.muted = nextMuted;
+      if (!nextMuted) {
+        videoRef.current.volume = volume || 0.35;
+      }
     }
   };
 
@@ -879,8 +906,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
     e.stopPropagation();
     const val = parseFloat(e.target.value);
     setVolume(val);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('tubetv_player_volume', String(val));
+      }
+    } catch {
+      // ignore
+    }
     if (videoRef.current) {
       videoRef.current.volume = val;
+      videoRef.current.muted = val === 0;
       setIsMuted(val === 0);
     }
   };
@@ -965,7 +1000,11 @@ const VideoCard: React.FC<VideoCardProps> = ({
         } bg-black overflow-hidden`}
       >
         {!showVideoStage ? (
-          <>
+          <div
+            onClick={playerOnly ? togglePlay : (!playerOnly && onSelectVideo ? handleCatalogueCardClick : undefined)}
+            onDoubleClick={playerOnly ? togglePlay : (!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined)}
+            className={`w-full h-full relative ${playerOnly ? 'cursor-pointer' : ''}`}
+          >
             <CatalogueArtwork src={video.thumbnail} className="catalogue-video-art w-full h-full object-cover" />
 
             {/* Duration Badge */}
@@ -1000,16 +1039,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
             {/* Hover / Tap Actions */}
             <div
-              onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : undefined}
-              onDoubleClick={!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined}
-              className={`catalogue-video-actions ${!playerOnly && onSelectVideo ? 'cursor-pointer' : ''} ${
+              onClick={playerOnly ? togglePlay : (!playerOnly && onSelectVideo ? handleCatalogueCardClick : undefined)}
+              onDoubleClick={playerOnly ? togglePlay : (!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined)}
+              className={`catalogue-video-actions ${playerOnly || (!playerOnly && onSelectVideo) ? 'cursor-pointer' : ''} ${
                 isRatingLocked ? 'catalogue-video-actions-locked' : ''
-              }`}
+              } ${playerOnly ? '!opacity-100 flex items-center justify-center' : ''}`}
             >
               <button
                 type="button"
-                onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : togglePlay}
-                onDoubleClick={!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined}
+                onClick={playerOnly ? togglePlay : (!playerOnly && onSelectVideo ? handleCatalogueCardClick : togglePlay)}
+                onDoubleClick={playerOnly ? togglePlay : (!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined)}
                 disabled={!hasPlayableSource && !locked}
                 aria-label={
                   locked
@@ -1018,12 +1057,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
                       ? `Play ${video.title}`
                       : `${video.title} is unavailable`
                 }
-                className="catalogue-action-play disabled:cursor-not-allowed disabled:opacity-50"
+                className={
+                  playerOnly
+                    ? 'flex h-16 w-16 items-center justify-center rounded-full bg-red-600/90 hover:bg-red-600 text-white shadow-2xl hover:scale-110 transition-transform cursor-pointer'
+                    : 'catalogue-action-play disabled:cursor-not-allowed disabled:opacity-50'
+                }
               >
-                {locked ? <Lock className="w-5 h-5" /> : <Play fill="currentColor" className="w-5 h-5 ml-0.5" />}
+                {locked ? <Lock className="w-6 h-6" /> : <Play fill="currentColor" className="w-6 h-6 ml-0.5" />}
               </button>
 
-              {onToggleWatchLater && (
+              {!playerOnly && onToggleWatchLater && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1040,17 +1083,19 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={handleWhatsAppShare}
-                title="Share on WhatsApp"
-                aria-label={`Share ${video.title} on WhatsApp`}
-                className="catalogue-action-secondary"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
+              {!playerOnly && (
+                <button
+                  type="button"
+                  onClick={handleWhatsAppShare}
+                  title="Share on WhatsApp"
+                  aria-label={`Share ${video.title} on WhatsApp`}
+                  className="catalogue-action-secondary"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
-          </>
+          </div>
         ) : (
           <div className="relative w-full h-full">
             {requiresThirtySecondPaywall && (isPlaying || isHoverPlay) && (
@@ -1127,6 +1172,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
               onPlaying={() => {
                 document.dispatchEvent(new CustomEvent('tubetv:player-start', { detail: playerInstanceRef.current }));
                 setIsBuffering(false);
+                onPlay?.();
                 if (bufferAtRef.current !== null) {
                   trackEvent('playback_buffer', {
                     videoId: video.id,
@@ -1205,15 +1251,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
             </video>
 
             {/* Paused Center Resume Button */}
-            {!isPlaying && !isHoverPlay && !isBuffering && !isAuthorizing && !playbackError && (
+            {!isPlaying && !isHoverPlay && !playbackError && (
               <button
                 type="button"
-                onClick={!playerOnly && onSelectVideo ? handleCatalogueCardClick : togglePlay}
-                onDoubleClick={!playerOnly && onSelectVideo ? handleCatalogueCardDoubleClick : undefined}
-                aria-label={`Resume ${video.title}`}
-                className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 transition-opacity"
+                onClick={togglePlay}
+                aria-label={`Play ${video.title}`}
+                className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 transition-opacity cursor-pointer"
               >
-                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/75 border border-white/30 text-white shadow-xl">
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600/90 hover:bg-red-600 text-white shadow-2xl hover:scale-110 transition-transform">
                   <Play className="w-6 h-6 fill-current ml-0.5" />
                 </span>
               </button>

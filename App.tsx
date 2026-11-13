@@ -21,6 +21,7 @@ import {
   Loader2,
   Check,
   Share2,
+  Play,
   GraduationCap,
   Sprout,
   Heart,
@@ -1699,6 +1700,8 @@ const App: React.FC = () => {
                   video={activeHeroVideo}
                   autoPlay={modalAutoPlay}
                   playerOnly
+                  onPlay={() => setModalAutoPlay(true)}
+                  isLocked={(v) => isVideoLocked(v, hasActivePass)}
                   nextEpisode={nextEpisode(ratingFilteredVideos, activeHeroVideo.id)}
                   onNextEpisode={() => {
                     const next = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
@@ -1777,10 +1780,11 @@ const App: React.FC = () => {
                   {!modalAutoPlay && (
                     <button
                       type="button"
-                      className="cinema-primary mt-4 w-full sm:w-auto px-6 py-2.5 font-bold"
+                      className="cinema-primary mt-4 w-full sm:w-auto px-6 py-2.5 font-bold flex items-center justify-center gap-2 cursor-pointer"
                       onClick={() => setModalAutoPlay(true)}
                     >
-                      ▶ {t('home.watchEpisode')}
+                      <Play size={16} fill="currentColor" />
+                      <span>{seriesKey(activeHeroVideo) ? t('home.watchEpisode') : t('home.watchMovie')}</span>
                     </button>
                   )}
                   {nextEpisode(ratingFilteredVideos, activeHeroVideo.id) && (

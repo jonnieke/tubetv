@@ -317,6 +317,9 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, isNearby, dataSa
     setIsMuted(nextMuted);
     if (videoRef.current) {
       videoRef.current.muted = nextMuted;
+      if (!nextMuted) {
+        videoRef.current.volume = 0.35;
+      }
     }
   };
 
