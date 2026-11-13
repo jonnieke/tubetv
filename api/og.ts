@@ -82,8 +82,14 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
             description = getMeta('seriesSynopsis') || getMeta('description') || `Watch ${seriesTitle} on TubeTV (Ep 1 & 2 free).`;
             genre = getMeta('genre') || getMeta('category');
             creator = getMeta('author') || getMeta('creator') || 'TubeTV';
+            const signedThumb =
+              (typeof first.signedSeriesPosterUrl === 'string' && first.signedSeriesPosterUrl) ||
+              (typeof first.signedThumbnailUrl === 'string' && first.signedThumbnailUrl) ||
+              '';
             const customThumb = getMeta('seriesPosterUrl').trim() || getMeta('thumbnailUrl').trim();
-            if (/^https:\/\//i.test(customThumb)) {
+            if (/^https:\/\//i.test(signedThumb)) {
+              thumbnail = signedThumb;
+            } else if (/^https:\/\//i.test(customThumb)) {
               thumbnail = customThumb;
             } else if (pullZone && first.guid) {
               thumbnail = `https://${pullZone}/${first.guid}/${first.thumbnailFileName || 'thumbnail.jpg'}`;
@@ -108,8 +114,14 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
               ?.value || '';
           description =
             getMeta('episodeSynopsis') || getMeta('description') || getMeta('seriesSynopsis') || description;
+          const signedThumb =
+            (typeof item.signedSeriesPosterUrl === 'string' && item.signedSeriesPosterUrl) ||
+            (typeof item.signedThumbnailUrl === 'string' && item.signedThumbnailUrl) ||
+            '';
           const customThumb = getMeta('seriesPosterUrl').trim() || getMeta('thumbnailUrl').trim();
-          if (/^https:\/\//i.test(customThumb)) {
+          if (/^https:\/\//i.test(signedThumb)) {
+            thumbnail = signedThumb;
+          } else if (/^https:\/\//i.test(customThumb)) {
             thumbnail = customThumb;
           } else if (pullZone) {
             thumbnail = `https://${pullZone}/${id}/${item.thumbnailFileName || 'thumbnail.jpg'}`;

@@ -6,6 +6,8 @@ interface CatalogueItem {
   length?: number;
   dateUploaded?: string;
   thumbnailFileName?: string;
+  signedThumbnailUrl?: string;
+  signedSeriesPosterUrl?: string;
   metaTags?: Array<{ property?: string; value?: string }>;
 }
 
@@ -79,10 +81,13 @@ export default async function handler(_req: IncomingMessage, res: ServerResponse
           const isValidDate = uploaded && !Number.isNaN(uploaded.getTime());
           const lastmod = isValidDate ? uploaded.toISOString().split('T')[0] : undefined;
 
+          const signedThumb = item.signedSeriesPosterUrl || item.signedThumbnailUrl || '';
           const rawThumb = getMeta('seriesPosterUrl') || getMeta('thumbnailUrl');
-          const thumbnailLoc = /^https:\/\//i.test(rawThumb)
-            ? rawThumb
-            : `https://${pullZone}/${guid}/${item.thumbnailFileName || 'thumbnail.jpg'}`;
+          const thumbnailLoc = /^https:\/\//i.test(signedThumb)
+            ? signedThumb
+            : /^https:\/\//i.test(rawThumb)
+              ? rawThumb
+              : `https://${pullZone}/${guid}/${item.thumbnailFileName || 'thumbnail.jpg'}`;
           const title = (item.title || 'TubeTV Video').trim();
           const description =
             getMeta('episodeSynopsis') ||
