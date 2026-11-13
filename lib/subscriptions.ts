@@ -494,6 +494,11 @@ export async function startPaystackPayment(
   if (!isSupabaseConfigured) {
     throw new Error('Paystack payments are not configured in this environment.');
   }
+  const cleanEmail = options.email?.trim().toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+    throw new Error('A valid email address is required for card checkout.');
+  }
   const idempotencyKey = crypto.randomUUID();
   const returnPath =
     options.returnPath ||
@@ -502,7 +507,7 @@ export async function startPaystackPayment(
     body: {
       action: 'initiate',
       planCode,
-      email: options.email,
+      email: cleanEmail,
       phone: options.phone,
       regionCode: options.regionCode || detectDefaultRegion(),
       currency: options.currency || 'KES',

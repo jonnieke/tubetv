@@ -141,12 +141,18 @@ serve(async (req) => {
 
     const rawPhone = String(requestBody.phone || authenticatedPhone || "").trim();
     const parsedPhone = rawPhone ? normalizeGlobalPhone(rawPhone) : null;
-    const suppliedEmail = String(requestBody.email || authenticatedEmail || "").trim();
-    const email = suppliedEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(suppliedEmail)
-      ? suppliedEmail
-      : parsedPhone
-        ? `${parsedPhone.digits}@tube.co.ke`
-        : `guest_${crypto.randomUUID().slice(0, 8)}@tube.co.ke`;
+    const suppliedEmail = String(requestBody.email || authenticatedEmail || "").trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+    if (!suppliedEmail || !emailRegex.test(suppliedEmail)) {
+      return jsonReply(
+        req,
+        { error: "A valid email address is required for card payments. Please enter your email (e.g. name@gmail.com)." },
+        400,
+        METHODS,
+      );
+    }
+    const email = suppliedEmail;
 
     const regionCode = String(requestBody.regionCode || req.headers.get("cf-ipcountry") || "KE").toUpperCase().slice(0, 8);
     const currencyCode = String(requestBody.currency || "KES").toUpperCase().slice(0, 8);

@@ -40,6 +40,20 @@ export function trackEvent(name: AnalyticsEventName, properties: EventProperties
   };
 
   window.dispatchEvent(new CustomEvent('tubetv:analytics', { detail: event }));
-  if (!endpoint || typeof navigator === 'undefined' || !navigator.sendBeacon) return;
-  navigator.sendBeacon(endpoint, new Blob([JSON.stringify(event)], { type: 'application/json' }));
+  if (!endpoint) return;
+  const payload = JSON.stringify(event);
+  try {
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      navigator.sendBeacon(endpoint, new Blob([payload], { type: 'text/plain' }));
+    } else if (typeof fetch !== 'undefined') {
+      fetch(endpoint, {
+        method: 'POST',
+        body: payload,
+        mode: 'cors',
+        credentials: 'omit',
+        keepalive: true,
+        headers: { 'Content-Type': 'text/plain' },
+      }).catch(() => {});
+    }
+  } catch {}
 }

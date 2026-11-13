@@ -37,6 +37,7 @@ import {
 } from '../lib/subscriptions';
 import { trackEvent } from '../lib/analytics';
 import { useLanguage } from '../contexts/LanguageContext';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface PaywallModalProps {
   video?: Video | null;
@@ -49,6 +50,7 @@ declare global {
     PaystackPop?: {
       setup: (options: {
         key: string;
+        email?: string;
         access_code: string;
         callback?: (response: { reference: string }) => void;
         onClose?: () => void;
@@ -143,6 +145,20 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     } catch {}
   };
 
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      supabase.auth.getUser().then(({ data }) => {
+        const userEmail = data?.user?.email;
+        if (userEmail && !email) {
+          setEmail(userEmail);
+          try {
+            localStorage.setItem('tubetv_user_email', userEmail);
+          } catch {}
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
   const clearTimers = () => {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
@@ -223,6 +239,19 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const handlePaystackCheckout = async () => {
     clearTimers();
     setErrorMessage('');
+
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      setErrorMessage(t('paywall.emailRequiredError'));
+      setStatus('idle');
+      setTimeout(() => {
+        const input = document.getElementById('paystack-email');
+        input?.focus();
+      }, 50);
+      return;
+    }
+
     setStatus('sending');
     setPaystackAuthUrl('');
 
@@ -235,21 +264,12 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     });
 
     try {
-      const cleanEmail = email.trim();
-      if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-        setErrorMessage(t('paywall.emailRequiredError'));
-        setStatus('idle');
-        document.getElementById('paystack-email')?.focus();
-        return;
-      }
       const cleanPhone = phone.trim() ? validateGlobalPhone(phone) : null;
       if (cleanPhone) {
         saveRememberedPhone(cleanPhone);
         try { localStorage.setItem('tubetv_user_phone', cleanPhone); } catch {}
       }
-      if (cleanEmail) {
-        try { localStorage.setItem('tubetv_user_email', cleanEmail); } catch {}
-      }
+      try { localStorage.setItem('tubetv_user_email', cleanEmail); } catch {}
       try {
         if (video?.id) {
           localStorage.setItem('tubetv_last_watched_video_id', video.id);
@@ -257,7 +277,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         }
       } catch {}
       const result = await startPaystackPayment(selectedPlan, {
-        email: cleanEmail || undefined,
+        email: cleanEmail,
         phone: cleanPhone || undefined,
         regionCode,
         currency: activeRegion.currency,
@@ -283,6 +303,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
           try {
             const handler = window.PaystackPop.setup({
               key: publicKey,
+              email: cleanEmail,
               access_code: result.accessCode,
               callback: () => {
                 // Polling below will verify and complete
@@ -850,10 +871,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <label htmlFor="paystack-email" className="block text-xs font-semibold text-zinc-200">
-                          {t('paywall.emailLabel')}
+                          {t('paywall.emailLabel')} <span className="text-amber-400">*</span>
                         </label>
-                        <span className="text-[9px] font-bold text-blue-300 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                          For Card Receipt
+                        <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          {t('paywall.emailRequiredForCard')}
                         </span>
                       </div>
                       <input
@@ -861,11 +882,19 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                         type="email"
                         inputMode="email"
                         autoComplete="email"
-                        placeholder="viewer@example.com (optional)"
+                        required
+                        placeholder="yourname@gmail.com"
                         value={email}
-                        onChange={(e) => handleEmailChange(e.target.value)}
+                        onChange={(e) => {
+                          handleEmailChange(e.target.value);
+                          if (errorMessage) setErrorMessage('');
+                        }}
                         disabled={isBusy}
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
+                        className={`w-full bg-zinc-900 border rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none transition-colors ${
+                          errorMessage && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()))
+                            ? 'border-red-500 focus:border-red-400 ring-1 ring-red-500/30'
+                            : 'border-zinc-700 focus:border-blue-500'
+                        }`}
                       />
                       <p className="mt-1 text-[10px] text-zinc-400 leading-tight">
                         {t('paywall.emailCardHint')}
