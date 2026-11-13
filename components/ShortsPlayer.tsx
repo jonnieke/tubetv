@@ -348,7 +348,16 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, isNearby, dataSa
       data-id={short.id}
       onClick={togglePlay}
     >
-      {short.thumbnail && <img src={short.thumbnail} alt="" aria-hidden="true" className="shorts-art-backdrop" />}
+      {short.thumbnail && (
+        <img
+          src={short.thumbnail}
+          alt=""
+          aria-hidden="true"
+          loading={isActive ? 'eager' : 'lazy'}
+          decoding="async"
+          className="shorts-art-backdrop"
+        />
+      )}
       {isNearby && (
         <video
           ref={videoRef}

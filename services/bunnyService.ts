@@ -264,8 +264,8 @@ export const getThumbnailUrl = (videoId: string, filename?: string): string => {
   const host = PULL_ZONE.replace(/^https?:\/\//i, '').replace(/\/$/, '');
   if (!host) return '';
   const name = filename || 'thumbnail.jpg';
-  // Add a cache-busting hourly version key so newly uploaded artwork refreshes promptly
-  return `https://${host}/${videoId}/${name}?v=${Math.floor(Date.now() / 3600000)}`;
+  // Keep thumbnail URLs deterministic so browser and CDN caches persist across sessions.
+  return `https://${host}/${videoId}/${name}`;
 };
 
 /**

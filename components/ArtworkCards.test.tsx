@@ -29,6 +29,18 @@ describe('catalogue artwork presentation', () => {
     expect(html).toContain('cinema-artwork-fallback');
     expect(html).not.toContain('<img');
   });
+  it('applies lazy async decoding for shelf artwork and eager high priority for hero artwork', () => {
+    const shelfHtml = renderToStaticMarkup(<CatalogueArtwork src="https://cdn.example.com/a.jpg" />);
+    expect(shelfHtml).toContain('loading="lazy"');
+    expect(shelfHtml).toContain('decoding="async"');
+    expect(shelfHtml).toContain('cinema-artwork-loading');
+
+    const heroHtml = renderToStaticMarkup(<CatalogueArtwork src="https://cdn.example.com/hero.jpg" priority />);
+    expect(heroHtml).toContain('loading="eager"');
+    expect(heroHtml).toContain('decoding="sync"');
+    expect(heroHtml).toContain('fetchPriority="high"');
+    expect(heroHtml).not.toContain('cinema-artwork-loading');
+  });
   it('keeps catalogue metadata quiet without fake zero-view popularity or inactive menus', () => {
     const html = renderToStaticMarkup(<VideoCard video={{ ...episode('standard'), views: 0 }} />);
     expect(html).toContain('Episode one');

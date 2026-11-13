@@ -53,6 +53,17 @@ export default function LandingHero({
   const [previewRemaining, setPreviewRemaining] = useState<number | null>(null);
   const [slideProgress, setSlideProgress] = useState<number>(0);
 
+  // Preload the next hero slide artwork so carousel transitions happen without a flash.
+  useEffect(() => {
+    if (dataSaver || count <= 1 || featuredVideos.length <= 1) return;
+    const nextVideo = featuredVideos[(index + 1) % featuredVideos.length];
+    const nextSrc = nextVideo?.seriesPosterUrl || nextVideo?.thumbnail;
+    if (!nextSrc || typeof Image === 'undefined') return;
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = nextSrc;
+  }, [dataSaver, count, featuredVideos, index]);
+
   const advanceToNextSlide = () => {
     if (hasAdvancedRef.current) return;
     hasAdvancedRef.current = true;

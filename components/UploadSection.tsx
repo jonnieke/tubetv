@@ -27,6 +27,7 @@ import {
 } from '../services/bunnyService';
 import { Video } from '../types';
 import type { ContentRating } from '../lib/contentRating';
+import { optimizeThumbnailFile } from '../lib/imageOptimize';
 import { publicMediaUrl } from '../lib/mediaUrl';
 import { uploadSeriesPoster } from '../services/seriesArtwork';
 
@@ -290,22 +291,29 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
     const result = await generateThumbnail(activeItem.thumbnailPrompt);
     if (result) {
       const blob = await (await fetch(result)).blob();
+      const rawFile = new File([blob], 'generated-thumbnail.png', { type: blob.type || 'image/png' });
+      const optimizedFile = await optimizeThumbnailFile(rawFile);
       updateQueueItem(activeItem.id, {
         thumbnail: result,
-        thumbnailFile: new File([blob], 'generated-thumbnail.png', { type: blob.type || 'image/png' }),
+        thumbnailFile: optimizedFile,
       });
     }
     setIsGeneratingThumbnail(false);
   };
 
-  const handleCustomThumbnailUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCustomThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0] && activeItem) {
-      const file = e.target.files[0];
+      const rawFile = e.target.files[0];
+      const targetId = activeItem.id;
       if (activeItem.thumbnail?.startsWith('blob:')) {
         URL.revokeObjectURL(activeItem.thumbnail);
       }
-      const url = URL.createObjectURL(file);
-      updateQueueItem(activeItem.id, { thumbnail: url, thumbnailFile: file });
+      const url = URL.createObjectURL(rawFile);
+      updateQueueItem(targetId, { thumbnail: url, thumbnailFile: rawFile });
+      const optimizedFile = await optimizeThumbnailFile(rawFile);
+      if (optimizedFile !== rawFile) {
+        updateQueueItem(targetId, { thumbnailFile: optimizedFile });
+      }
     }
   };
 

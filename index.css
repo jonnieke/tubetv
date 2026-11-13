@@ -43,6 +43,8 @@
 .cinema-poster { position: relative; aspect-ratio: 0.704; border: 1px solid #ffffff0a; border-radius: 7px; overflow: hidden; scroll-snap-align: start; background: #202524; }
 .cinema-artwork-fallback { background: radial-gradient(ellipse at 65% 30%,#4a3b30,#182224 65%,#090d0e); }
 .cinema-artwork-fallback::after { content: 'TubeTV'; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #f4ecdd88; font-size: 18px; font-weight: 800; letter-spacing: -.7px; }
+@keyframes cinemaShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.cinema-artwork-loading { background: linear-gradient(110deg, #141819 25%, #22292b 45%, #141819 65%); background-size: 200% 100%; animation: cinemaShimmer 1.4s ease-in-out infinite; }
 .catalogue-video-card { border-radius: 8px; background: transparent; border: 1px solid transparent; transition: border-color .2s ease; }
 .catalogue-video-card:hover,.catalogue-video-card:focus-within { border-color: #ffffff30; }
 .catalogue-video-card > div:first-child { border-radius: 7px; }
