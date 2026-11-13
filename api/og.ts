@@ -10,8 +10,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export default async function handler(req: RequestWithQuery, res: ServerResponse) {
   const url = new URL(req.url || '', 'https://www.tube.co.ke');
   const id = (url.searchParams.get('id') || '').trim();
+  const seriesParam = (url.searchParams.get('series') || '').trim().toLowerCase();
 
-  if (!id || !UUID_RE.test(id)) {
+  if (!seriesParam && (!id || !UUID_RE.test(id))) {
     res.statusCode = 302;
     res.setHeader('Location', '/');
     res.setHeader('Cache-Control', 'no-store');
@@ -43,11 +44,55 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
   let creator = 'TubeTV';
   let transcriptExcerpt = '';
   let isAccessibleForFree = false;
+  let episodeCount = 0;
   let fetchedItem = false;
 
   if (supabaseUrl && anonKey) {
     try {
-      const response = await fetch(`${supabaseUrl}/functions/v1/public-catalogue?id=${encodeURIComponent(id)}`, {
+      if (seriesParam) {
+        const response = await fetch(`${supabaseUrl}/functions/v1/public-catalogue?page=1&itemsPerPage=100`, {
+          headers: { apikey: anonKey, Accept: 'application/json' },
+          signal: AbortSignal.timeout(4000),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const items = Array.isArray(data?.items) ? data.items : [];
+          const slugify = (s: string) =>
+            s
+              .toLowerCase()
+              .trim()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-+|-+$/g, '');
+          const matched = items.filter((item: { title?: string; metaTags?: Array<{ property?: string; value?: string }> }) => {
+            const tags = Array.isArray(item.metaTags) ? item.metaTags : [];
+            const st = tags.find((t) => t.property?.toLowerCase() === 'seriestitle')?.value ||
+              tags.find((t) => t.property?.toLowerCase() === 'series')?.value ||
+              item.title || '';
+            return slugify(st) === seriesParam;
+          });
+          if (matched.length > 0) {
+            fetchedItem = true;
+            episodeCount = matched.length;
+            const first = matched[0];
+            const tags = Array.isArray(first.metaTags) ? first.metaTags : [];
+            const getMeta = (prop: string) =>
+              tags.find((t: { property?: string; value?: string }) => t.property?.toLowerCase() === prop.toLowerCase())?.value || '';
+            seriesTitle = getMeta('seriesTitle') || getMeta('series') || first.title || seriesParam;
+            title = `${seriesTitle} | TubeTV`;
+            description = getMeta('seriesSynopsis') || getMeta('description') || `Watch ${seriesTitle} on TubeTV (Ep 1 & 2 free).`;
+            genre = getMeta('genre') || getMeta('category');
+            creator = getMeta('author') || getMeta('creator') || 'TubeTV';
+            const customThumb = getMeta('seriesPosterUrl').trim() || getMeta('thumbnailUrl').trim();
+            if (/^https:\/\//i.test(customThumb)) {
+              thumbnail = customThumb;
+            } else if (pullZone && first.guid) {
+              thumbnail = `https://${pullZone}/${first.guid}/${first.thumbnailFileName || 'thumbnail.jpg'}`;
+            }
+            isAccessibleForFree = true;
+          }
+        }
+      } else {
+        const response = await fetch(`${supabaseUrl}/functions/v1/public-catalogue?id=${encodeURIComponent(id)}`, {
         headers: { apikey: anonKey, Accept: 'application/json' },
         signal: AbortSignal.timeout(4000),
       });
@@ -87,10 +132,11 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
           const isShort = categoryLower === 'shorts' || getMeta('isShort').trim().toLowerCase() === 'true';
           const freeEpisodes = Number(getMeta('freeEpisodes'));
           const freeLimit = Number.isFinite(freeEpisodes) && freeEpisodes >= 0 ? freeEpisodes : 2;
-          isAccessibleForFree =
-            isShort ||
-            (Number.isFinite(epNum) && epNum > 0 && epNum <= freeLimit) ||
-            getMeta('accessTier').trim().toLowerCase() === 'free';
+            isAccessibleForFree =
+              isShort ||
+              (Number.isFinite(epNum) && epNum > 0 && epNum <= freeLimit) ||
+              getMeta('accessTier').trim().toLowerCase() === 'free';
+          }
         }
       }
     } catch {
@@ -102,17 +148,37 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
     thumbnail = `${siteUrl}/og-default.png`;
   }
 
-  const safeVideoUrl = escapeHtml(`${siteUrl}/watch/${encodeURIComponent(id)}`);
-  const safePath = escapeHtml(`/watch/${encodeURIComponent(id)}`);
+  const canonicalPath = seriesParam ? `/series/${encodeURIComponent(seriesParam)}` : `/watch/${encodeURIComponent(id)}`;
+  const safeVideoUrl = escapeHtml(`${siteUrl}${canonicalPath}`);
+  const safePath = escapeHtml(canonicalPath);
   const safeTitle = escapeHtml(title);
   const safeDescription = escapeHtml(description);
   const safeThumbnail = escapeHtml(thumbnail);
 
-  const videoSchema: Record<string, unknown> = {
-    '@context': 'https://schema.org',
-    '@type': 'VideoObject',
-    name: title.replace(/\s*\|\s*TubeTV$/i, ''),
-    description,
+  const videoSchema: Record<string, unknown> = seriesParam
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'TVSeries',
+        name: seriesTitle || title.replace(/\s*\|\s*TubeTV$/i, ''),
+        description,
+        image: [thumbnail],
+        url: `${siteUrl}${canonicalPath}`,
+        inLanguage: ['en-KE', 'sw-KE'],
+        ...(episodeCount > 0 ? { numberOfEpisodes: episodeCount } : {}),
+        ...(genre ? { genre } : {}),
+        creator: { '@type': 'Organization', name: creator },
+        publisher: {
+          '@type': 'Organization',
+          name: 'TubeTV',
+          url: siteUrl,
+          logo: { '@type': 'ImageObject', url: `${siteUrl}/icon-512.png` },
+        },
+      }
+    : {
+        '@context': 'https://schema.org',
+        '@type': 'VideoObject',
+        name: title.replace(/\s*\|\s*TubeTV$/i, ''),
+        description,
     thumbnailUrl: [thumbnail],
     url: `${siteUrl}/watch/${encodeURIComponent(id)}`,
     inLanguage: ['en-KE', 'sw-KE'],

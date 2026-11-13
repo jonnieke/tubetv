@@ -97,6 +97,17 @@
       "destination": "/api/og?id=$1"
     },
     {
+      "source": "/series/(.*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|WhatsApp|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview|Applebot|Googlebot|bingbot|BingPreview|Pinterest|redditbot|TikTokBot|Bytespider|Meta-ExternalAgent|GPTBot|OAI-SearchBot|ChatGPT-User|PerplexityBot|ClaudeBot|anthropic-ai|Google-Extended|DuckAssistBot).*"
+        }
+      ],
+      "destination": "/api/og?series=$1"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

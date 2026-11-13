@@ -46,6 +46,7 @@ export default async function handler(_req: IncomingMessage, res: ServerResponse
     { loc: `${siteUrl}/privacy`, changefreq: 'monthly', priority: '0.4' },
     { loc: `${siteUrl}/terms`, changefreq: 'monthly', priority: '0.4' },
   ];
+  const seenSeries = new Set<string>();
 
   let fetchedCatalogue = false;
 
@@ -106,6 +107,22 @@ export default async function handler(_req: IncomingMessage, res: ServerResponse
               publicationDate: isValidDate ? uploaded.toISOString() : undefined,
             },
           });
+
+          const rawSeries = getMeta('seriesTitle') || getMeta('series');
+          const sSlug = rawSeries
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+          if (sSlug && !seenSeries.has(sSlug)) {
+            seenSeries.add(sSlug);
+            entries.push({
+              loc: `${siteUrl}/series/${encodeURIComponent(sSlug)}`,
+              lastmod,
+              changefreq: 'weekly',
+              priority: '0.9',
+            });
+          }
         }
 
         if (items.length < 100) break;

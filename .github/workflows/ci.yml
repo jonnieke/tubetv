@@ -1,0 +1,21 @@
+name: TubeTV CI & Edge Verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run components/ArtworkCards.test.tsx lib/mediaUrl.test.ts lib/phase4.test.ts lib/monetization.test.ts
+      - run: npm run build
+      - run: npm run verify:edge

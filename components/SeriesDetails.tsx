@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Lock, Play, Plus, X } from 'lucide-react';
+import { Check, Lock, Play, Plus, Share2, X } from 'lucide-react';
 import type { Video } from '../types';
-import { isMicroDrama } from '../lib/series';
+import { isMicroDrama, seriesSlug } from '../lib/series';
 import { isVideoLocked } from '../lib/monetization';
 import { publicMediaUrl } from '../lib/mediaUrl';
 import { usePlayback } from '../contexts/PlaybackContext';
@@ -27,6 +27,33 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
   const synopsis = episodes.find((episode) => episode.seriesSynopsis)?.seriesSynopsis;
   const seasons = [...new Set(episodes.map((episode) => episode.season || 1))].sort((a, b) => a - b);
   const [season, setSeason] = useState(first.season || 1);
+  const [seriesCopied, setSeriesCopied] = useState(false);
+
+  const handleShareSeries = async () => {
+    const slug = seriesSlug(first);
+    const shareUrl = `${window.location.origin}/series/${encodeURIComponent(slug)}`;
+    const showName = first.seriesTitle || first.title;
+    const shareText = `Watch "${showName}" on TubeTV (Ep 1 & 2 free): ${shareUrl}`;
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ title: `${showName} | TubeTV`, text: shareText, url: shareUrl });
+        return;
+      } catch {
+        // Fallback to clipboard / WhatsApp
+      }
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setSeriesCopied(true);
+        setTimeout(() => setSeriesCopied(false), 2500);
+        return;
+      } catch {
+        // Fallback to WhatsApp
+      }
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener');
+  };
   const seasonEpisodes = episodes.filter((episode) => (episode.season || 1) === season);
   const seasonSynopsis = seasonEpisodes.find((episode) => episode.seasonSynopsis)?.seasonSynopsis;
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -120,6 +147,14 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
                     <Play size={15} /> Watch trailer
                   </a>
                 )}
+                <button
+                  type="button"
+                  className="cinema-secondary"
+                  onClick={handleShareSeries}
+                >
+                  {seriesCopied ? <Check size={15} /> : <Share2 size={15} />}
+                  <span>{seriesCopied ? (language === 'sw' ? 'Imenakiliwa' : 'Link copied') : (language === 'sw' ? 'Shiriki' : 'Share series')}</span>
+                </button>
               </div>
             </div>
           </div>

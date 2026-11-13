@@ -70,7 +70,8 @@ import {
 import { setVideoMetadata, videoPath } from './lib/seo';
 import LegalPage from './components/LegalPage';
 import { trackEvent } from './lib/analytics';
-import { compareEpisodes, isMicroDrama, nextEpisode, seriesKey } from './lib/series';
+import { compareEpisodes, isMicroDrama, nextEpisode, seriesKey, seriesSlug } from './lib/series';
+import SponsorBanner from './components/SponsorBanner';
 import { filterDiscoveryVideos, filterVideosByRating, isKidsVideo } from './lib/discovery';
 import { recommendVideos, getRelatedVideos } from './lib/recommendations';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
@@ -756,10 +757,21 @@ const App: React.FC = () => {
       }
 
       const match = window.location.pathname.match(/^\/watch\/([^/]+)$/);
+      const seriesPathMatch = window.location.pathname.match(/^\/series\/([^/]+)$/);
       const queryVideoId = params.get('v') || params.get('watch');
       const seriesParam = params.get('series') || params.get('drama');
 
       let id = match ? decodeURIComponent(match[1]) : queryVideoId ? decodeURIComponent(queryVideoId) : '';
+
+      if (!id && seriesPathMatch) {
+        const slugNeedle = decodeURIComponent(seriesPathMatch[1]).toLowerCase();
+        const matched = videos
+          .filter((v) => seriesSlug(v) === slugNeedle)
+          .sort(compareEpisodes);
+        if (matched[0]) {
+          id = matched[0].id;
+        }
+      }
 
       if (!id && seriesParam) {
         const needle = decodeURIComponent(seriesParam).toLowerCase();
@@ -1309,6 +1321,10 @@ const App: React.FC = () => {
                 isAuthenticated={isAuthenticated}
                 onPlay={openVideo}
               />
+            )}
+
+            {currentView === ViewState.HOME && !searchQuery && (
+              <SponsorBanner hasActivePass={hasActivePass} />
             )}
 
             {currentView === ViewState.HOME && !searchQuery && recommendations.continueWatching.length > 0 && (

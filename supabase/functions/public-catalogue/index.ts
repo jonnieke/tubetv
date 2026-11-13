@@ -7,6 +7,11 @@ const accessKey = Deno.env.get("BUNNY_ACCESS_KEY");
 const enforceRating = Deno.env.get("ENFORCE_CONTENT_RATINGS") === "true";
 const METHODS = "GET, OPTIONS";
 
+// Isolate-level SWR cache to protect Bunny Management API and keep warm TTFB <10ms.
+const CACHE_TTL_MS = 60_000;
+const STALE_TTL_MS = 300_000;
+const catalogCache = new Map<string, { payload: unknown; cachedAt: number }>();
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req, METHODS) });
@@ -69,6 +74,16 @@ serve(async (req) => {
     return jsonReply(req, { error: "Invalid page or page size." }, 400, METHODS, { "Cache-Control": "no-store" });
   }
 
+  const cacheKey = `list:${page}:${itemsPerPage}`;
+  const cached = !bypassCache ? catalogCache.get(cacheKey) : undefined;
+  const ageMs = cached ? Date.now() - cached.cachedAt : Infinity;
+  if (cached && ageMs < CACHE_TTL_MS) {
+    return jsonReply(req, cached.payload, 200, METHODS, {
+      "Cache-Control": cacheHeader,
+      "X-Catalog-Cache": "HIT",
+    });
+  }
+
   try {
     const upstream = await fetch(
       `https://video.bunnycdn.com/library/${libraryId}/videos?page=${page}&itemsPerPage=${itemsPerPage}&orderBy=date`,
@@ -78,20 +93,34 @@ serve(async (req) => {
       },
     );
     if (!upstream.ok) {
+      if (cached && ageMs < STALE_TTL_MS) {
+        return jsonReply(req, cached.payload, 200, METHODS, {
+          "Cache-Control": cacheHeader,
+          "X-Catalog-Cache": "STALE",
+        });
+      }
       return jsonReply(req, { error: "Catalogue unavailable." }, 503, METHODS, { "Cache-Control": "no-store" });
     }
     const data = await upstream.json();
     const items = Array.isArray(data.items)
       ? data.items.map((item: Record<string, unknown>) => publicItem(item, enforceRating)).filter(Boolean)
       : [];
+    const payload = { items, totalItems: Number(data.totalItems) || 0, currentPage: page, itemsPerPage };
+    catalogCache.set(cacheKey, { payload, cachedAt: Date.now() });
     return jsonReply(
       req,
-      { items, totalItems: Number(data.totalItems) || 0, currentPage: page, itemsPerPage },
+      payload,
       200,
       METHODS,
-      { "Cache-Control": cacheHeader },
+      { "Cache-Control": cacheHeader, "X-Catalog-Cache": "MISS" },
     );
   } catch (error) {
+    if (cached && ageMs < STALE_TTL_MS) {
+      return jsonReply(req, cached.payload, 200, METHODS, {
+        "Cache-Control": cacheHeader,
+        "X-Catalog-Cache": "STALE",
+      });
+    }
     console.error("public_catalogue_error", error);
     return jsonReply(req, { error: "Catalogue unavailable." }, 503, METHODS, { "Cache-Control": "no-store" });
   }
