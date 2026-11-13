@@ -46,7 +46,6 @@ export function corsHeaders(
     "Access-Control-Allow-Headers":
       "authorization, apikey, content-type, x-client-info, idempotency-key, x-pass-token",
     "Access-Control-Allow-Methods": methods,
-    "Access-Control-Allow-Credentials": "true",
     "Vary": "Origin",
     ...extraHeaders,
   };

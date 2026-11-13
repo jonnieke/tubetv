@@ -51,6 +51,10 @@ declare global {
       setup: (options: {
         key: string;
         email?: string;
+        amount?: number;
+        currency?: string;
+        ref?: string;
+        reference?: string;
         access_code: string;
         callback?: (response: { reference: string }) => void;
         onClose?: () => void;
@@ -235,6 +239,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   };
 
   const activeRegion = REGIONAL_PRICING[regionCode] || REGIONAL_PRICING.KE;
+  const activePlan = SUBSCRIPTION_PLANS[selectedPlan];
 
   const handlePaystackCheckout = async () => {
     clearTimers();
@@ -301,9 +306,14 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         const loaded = await loadPaystackInline().catch(() => false);
         if (loaded && window.PaystackPop?.setup) {
           try {
+            const amountInSubunits = Math.round((activePlan?.amountKes || 10) * 100);
             const handler = window.PaystackPop.setup({
               key: publicKey,
               email: cleanEmail,
+              amount: amountInSubunits,
+              currency: activeRegion.currency || 'KES',
+              ref: result.reference,
+              reference: result.reference,
               access_code: result.accessCode,
               callback: () => {
                 // Polling below will verify and complete
@@ -606,7 +616,6 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   };
 
   const isBusy = status === 'sending' || status === 'prompt_sent' || status === 'restoring';
-  const activePlan = SUBSCRIPTION_PLANS[selectedPlan];
 
   return (
     <div
