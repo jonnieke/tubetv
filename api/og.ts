@@ -35,6 +35,14 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
   let title = 'TubeTV | Watch Kenyan Stories';
   let description = 'Watch Kenyan micro dramas, series, movies and originals on TubeTV.';
   let thumbnail = pullZone ? `https://${pullZone}/${id}/thumbnail.jpg` : `${siteUrl}/og-default.png`;
+  let uploadDate: string | undefined;
+  let durationIso: string | undefined;
+  let genre = '';
+  let seriesTitle = '';
+  let episodeLabel = '';
+  let creator = 'TubeTV';
+  let transcriptExcerpt = '';
+  let isAccessibleForFree = false;
   let fetchedItem = false;
 
   if (supabaseUrl && anonKey) {
@@ -61,6 +69,28 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
           } else if (pullZone) {
             thumbnail = `https://${pullZone}/${id}/${item.thumbnailFileName || 'thumbnail.jpg'}`;
           }
+          if (item.dateUploaded && !Number.isNaN(Date.parse(item.dateUploaded))) {
+            uploadDate = new Date(item.dateUploaded).toISOString();
+          }
+          if (typeof item.length === 'number' && Number.isFinite(item.length) && item.length > 0) {
+            durationIso = `PT${Math.round(item.length)}S`;
+          }
+          genre = getMeta('genre').trim() || getMeta('category').trim();
+          seriesTitle = getMeta('seriesTitle').trim() || getMeta('series').trim();
+          const epNum = Number(getMeta('episode'));
+          if (Number.isFinite(epNum) && epNum > 0) {
+            episodeLabel = `Episode ${epNum}`;
+          }
+          creator = getMeta('author').trim() || getMeta('creator').trim() || 'TubeTV';
+          transcriptExcerpt = getMeta('transcript').trim().slice(0, 600);
+          const categoryLower = getMeta('category').trim().toLowerCase();
+          const isShort = categoryLower === 'shorts' || getMeta('isShort').trim().toLowerCase() === 'true';
+          const freeEpisodes = Number(getMeta('freeEpisodes'));
+          const freeLimit = Number.isFinite(freeEpisodes) && freeEpisodes >= 0 ? freeEpisodes : 2;
+          isAccessibleForFree =
+            isShort ||
+            (Number.isFinite(epNum) && epNum > 0 && epNum <= freeLimit) ||
+            getMeta('accessTier').trim().toLowerCase() === 'free';
         }
       }
     } catch {
@@ -78,7 +108,7 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
   const safeDescription = escapeHtml(description);
   const safeThumbnail = escapeHtml(thumbnail);
 
-  const videoSchema = {
+  const videoSchema: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'VideoObject',
     name: title.replace(/\s*\|\s*TubeTV$/i, ''),
@@ -86,6 +116,23 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
     thumbnailUrl: [thumbnail],
     url: `${siteUrl}/watch/${encodeURIComponent(id)}`,
     inLanguage: ['en-KE', 'sw-KE'],
+    isAccessibleForFree,
+    ...(uploadDate ? { uploadDate } : {}),
+    ...(durationIso ? { duration: durationIso } : {}),
+    ...(genre ? { genre } : {}),
+    ...(transcriptExcerpt ? { transcript: transcriptExcerpt } : {}),
+    ...(seriesTitle
+      ? {
+          partOfSeries: {
+            '@type': 'TVSeries',
+            name: seriesTitle,
+          },
+        }
+      : {}),
+    creator: {
+      '@type': 'Organization',
+      name: creator,
+    },
     publisher: {
       '@type': 'Organization',
       name: 'TubeTV',
@@ -133,10 +180,14 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
 ${JSON.stringify(videoSchema, null, 2)}
     </script>
   </head>
-  <body style="background:#09090b;color:#fff;font-family:sans-serif;padding:2rem;text-align:center;">
-    <h1>${safeTitle}</h1>
-    <p>${safeDescription}</p>
-    <p><a href="${safePath}" style="color:#ef4444;font-weight:bold;text-decoration:none;">Watch on TubeTV &rarr;</a></p>
+  <body style="background:#09090b;color:#fff;font-family:sans-serif;padding:2rem;text-align:center;max-width:720px;margin:0 auto;">
+    <main>
+      <h1>${safeTitle}</h1>
+      ${seriesTitle || episodeLabel || genre ? `<p style="color:#a1a1aa;font-size:0.9rem;">${escapeHtml([seriesTitle, episodeLabel, genre, creator].filter(Boolean).join(' • '))}</p>` : ''}
+      <p>${safeDescription}</p>
+      ${transcriptExcerpt ? `<section aria-label="Transcript preview"><p style="color:#d4d4d8;font-size:0.85rem;">${escapeHtml(transcriptExcerpt)}</p></section>` : ''}
+      <p><a href="${safePath}" style="color:#ef4444;font-weight:bold;text-decoration:none;">Watch on TubeTV &rarr;</a></p>
+    </main>
   </body>
 </html>`;
 

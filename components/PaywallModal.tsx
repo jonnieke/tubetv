@@ -926,7 +926,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                           >
                             <div className="flex items-center justify-between gap-1 mb-0.5">
                               <span className="inline-block text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">
-                                POPULAR
+                                {regionCode === 'KE' ? 'BEST VALUE • KSH 7/DAY' : 'POPULAR'}
                               </span>
                               {isCurrent ? (
                                 <span className="text-[7.5px] uppercase tracking-wider font-extrabold text-emerald-400 bg-emerald-500/20 px-1 py-0.5 rounded">
@@ -1209,6 +1209,32 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       <Loader2 size={16} className="animate-spin text-emerald-400" />
                       <span className="text-xs text-zinc-400">{t('paywall.waitingConfirm')}</span>
                     </div>
+                    {paymentMethod === 'mpesa' && (
+                      <div className="pt-1 flex items-center justify-center gap-3 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatus('idle');
+                            setFeedback(null);
+                          }}
+                          className="text-emerald-300 hover:text-emerald-200 underline cursor-pointer"
+                        >
+                          {language === 'sw' ? 'Tuma tena' : 'Retry STK'}
+                        </button>
+                        <span className="text-zinc-600">•</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentMethod('paystack');
+                            setStatus('idle');
+                            setFeedback(null);
+                          }}
+                          className="text-blue-300 hover:text-blue-200 underline cursor-pointer"
+                        >
+                          {language === 'sw' ? 'Lipa kwa Kadi / Paystack' : 'Pay with Card / Paystack'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

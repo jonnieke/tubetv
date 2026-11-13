@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "verify:edge": "node scripts/verify-edge-health.mjs",
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
