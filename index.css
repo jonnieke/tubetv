@@ -169,7 +169,7 @@
 .cinema-player-episodes small { display: block; color: #aaa; margin-top: 5px; }
 .shorts-main { min-height: 0; overflow: hidden; }
 .shorts-stage { height: 100%; min-height: 0; }
-.shorts-feed { overscroll-behavior-y: contain; }
+.shorts-feed { overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
 .shorts-art-backdrop { position: absolute; inset: -20px; width: calc(100% + 40px); height: calc(100% + 40px); object-fit: cover; filter: blur(24px) brightness(.27); }
 .shorts-stage-heading { pointer-events: none; position: absolute; z-index: 30; top: 0; left: 50%; transform: translateX(-50%); width: min(100%,450px); height: 75px; display: flex; align-items: flex-start; justify-content: center; padding-top: 22px; background: linear-gradient(#0009,transparent); }
 .shorts-stage-heading > span { color: var(--cinema-cream); font: 23px/1.2 Georgia,serif; text-shadow: 0 2px 12px #000; }
@@ -378,13 +378,17 @@
 .landing-signature > span { display: block; font: italic 32px/.94 'Brush Script MT',Georgia,serif; transform: rotate(-9deg); color: #f4ecdd; border-bottom: 2px solid #e50923; padding: 0 12px 13px; }
 @media(max-width:900px) { .landing-hero-motto { display: none; } .landing-footer-categories { grid-template-columns: repeat(3,1fr); row-gap: 25px; } .micro-launch-copy { max-width: 60%; } .micro-launch-art { width: 190px; } .micro-launch-compact .micro-launch-copy { grid-template-columns: minmax(0,1fr) auto; } .micro-launch-compact .micro-launch-copy > p:not(.cinema-eyebrow) { grid-column: 1; } .micro-launch-compact .micro-launch-copy > button { grid-column: 2; grid-row: 2 / 4; } }
 @media(max-width:680px) {
- .landing-hero { min-height: 430px; display: flex; align-items: end; }
- .landing-hero-copy { padding-top: 130px; padding-bottom: 30px; width: 100%; }
+ .landing-hero { min-height: min(430px, 68dvh); display: flex; align-items: end; }
+ .landing-hero-copy { padding-top: 96px; padding-bottom: 26px; width: 100%; }
  .landing-hero-shade { background: linear-gradient(0deg,#080c0d 0%,#080c0db0 55%,#080c0d20); }
- .landing-hero h1 { font-size: 42px; }
+ .landing-hero h1 { font-size: clamp(30px, 9vw, 42px); }
  .landing-hero-synopsis { font-size: 12px; }
  .landing-hero .cinema-actions { gap: 8px; flex-wrap: wrap; }
  .landing-hero .cinema-actions button { padding: 10px 14px; font-size: 12px; }
+ .landing-page .landing-video-slot { width: min(230px, 72vw); min-width: min(230px, 72vw); }
+ .landing-page .cinema-series-card:not(.cinema-series-vertical) { width: min(250px, 76vw); }
+ .landing-page .cinema-series-card.cinema-series-vertical { width: min(172px, 44vw); }
+ .cinema-player-header { padding-left: 12px; padding-right: 12px; }
  .micro-launch { padding: 28px 20px; min-height: 285px; }
  .micro-launch-copy { max-width: 100%; }
  .micro-launch-copy > p:not(.cinema-eyebrow) { max-width: 84%; }

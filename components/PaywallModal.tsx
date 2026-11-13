@@ -702,7 +702,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+      className="fixed inset-0 z-[200] flex items-center justify-center p-2.5 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-black/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
       onClick={onClose}
     >
       <div
@@ -710,7 +710,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         role="dialog"
         aria-modal="true"
         aria-labelledby="tubetv-paywall-title"
-        className="relative w-full max-w-md my-auto max-h-[92vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-md my-auto max-h-[92dvh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <button

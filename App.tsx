@@ -1724,11 +1724,11 @@ const App: React.FC = () => {
             role="dialog"
             aria-modal="true"
             aria-label={`Playing ${activeHeroVideo.title}`}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-3 md:p-8"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-2 sm:p-4 md:p-8"
             onClick={closeVideo}
           >
             <div
-              className={`cinema-player relative w-full max-h-[90vh] overflow-y-auto ${
+              className={`cinema-player relative w-full max-h-[94dvh] overflow-y-auto ${
                 isMicroDrama(activeHeroVideo) ? 'cinema-player-vertical max-w-sm' : 'max-w-5xl'
               }`}
               onClick={(event) => event.stopPropagation()}
@@ -1740,23 +1740,23 @@ const App: React.FC = () => {
                 <span className="cinema-logo">
                   Tube<span>TV</span>
                 </span>
-                <div className="flex items-center gap-2 mr-7">
+                <div className="flex items-center gap-1.5 sm:gap-2 mr-9">
                   <button
                     type="button"
                     onClick={() => handleWhatsAppShareCurrentVideo(activeHeroVideo)}
                     title={language === 'sw' ? 'Shiriki kwenye WhatsApp' : 'Share on WhatsApp'}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-950/60 px-3 py-1 text-xs font-bold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 transition-all active:scale-95 cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/60 px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-bold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 transition-all active:scale-95 cursor-pointer"
                   >
-                    <Share2 size={13} />
+                    <Share2 size={12} />
                     <span>WhatsApp</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleShareCurrentVideo(activeHeroVideo)}
                     title={language === 'sw' ? 'Shiriki kipindi hiki' : 'Share this video'}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/90 px-3 py-1 text-xs font-bold text-zinc-200 hover:border-zinc-500 hover:text-white transition-all active:scale-95 cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900/90 px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-bold text-zinc-200 hover:border-zinc-500 hover:text-white transition-all active:scale-95 cursor-pointer"
                   >
-                    {playerShareCopied ? <Check size={13} className="text-emerald-400" /> : <Share2 size={13} />}
+                    {playerShareCopied ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
                     <span>{playerShareCopied ? (language === 'sw' ? 'Imenakiliwa!' : 'Copied!') : (language === 'sw' ? 'Shiriki' : 'Share')}</span>
                   </button>
                 </div>

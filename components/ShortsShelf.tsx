@@ -139,7 +139,7 @@ const ShortItem: React.FC<{
       onMouseLeave={handleMouseLeave}
       onFocus={handleMouseEnter}
       onBlur={handleMouseLeave}
-      className="flex-shrink-0 w-[160px] md:w-[200px] h-[280px] md:h-[350px] relative rounded-xl overflow-hidden cursor-pointer group snap-start ring-1 ring-white/10 shadow-lg bg-zinc-900 text-left"
+      className="flex-shrink-0 w-[148px] sm:w-[172px] md:w-[200px] aspect-[9/16] relative rounded-xl overflow-hidden cursor-pointer group snap-start ring-1 ring-white/10 shadow-lg bg-zinc-900 text-left"
       style={{ animationDelay: `${index * 50}ms` }}
     >
       {shouldPlay ? (
