@@ -1,11 +1,54 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { publicItem } from "../_shared/publicCatalog.ts";
 import { corsHeaders, isOriginAllowed, jsonReply } from "../_shared/cors.ts";
+import { buildBunnyAssetUrl } from "../_shared/bunnyToken.ts";
 
 const libraryId = Deno.env.get("BUNNY_LIBRARY_ID");
 const accessKey = Deno.env.get("BUNNY_ACCESS_KEY");
+const pullZone = (Deno.env.get("BUNNY_PULL_ZONE") || "").replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+const tokenAuthKey = Deno.env.get("BUNNY_TOKEN_AUTH_KEY") || "";
 const enforceRating = Deno.env.get("ENFORCE_CONTENT_RATINGS") === "true";
 const METHODS = "GET, OPTIONS";
+
+async function attachSignedArtwork(item: ReturnType<typeof publicItem>) {
+  if (!item || !pullZone || !tokenAuthKey) return item;
+  const tags = Array.isArray(item.metaTags) ? item.metaTags : [];
+  const getTag = (prop: string) =>
+    tags.find((t) => String(t.property || "").toLowerCase() === prop.toLowerCase())?.value?.trim() || "";
+
+  const rawThumbUrl = getTag("thumbnailUrl");
+  let thumbPath = `/${item.guid}/${item.thumbnailFileName || "thumbnail.jpg"}`;
+  if (rawThumbUrl) {
+    try {
+      const parsed = new URL(rawThumbUrl);
+      if (parsed.hostname === pullZone && parsed.pathname) {
+        thumbPath = parsed.pathname;
+      }
+    } catch {
+      // Ignore malformed URL
+    }
+  }
+  const signedThumbnailUrl = await buildBunnyAssetUrl(pullZone, thumbPath, tokenAuthKey);
+
+  let signedSeriesPosterUrl: string | undefined;
+  const rawPosterUrl = getTag("seriesPosterUrl");
+  if (rawPosterUrl) {
+    try {
+      const parsed = new URL(rawPosterUrl);
+      if (parsed.hostname === pullZone && parsed.pathname) {
+        signedSeriesPosterUrl = await buildBunnyAssetUrl(pullZone, parsed.pathname, tokenAuthKey);
+      }
+    } catch {
+      // Ignore malformed URL
+    }
+  }
+
+  return {
+    ...item,
+    signedThumbnailUrl,
+    ...(signedSeriesPosterUrl ? { signedSeriesPosterUrl } : {}),
+  };
+}
 
 // Isolate-level SWR cache to protect Bunny Management API and keep warm TTFB <10ms.
 const CACHE_TTL_MS = 60_000;
@@ -48,7 +91,8 @@ serve(async (req) => {
         });
       }
       const data = await upstream.json();
-      const item = publicItem(data, enforceRating);
+      const baseItem = publicItem(data, enforceRating);
+      const item = await attachSignedArtwork(baseItem);
       if (!item) {
         return jsonReply(req, { error: "Video is not available for public playback." }, 404, METHODS, {
           "Cache-Control": "no-store",
@@ -102,9 +146,10 @@ serve(async (req) => {
       return jsonReply(req, { error: "Catalogue unavailable." }, 503, METHODS, { "Cache-Control": "no-store" });
     }
     const data = await upstream.json();
-    const items = Array.isArray(data.items)
+    const rawItems = Array.isArray(data.items)
       ? data.items.map((item: Record<string, unknown>) => publicItem(item, enforceRating)).filter(Boolean)
       : [];
+    const items = await Promise.all(rawItems.map((item) => attachSignedArtwork(item)));
     const payload = { items, totalItems: Number(data.totalItems) || 0, currentPage: page, itemsPerPage };
     catalogCache.set(cacheKey, { payload, cachedAt: Date.now() });
     return jsonReply(

@@ -45,6 +45,34 @@ export async function buildBunnyPlaybackUrl(
 }
 
 /**
+ * Signs a Bunny CDN thumbnail/poster URL using a directory-scoped V2 token.
+ * Rounds expiration to the nearest hour so browser and CDN caches stay warm.
+ */
+export async function buildBunnyAssetUrl(
+  pullZone: string,
+  assetPath: string,
+  tokenAuthKey?: string | null,
+  ttlSeconds = 86400,
+): Promise<string> {
+  const cleanZone = pullZone.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  const cleanPath = assetPath.startsWith("/") ? assetPath : `/${assetPath}`;
+  const cleanKey = (tokenAuthKey || "").trim();
+  if (!cleanZone) return "";
+  if (!cleanKey) return `https://${cleanZone}${cleanPath}`;
+
+  // Align expiry to hourly boundaries so identical thumbnail URLs cache cleanly across requests.
+  const nowHour = Math.floor(Date.now() / 3600000) * 3600;
+  const expires = nowHour + ttlSeconds;
+  const lastSlash = cleanPath.lastIndexOf("/");
+  const tokenPath = lastSlash > 0 ? cleanPath.slice(0, lastSlash + 1) : "/";
+  const hashable = `${cleanKey}${tokenPath}${expires}token_path=${tokenPath}`;
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(hashable));
+  const token = toBase64Url(new Uint8Array(digest));
+
+  return `https://${cleanZone}/bcdn_token=${token}&expires=${expires}&token_path=${encodeURIComponent(tokenPath)}${cleanPath}`;
+}
+
+/**
  * Generates Bunny Stream Direct TUS upload signature credentials:
  * sha256_hex(library_id + api_key + expiration_time + video_id)
  */

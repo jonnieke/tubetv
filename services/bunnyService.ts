@@ -36,6 +36,8 @@ export interface BunnyVideoItem {
   status: number;
   encodeProgress: number;
   thumbnailFileName: string;
+  signedThumbnailUrl?: string;
+  signedSeriesPosterUrl?: string;
   dateUploaded: string;
   storageSize: number;
   collectionId?: string;
@@ -488,7 +490,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     id: activeItem.guid,
     title: cleanTitle || 'Untitled',
     description: getMeta(activeItem.metaTags, 'description'),
-    thumbnail: getMeta(activeItem.metaTags, 'thumbnailUrl') || getThumbnailUrl(activeItem.guid, activeItem.thumbnailFileName),
+    thumbnail: activeItem.signedThumbnailUrl || getMeta(activeItem.metaTags, 'thumbnailUrl') || getThumbnailUrl(activeItem.guid, activeItem.thumbnailFileName),
     url: getStreamUrl(activeItem.guid),
     duration: formatDuration(activeItem.length),
     views: activeItem.views ?? 0,
@@ -505,7 +507,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     seriesTitle: rawSeriesTitle || undefined,
     seriesId: getMeta(activeItem.metaTags, 'seriesId') || undefined,
     seriesSynopsis: getMeta(activeItem.metaTags, 'seriesSynopsis') || undefined,
-    seriesPosterUrl: getMeta(activeItem.metaTags, 'seriesPosterUrl') || undefined,
+    seriesPosterUrl: activeItem.signedSeriesPosterUrl || getMeta(activeItem.metaTags, 'seriesPosterUrl') || undefined,
     seriesTrailerUrl: getMeta(activeItem.metaTags, 'seriesTrailerUrl') || undefined,
     seasonSynopsis: getMeta(activeItem.metaTags, 'seasonSynopsis') || undefined,
     episodeSynopsis: getMeta(activeItem.metaTags, 'episodeSynopsis') || getMeta(activeItem.metaTags, 'description') || undefined,
