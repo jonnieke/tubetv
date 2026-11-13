@@ -21,9 +21,12 @@ function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; val
     return false;
   }
 
-  const rawFree = Number(getTag(tags, "freeepisodes"));
+  const freeStr = getTag(tags, "freeepisodes");
+  const rawFree = freeStr !== "" ? Number(freeStr) : NaN;
   const freeCount = Number.isFinite(rawFree) && rawFree >= 0 ? rawFree : 2;
-  const rawEpisode = Number(getTag(tags, "episode"));
+
+  const epStr = getTag(tags, "episode");
+  const rawEpisode = epStr !== "" ? Number(epStr) : NaN;
   const titleMatch =
     String(item.title || "").match(/(?:S\d+)?E(\d{1,3})/i) ||
     String(item.title || "").match(/Episode\s*(\d{1,3})/i);
