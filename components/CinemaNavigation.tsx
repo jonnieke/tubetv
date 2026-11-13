@@ -145,12 +145,25 @@ export default function CinemaNavigation(props: Props) {
           {activePass ? (
             <button
               type="button"
-              onClick={() => navigate(ViewState.SETTINGS, 'pass')}
-              title={`Active ${activePass.tier.toUpperCase()} Pass — Click to manage`}
+              onClick={() => {
+                if (activePass.tier === 'daily' && props.onOpenBuyPass) {
+                  props.onOpenBuyPass();
+                } else {
+                  navigate(ViewState.SETTINGS, 'pass');
+                }
+              }}
+              title={
+                activePass.tier === 'daily'
+                  ? 'Active 24H Pass — Click to upgrade to Weekly or Monthly'
+                  : `Active ${activePass.tier.toUpperCase()} Pass — Click to manage`
+              }
               className="inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full border border-emerald-400/60 bg-gradient-to-r from-emerald-950/90 to-teal-950/90 px-3 py-1.5 text-xs font-bold text-emerald-200 shadow-md shadow-emerald-950/50 hover:border-emerald-300 hover:text-white transition-all cursor-pointer"
             >
               <CheckCircle2 size={13} className="text-emerald-400" />
-              <span>Pass · {formatRemainingPassTime(activePass.expiresAt)}</span>
+              <span>
+                Pass · {formatRemainingPassTime(activePass.expiresAt)}
+                {activePass.tier === 'daily' ? (language === 'sw' ? ' · Pandisha' : ' · Upgrade') : ''}
+              </span>
             </button>
           ) : (
             <button
