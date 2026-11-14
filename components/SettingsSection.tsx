@@ -407,7 +407,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
       to: creatorToDate,
     });
     fetch(`${supabaseUrl}/functions/v1/analytics-summary?${params.toString()}`, {
-      headers: supabaseAnonKey ? { apikey: supabaseAnonKey } : {},
+      headers: supabaseAnonKey
+        ? { apikey: supabaseAnonKey, Authorization: `Bearer ${supabaseAnonKey}` }
+        : {},
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((payload) => {
