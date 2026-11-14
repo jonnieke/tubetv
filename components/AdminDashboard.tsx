@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star, Coins, Inbox, BellRing
+  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star, Coins, Inbox, BellRing, Lock, LayoutDashboard
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
 import UploadSection from './UploadSection';
@@ -10,6 +10,7 @@ import RoyaltiesDashboard from './RoyaltiesDashboard';
 import FilmmakerSubmissionsQueue from './FilmmakerSubmissionsQueue';
 import PassNotificationsPanel from './PassNotificationsPanel';
 import { NavItem, Video } from '../types';
+import { isContentFree } from '../lib/monetization';
 import { normalizeContentRating, ratingDescription, type ContentRating } from '../lib/contentRating';
 import { CONTENT_RATING_ENFORCED } from '../constants';
 import { publicMediaUrl } from '../lib/mediaUrl';
@@ -70,7 +71,7 @@ const EMPTY_FORM = {
   contentRating: 'UNRATED' as ContentRating,
   classificationNumber: '',
   tags: '',
-  accessTier: 'free' as 'free' | 'premium',
+  accessTier: 'premium' as 'free' | 'premium',
   freeEpisodes: '2',
 };
 
@@ -538,7 +539,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddCategory = () => {},
   onRemoveCategory = () => {},
 }) => {
-  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties' | 'submissions' | 'alerts'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties' | 'submissions' | 'alerts'>('analytics');
   const [items, setItems] = useState<BunnyVideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -772,16 +773,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const toggleAccessTier = async (item: BunnyVideoItem) => {
     if (tierSavingIds.has(item.guid)) return;
     const mapped = bunnyVideoToVideo(item);
-    const newTier = mapped.accessTier === 'premium' ? 'free' : 'premium';
+    const effectiveFree = isContentFree(mapped);
+    const newTier = effectiveFree ? 'premium' : 'free';
     const isPremium = newTier === 'premium';
+    // Setting freeEpisodes='0' ensures Episode 1-2 micro-dramas are actually locked when marked Premium.
+    const newFreeEpisodes = isPremium ? '0' : '2';
     setTierSavingIds((current) => new Set(current).add(item.guid));
 
-    const keys = ['accesstier', 'ispremium'];
+    const keys = ['accesstier', 'ispremium', 'freeepisodes'];
     const filtered = (item.metaTags || []).filter(t => !keys.includes(t.property.toLowerCase()));
     const newMetaTags = [
       ...filtered,
       { property: 'accessTier', value: newTier },
       { property: 'isPremium', value: String(isPremium) },
+      { property: 'freeEpisodes', value: newFreeEpisodes },
       { property: 'editorialUpdatedAt', value: new Date().toISOString() },
     ];
 
@@ -833,8 +838,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const filtered = enriched
     .filter(v => {
       const mapped = bunnyVideoToVideo(v);
+      const effectiveFree = isContentFree(mapped);
       if (filterRating !== 'All' && mapped.contentRating !== filterRating) return false;
-      if (filterAccess !== 'All' && mapped.accessTier !== filterAccess) return false;
+      if (filterAccess === 'free' && !effectiveFree) return false;
+      if (filterAccess === 'premium' && effectiveFree) return false;
       if (filterCat !== 'All' && mapped.category !== filterCat && filterCat !== mapped.category) {
         return false;
       }
@@ -864,74 +871,158 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Stats
   const totalViews = items.reduce((s, v) => s + (v.views ?? 0), 0);
   const unratedCount = enriched.filter(v => bunnyVideoToVideo(v).contentRating === 'UNRATED').length;
-  const freeCount = enriched.filter(v => bunnyVideoToVideo(v).accessTier === 'free').length;
-  const premiumCount = enriched.filter(v => bunnyVideoToVideo(v).accessTier === 'premium').length;
+  const freeCount = enriched.filter(v => isContentFree(bunnyVideoToVideo(v))).length;
+  const premiumCount = enriched.filter(v => !isContentFree(bunnyVideoToVideo(v))).length;
   const catBreakdown: Record<string, number> = {};
   enriched.forEach(v => {
     const cat = bunnyVideoToVideo(v).category;
     catBreakdown[cat] = (catBreakdown[cat] || 0) + 1;
   });
 
+  const navItems: { id: typeof activeTab; label: string; subtitle: string; icon: React.ComponentType<{ size?: number; className?: string }>; badge?: string | number }[] = [
+    { id: 'analytics', label: 'Overview & Revenue', subtitle: 'KPIs, watch-time & catalogue categories', icon: LayoutDashboard },
+    { id: 'content', label: 'Content & Paywall', subtitle: 'Manage episodes, lock status & metadata', icon: Film, badge: items.length || undefined },
+    { id: 'upload', label: 'Upload Video', subtitle: 'Publish new episodes, series or originals', icon: UploadCloud },
+    { id: 'royalties', label: 'Royalties & Payouts', subtitle: 'Creator splits, statements & M-Pesa payouts', icon: Coins },
+    { id: 'submissions', label: 'Submissions', subtitle: 'Review filmmaker pitches & screeners', icon: Inbox },
+    { id: 'alerts', label: 'Pass Alerts', subtitle: 'Subscriber pass & expiry notifications', icon: BellRing },
+  ];
+  const currentSection = navItems.find((n) => n.id === activeTab) || navItems[0];
+
   return (
-    <div className="p-6 md:p-10 min-h-screen bg-zinc-950 text-white pb-24">
-      {/* Header & Tabs */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-6 border-b border-zinc-800 pb-6">
+    <div className="min-h-screen bg-[#070709] text-white flex flex-col lg:flex-row">
+      {/* Desktop Studio Sidebar */}
+      <aside className="hidden lg:flex flex-col w-64 shrink-0 border-r border-zinc-800/80 bg-[#0b0b0f] sticky top-0 h-screen p-5 justify-between">
         <div>
-          <h1 className="text-3xl font-black text-white tracking-tight">Admin Dashboard</h1>
-          <p className="text-zinc-400 text-sm mt-1">Manage content, view analytics, and upload new videos</p>
+          <div className="flex items-center gap-3 px-2 mb-7">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-rose-700 flex items-center justify-center shadow-lg shadow-red-600/25">
+              <Film size={18} className="text-white" />
+            </div>
+            <div>
+              <div className="text-sm font-black tracking-tight text-white">TubeTV Studio</div>
+              <div className="text-[11px] text-zinc-500 font-medium">Operator Workspace</div>
+            </div>
+          </div>
+
+          <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 px-3 mb-2">Workspace</div>
+          <nav className="space-y-1">
+            {navItems.map((nav) => {
+              const Icon = nav.icon;
+              const active = activeTab === nav.id;
+              return (
+                <button
+                  key={nav.id}
+                  type="button"
+                  onClick={() => setActiveTab(nav.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    active
+                      ? 'bg-red-600/15 text-white border border-red-500/30 shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-900 border border-transparent'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Icon size={16} className={active ? 'text-red-400' : 'text-zinc-500'} />
+                    {nav.label}
+                  </span>
+                  {nav.badge !== undefined && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${active ? 'bg-red-500/25 text-red-200' : 'bg-zinc-800 text-zinc-400'}`}>
+                      {nav.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         </div>
-        
-        <div className="flex flex-wrap gap-2 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800">
+
+        {/* Sidebar Paywall Snapshot */}
+        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-4 space-y-3">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-400 font-medium">Paywall Status</span>
+            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-zinc-950/80 border border-zinc-800/80 p-2.5">
+              <div className="text-[10px] text-zinc-500 uppercase font-semibold">Locked</div>
+              <div className="text-base font-black text-amber-300 mt-0.5">{premiumCount}</div>
+            </div>
+            <div className="rounded-xl bg-zinc-950/80 border border-zinc-800/80 p-2.5">
+              <div className="text-[10px] text-zinc-500 uppercase font-semibold">Free</div>
+              <div className="text-base font-black text-emerald-300 mt-0.5">{freeCount}</div>
+            </div>
+          </div>
           <button
-            onClick={() => setActiveTab('content')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              activeTab === 'content' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2 bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/80 py-2 rounded-xl text-xs font-semibold text-zinc-200 transition-colors disabled:opacity-50"
           >
-            <Film size={16} /> Content
-          </button>
-          <button
-            onClick={() => setActiveTab('upload')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              activeTab === 'upload' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <UploadCloud size={16} /> Upload
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              activeTab === 'analytics' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <BarChart2 size={16} /> Analytics
-          </button>
-          <button
-            onClick={() => setActiveTab('royalties')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              activeTab === 'royalties' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Coins size={16} /> Royalties & Payouts
-          </button>
-          <button
-            onClick={() => setActiveTab('submissions')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              activeTab === 'submissions' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Inbox size={16} /> Submissions
-          </button>
-          <button
-            onClick={() => setActiveTab('alerts')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              activeTab === 'alerts' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            <BellRing size={16} /> Pass Alerts
+            <RefreshCcw size={13} className={loading ? 'animate-spin' : ''} />
+            Sync Library
           </button>
         </div>
-      </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Top Bar + Mobile Nav */}
+        <header className="sticky top-0 z-20 bg-[#070709]/90 backdrop-blur-md border-b border-zinc-800/80 px-5 sm:px-8 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 max-w-[1600px] mx-auto">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="lg:hidden text-xs font-black uppercase tracking-wider text-red-400">TubeTV Studio ·</span>
+                <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">{currentSection.label}</h1>
+              </div>
+              <p className="text-zinc-400 text-xs sm:text-sm mt-0.5">{currentSection.subtitle}</p>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => void load()}
+                disabled={loading}
+                className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-3.5 py-2 rounded-xl text-xs font-semibold text-zinc-200 transition-colors disabled:opacity-50"
+              >
+                <RefreshCcw size={13} className={loading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+              {activeTab !== 'upload' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('upload')}
+                  className="flex items-center gap-2 bg-red-600 hover:bg-red-500 px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-lg shadow-red-600/20 transition-colors"
+                >
+                  <UploadCloud size={14} />
+                  Upload
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Mobile/Tablet Nav */}
+          <div className="lg:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-3 mt-3 border-t border-zinc-800/60">
+            {navItems.map((nav) => {
+              const Icon = nav.icon;
+              const active = activeTab === nav.id;
+              return (
+                <button
+                  key={nav.id}
+                  type="button"
+                  onClick={() => setActiveTab(nav.id)}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                    active ? 'bg-red-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                  }`}
+                >
+                  <Icon size={13} />
+                  {nav.label}
+                </button>
+              );
+            })}
+          </div>
+        </header>
+
+        <main className="flex-1 p-5 sm:p-8 lg:p-10 pb-24 max-w-[1600px] mx-auto w-full">
 
       {activeTab === 'submissions' && (
         <div className="animate-in fade-in duration-500">
@@ -1136,24 +1227,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <span className={`text-[9px] px-1.5 py-0.5 rounded border ${mapped.contentRating === 'UNRATED' ? 'bg-amber-600/20 text-amber-400 border-amber-600/30' : 'bg-zinc-800 text-zinc-300 border-zinc-700'}`}>
                               {mapped.contentRating}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => void toggleAccessTier(item)}
-                              disabled={tierSavingIds.has(item.guid)}
-                              title="Click to toggle between Free and Premium pass"
-                              className={`text-[9px] px-2 py-0.5 rounded font-bold border transition-all ${
-                                mapped.accessTier === 'premium'
-                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                              }`}
-                            >
-                              {tierSavingIds.has(item.guid) ? '...' : mapped.accessTier === 'premium' ? '★ PREMIUM' : '✓ FREE'}
-                            </button>
-                            {mapped.category === 'Micro Dramas' && mapped.accessTier === 'premium' && (
-                              <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded">
-                                Ep 1-{mapped.freeEpisodes ?? 2} free
-                              </span>
-                            )}
+                            {(() => {
+                              const effectiveFree = isContentFree(mapped);
+                              const isFreeHook = mapped.accessTier === 'premium' && effectiveFree;
+                              return (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => void toggleAccessTier(item)}
+                                    disabled={tierSavingIds.has(item.guid)}
+                                    title={effectiveFree ? 'Click to LOCK this video behind Premium Pass (sets freeEpisodes=0)' : 'Click to make this video FREE for all viewers'}
+                                    className={`text-[9px] px-2 py-0.5 rounded font-bold border transition-all inline-flex items-center gap-1 ${
+                                      !effectiveFree
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                        : isFreeHook
+                                          ? 'bg-purple-500/20 text-purple-300 border-purple-500/40 hover:bg-amber-500/30'
+                                          : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                                    }`}
+                                  >
+                                    {tierSavingIds.has(item.guid)
+                                      ? '...'
+                                      : !effectiveFree
+                                        ? <><Lock size={9} /> LOCKED</>
+                                        : isFreeHook
+                                          ? `FREE HOOK (Ep 1–${mapped.freeEpisodes ?? 2})`
+                                          : '✓ FREE'}
+                                  </button>
+                                </>
+                              );
+                            })()}
                             {isHidden && <span className="text-[9px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded border border-zinc-600">HIDDEN</span>}
                             {isSaved && <span className="text-[9px] bg-green-600/20 text-green-400 px-1.5 py-0.5 rounded border border-green-600/30">EDITED</span>}
                           </div>
@@ -1237,6 +1339,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
         </div>
       )}
+        </main>
+      </div>
     </div>
   );
 };
