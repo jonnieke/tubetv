@@ -106,8 +106,8 @@ export const TopTenCarousel: React.FC<TopTenCarouselProps> = ({
             {/* Stylized Giant Rank Number */}
             <span
               aria-hidden="true"
-              className="pointer-events-none select-none absolute left-0 bottom-4 z-0 font-serif font-black text-6xl sm:text-7xl leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white/55 via-red-500/35 to-zinc-950 drop-shadow-[0_2px_10px_rgba(229,9,35,0.3)] transition-transform duration-300 group-hover/rank:scale-110"
-              style={{ WebkitTextStroke: '1.5px rgba(255,255,255,0.38)' }}
+              className="pointer-events-none select-none absolute left-0 bottom-3 z-0 font-sans font-black text-[88px] sm:text-[108px] leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white/60 via-zinc-300/30 to-zinc-950 drop-shadow-[0_2px_12px_rgba(0,0,0,0.65)] transition-transform duration-300 group-hover/rank:scale-105"
+              style={{ WebkitTextStroke: '2px rgba(255,255,255,0.42)' }}
             >
               {idx + 1}
             </span>
@@ -117,6 +117,7 @@ export const TopTenCarousel: React.FC<TopTenCarouselProps> = ({
                   video={video}
                   isWatchLater={watchLaterIds.includes(video.id)}
                   onToggleWatchLater={onToggleWatchLater}
+                  uniformAspect="video"
                 />
               </Suspense>
             </div>

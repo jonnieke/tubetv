@@ -1037,6 +1037,20 @@ const VideoCard: React.FC<VideoCardProps> = ({
           >
             <CatalogueArtwork src={video.thumbnail} className="catalogue-video-art w-full h-full object-cover" />
 
+            {savedProgress && savedProgress.durationSeconds > 0 && savedProgress.positionSeconds > 0 && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-10 pointer-events-none">
+                <div
+                  className="h-full bg-red-600 transition-all"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.max(4, Math.round((savedProgress.positionSeconds / savedProgress.durationSeconds) * 100)),
+                    )}%`,
+                  }}
+                />
+              </div>
+            )}
+
             {/* Duration Badge */}
             <div className="absolute bottom-2 right-2 bg-black/80 text-xs px-1.5 py-0.5 rounded text-white font-medium flex items-center gap-1 pointer-events-none">
               <Clock size={10} />
