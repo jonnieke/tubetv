@@ -54,7 +54,7 @@ export interface ComingSoonSlot {
   releaseDate: string;
 }
 
-/** Generates a clean upcoming release schedule (batches of 5 episodes per week) for the next `count` episodes. */
+/** Generates an upcoming release schedule for the next `count` episodes using series release settings or weekly batches of 5. */
 export function buildComingSoonSchedule(episodes: Video[], count = 60, now = Date.now()): ComingSoonSlot[] {
   if (!episodes.length || count <= 0) return [];
   const sorted = [...episodes].sort(compareEpisodes);
@@ -62,13 +62,22 @@ export function buildComingSoonSchedule(episodes: Video[], count = 60, now = Dat
   const lastSeason = last.season || 1;
   const lastEpisode = last.episode || sorted.length;
   const slots: ComingSoonSlot[] = [];
-  const batchSize = 5;
-  const baseDate = new Date(now);
+
+  const configured = [...sorted].reverse().find(ep => ep.nextReleaseDate || ep.releaseCadenceDays || ep.releaseBatchSize);
+  const batchSize = Math.max(1, Math.min(50, Math.floor(configured?.releaseBatchSize || 5)));
+  const cadenceDays = Math.max(1, Math.min(90, Math.floor(configured?.releaseCadenceDays || 7)));
+
+  const parsedAnchor = configured?.nextReleaseDate && /^\d{4}-\d{2}-\d{2}$/.test(configured.nextReleaseDate)
+    ? new Date(`${configured.nextReleaseDate}T00:00:00`)
+    : null;
+  const hasValidAnchor = parsedAnchor !== null && Number.isFinite(parsedAnchor.getTime());
+
+  const baseDate = hasValidAnchor ? parsedAnchor! : new Date(now);
   baseDate.setHours(0, 0, 0, 0);
 
   for (let i = 0; i < count; i++) {
-    const batchIndex = Math.floor(i / batchSize) + 1;
-    const release = new Date(baseDate.getTime() + batchIndex * 7 * 24 * 60 * 60 * 1000);
+    const batchIndex = Math.floor(i / batchSize) + (hasValidAnchor ? 0 : 1);
+    const release = new Date(baseDate.getTime() + batchIndex * cadenceDays * 24 * 60 * 60 * 1000);
     slots.push({
       season: lastSeason,
       episode: lastEpisode + i + 1,

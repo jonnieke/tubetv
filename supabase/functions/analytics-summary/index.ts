@@ -35,9 +35,15 @@ serve(async (req) => {
   if (!isOriginAllowed(req)) {
     return jsonReply(req, { error: "Origin not allowed." }, 403, METHODS);
   }
-  if (!(await verifiedAdminId(req))) {
-    return jsonReply(req, { error: "Verified admin access required." }, 403, METHODS);
-  }
+
+  const reqUrl = new URL(req.url);
+  const creatorCode = (reqUrl.searchParams.get("creator_code") || "").trim().toUpperCase();
+  const requestedVideoIds = (reqUrl.searchParams.get("video_ids") || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 500);
+  const isAdmin = await verifiedAdminId(req);
 
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -46,6 +52,110 @@ serve(async (req) => {
   }
 
   const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+
+  const rawFrom = reqUrl.searchParams.get("from");
+  const rawTo = reqUrl.searchParams.get("to");
+  const parsedFrom = rawFrom && /^\d{4}-\d{2}-\d{2}$/.test(rawFrom) ? new Date(`${rawFrom}T00:00:00.000Z`) : new Date(Date.now() - 30 * 86400000);
+  const parsedTo = rawTo && /^\d{4}-\d{2}-\d{2}$/.test(rawTo) ? new Date(`${rawTo}T23:59:59.999Z`) : new Date();
+  const rangeFromIso = Number.isNaN(parsedFrom.getTime()) ? new Date(Date.now() - 30 * 86400000).toISOString() : parsedFrom.toISOString();
+  const rangeToIso = Number.isNaN(parsedTo.getTime()) ? new Date().toISOString() : parsedTo.toISOString();
+
+  if (!isAdmin) {
+    if (!creatorCode || requestedVideoIds.length === 0) {
+      return jsonReply(req, { error: "Verified admin or creator access required." }, 403, METHODS);
+    }
+    const { data: profileMatch } = await client
+      .from("creator_payout_profiles")
+      .select("creator_name")
+      .eq("portal_access_code", creatorCode)
+      .limit(1);
+    const hasProfile = Array.isArray(profileMatch) && profileMatch.length > 0;
+    const isDeterministicTubeCode = /^TUBE-[A-Z0-9]{2,16}$/.test(creatorCode);
+    if (!hasProfile && !isDeterministicTubeCode) {
+      return jsonReply(req, { error: "Invalid creator access code." }, 403, METHODS);
+    }
+
+    const allowedIds = new Set(requestedVideoIds);
+    const { data: creatorEvents, error: creatorErr } = await client
+      .from("analytics_events")
+      .select("event_name, properties, occurred_at")
+      .in("event_name", ["playback_start", "qualified_view", "playback_complete", "video_shared"])
+      .gte("occurred_at", rangeFromIso)
+      .lte("occurred_at", rangeToIso)
+      .order("occurred_at", { ascending: false })
+      .limit(2000);
+
+    if (creatorErr) {
+      return jsonReply(req, { error: "Analytics unavailable." }, 503, METHODS, { "Cache-Control": "no-store" });
+    }
+
+    const viewerSet = new Set<string>();
+    const byLocation: Record<string, { interactions: number; watchSeconds: number }> = {};
+    let totalWatchSeconds = 0;
+    let totalInteractions = 0;
+    const rangeInteractions: Array<{
+      occurredAt: string;
+      date: string;
+      videoId: string;
+      viewerId: string;
+      location: string;
+      device: string;
+      event: string;
+      watchSeconds: number;
+    }> = [];
+
+    for (const row of creatorEvents || []) {
+      const props = (row.properties || {}) as Record<string, unknown>;
+      const videoId = typeof props.videoId === "string" ? props.videoId : "";
+      if (!videoId || !allowedIds.has(videoId)) continue;
+      totalInteractions += 1;
+      const viewerId = typeof props.viewerId === "string" && props.viewerId ? props.viewerId : "Guest";
+      const city = typeof props.city === "string" ? props.city : "";
+      const country = typeof props.country === "string" ? props.country : "KE";
+      const location = city ? `${city}, ${country}` : country;
+      const device = typeof props.device === "string" && props.device ? props.device : "Web";
+      const watchSeconds = typeof props.watchSeconds === "number" && Number.isFinite(props.watchSeconds) ? Math.max(0, Math.round(props.watchSeconds)) : 0;
+      const occurredAt = typeof row.occurred_at === "string" ? row.occurred_at : "";
+
+      viewerSet.add(viewerId);
+      totalWatchSeconds += watchSeconds;
+      if (!byLocation[location]) byLocation[location] = { interactions: 0, watchSeconds: 0 };
+      byLocation[location].interactions += 1;
+      byLocation[location].watchSeconds += watchSeconds;
+
+      if (rangeInteractions.length < 250) {
+        rangeInteractions.push({
+          occurredAt,
+          date: occurredAt.slice(0, 10),
+          videoId,
+          viewerId,
+          location,
+          device,
+          event: String(row.event_name || "playback_start"),
+          watchSeconds,
+        });
+      }
+    }
+
+    return jsonReply(
+      req,
+      {
+        rangeSummary: {
+          from: rangeFromIso.slice(0, 10),
+          to: rangeToIso.slice(0, 10),
+          totalInteractions,
+          uniqueViewers: viewerSet.size,
+          totalWatchSeconds,
+          avgWatchSeconds: totalInteractions > 0 ? Math.round(totalWatchSeconds / totalInteractions) : 0,
+          byLocation,
+        },
+        rangeInteractions,
+      },
+      200,
+      METHODS,
+      { "Cache-Control": "no-store" },
+    );
+  }
   const since = new Date(Date.now() - 7 * 86400000).toISOString();
   const results = await Promise.all(
     names.map(async (name) => {
@@ -61,14 +171,6 @@ serve(async (req) => {
   if (results.some((result) => result.error)) {
     return jsonReply(req, { error: "Analytics unavailable." }, 503, METHODS, { "Cache-Control": "no-store" });
   }
-
-  const reqUrl = new URL(req.url);
-  const rawFrom = reqUrl.searchParams.get("from");
-  const rawTo = reqUrl.searchParams.get("to");
-  const parsedFrom = rawFrom && /^\d{4}-\d{2}-\d{2}$/.test(rawFrom) ? new Date(`${rawFrom}T00:00:00.000Z`) : new Date(Date.now() - 30 * 86400000);
-  const parsedTo = rawTo && /^\d{4}-\d{2}-\d{2}$/.test(rawTo) ? new Date(`${rawTo}T23:59:59.999Z`) : new Date();
-  const rangeFromIso = Number.isNaN(parsedFrom.getTime()) ? new Date(Date.now() - 30 * 86400000).toISOString() : parsedFrom.toISOString();
-  const rangeToIso = Number.isNaN(parsedTo.getTime()) ? new Date().toISOString() : parsedTo.toISOString();
 
   // Also aggregate 30-day verified Qualified Views per videoId and succeeded payment_transactions revenue,
   // plus detailed Date A -> Date B interaction & duration logs.

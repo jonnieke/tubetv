@@ -71,6 +71,9 @@ const EMPTY_FORM = {
   contentRating: 'UNRATED' as ContentRating,
   classificationNumber: '',
   tags: '',
+  nextReleaseDate: '',
+  releaseCadenceDays: '',
+  releaseBatchSize: '',
   accessTier: 'premium' as 'free' | 'premium',
   freeEpisodes: '2',
 };
@@ -359,6 +362,12 @@ const EditModal = ({
               <div className="col-span-1 md:col-span-1">
                 {field('Episode', 'episode', { type: 'number', placeholder: '1' })}
               </div>
+              <div className="col-span-3 grid grid-cols-1 gap-4 md:grid-cols-3 pt-2 border-t border-red-500/10">
+                {field('Next release date', 'nextReleaseDate', { type: 'date' })}
+                {field('Batch size (episodes)', 'releaseBatchSize', { type: 'number', placeholder: '5' })}
+                {field('Cadence (days)', 'releaseCadenceDays', { type: 'number', placeholder: '7' })}
+                <p className="text-xs text-zinc-400 md:col-span-3">Optional Coming Soon schedule anchor. Sets exact release dates on the series Coming Soon calendar.</p>
+              </div>
               <div className="col-span-3 grid grid-cols-1 gap-4 md:grid-cols-2">
                 {field('Intro ends at (seconds)', 'introEndSeconds', { type: 'number', placeholder: 'Optional, e.g. 45' })}
                 {field('Outro starts at (seconds)', 'outroStartSeconds', { type: 'number', placeholder: 'Optional, e.g. 1260' })}
@@ -625,6 +634,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       contentRating: normalizeContentRating(saved.contentRating ?? mapped.contentRating),
       classificationNumber: saved.classificationNumber ?? getMeta(item.metaTags, 'classificationNumber'),
       tags: saved.tags ?? getMeta(item.metaTags, 'tags'),
+      nextReleaseDate: saved.nextReleaseDate ?? getMeta(item.metaTags, 'nextReleaseDate'),
+      releaseCadenceDays: saved.releaseCadenceDays ?? getMeta(item.metaTags, 'releaseCadenceDays'),
+      releaseBatchSize: saved.releaseBatchSize ?? getMeta(item.metaTags, 'releaseBatchSize'),
       accessTier: (saved.accessTier as 'free' | 'premium') ?? mapped.accessTier ?? (mapped.isPremium ? 'premium' : 'free'),
       freeEpisodes: saved.freeEpisodes ?? String(mapped.freeEpisodes ?? 2),
     });
@@ -686,7 +698,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       // 1. Prepare the updated metadata
       // Strip out old values for the keys we are about to update, then append our new values
-      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'accesstier', 'ispremium', 'freeepisodes', 'tags', 'season', 'episode', 'seriestitle', 'seriesid', 'seriessynopsis', 'seriesposterurl', 'seriestrailerurl', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds', 'captionsurl', 'editorialupdatedat'];
+      const keysToUpdate = ['category', 'author', 'genre', 'description', 'thumbnailurl', 'trailerurl', 'productionyear', 'contentrating', 'classificationnumber', 'accesstier', 'ispremium', 'freeepisodes', 'tags', 'season', 'episode', 'nextreleasedate', 'releasecadencedays', 'releasebatchsize', 'seriestitle', 'seriesid', 'seriessynopsis', 'seriesposterurl', 'seriestrailerurl', 'seasonsynopsis', 'episodesynopsis', 'seriesformat', 'introendseconds', 'outrostartseconds', 'captionsurl', 'editorialupdatedat'];
       const filteredMetaTags = (editingItem.metaTags || []).filter(
         t => !keysToUpdate.includes(t.property.toLowerCase())
       );
@@ -708,7 +720,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (result) {
         // Bunny metadata has no multi-video transaction. Keep the draft until
         // every shared-series update succeeds, so a partial save can be retried.
-        const shared = { seriesId, seriesTitle: normalizedForm.seriesTitle, seriesSynopsis: normalizedForm.seriesSynopsis, seriesPosterUrl: normalizedForm.seriesPosterUrl, seriesTrailerUrl: normalizedForm.seriesTrailerUrl, seriesFormat: normalizedForm.seriesFormat, category: normalizedForm.category };
+        const shared = { seriesId, seriesTitle: normalizedForm.seriesTitle, seriesSynopsis: normalizedForm.seriesSynopsis, seriesPosterUrl: normalizedForm.seriesPosterUrl, seriesTrailerUrl: normalizedForm.seriesTrailerUrl, seriesFormat: normalizedForm.seriesFormat, category: normalizedForm.category, nextReleaseDate: normalizedForm.nextReleaseDate, releaseCadenceDays: normalizedForm.releaseCadenceDays, releaseBatchSize: normalizedForm.releaseBatchSize };
         for (const sibling of siblings) {
           const sameSeason = Number(getMeta(sibling.metaTags, 'season') || 1) === Number(normalizedForm.season);
           const siblingShared = sameSeason && normalizedForm.seasonSynopsis.trim() ? { ...shared, seasonSynopsis: normalizedForm.seasonSynopsis } : shared;

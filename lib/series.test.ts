@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextEpisode, isMicroDrama, seriesKey } from './series';
+import { buildComingSoonSchedule, nextEpisode, isMicroDrama, seriesKey } from './series';
 import type { Video } from '../types';
 
 const episode = (id: string, season: number, number: number, overrides: Partial<Video> = {}): Video => ({
@@ -23,5 +23,22 @@ describe('serialized drama playback', () => {
     expect(seriesKey(episode('a', 1, 1))).not.toBe(seriesKey(episode('b', 1, 1, { category: 'Series' })));
     expect(isMicroDrama(episode('a', 1, 1))).toBe(true);
     expect(isMicroDrama(episode('b', 1, 1, { category: 'Series' }))).toBe(false);
+  });
+  it('anchors coming-soon batches to configured nextReleaseDate, batchSize, and cadenceDays', () => {
+    const videos = [
+      episode('ep1', 1, 1, {
+        nextReleaseDate: '2026-12-01',
+        releaseBatchSize: 2,
+        releaseCadenceDays: 3,
+      }),
+    ];
+    const slots = buildComingSoonSchedule(videos, 4);
+    expect(slots).toHaveLength(4);
+    expect(slots[0].episode).toBe(2);
+    expect(slots[0].releaseDate).toBe(slots[1].releaseDate);
+    expect(slots[2].releaseDate).toBe(slots[3].releaseDate);
+    expect(slots[2].releaseDate).not.toBe(slots[0].releaseDate);
+    expect(slots[0].releaseDate).toContain('Dec');
+    expect(slots[0].releaseDate).toContain('2026');
   });
 });

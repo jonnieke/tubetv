@@ -104,6 +104,33 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   } | null>(null);
   const [creatorPortalError, setCreatorPortalError] = useState<string>('');
   const [creatorPortalBusy, setCreatorPortalBusy] = useState<boolean>(false);
+  const [creatorFromDate, setCreatorFromDate] = useState<string>(() =>
+    new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+  );
+  const [creatorToDate, setCreatorToDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [creatorRangeLoading, setCreatorRangeLoading] = useState<boolean>(false);
+  const [creatorSearchQuery, setCreatorSearchQuery] = useState<string>('');
+  const [creatorRangeSummary, setCreatorRangeSummary] = useState<{
+    from: string;
+    to: string;
+    totalInteractions: number;
+    uniqueViewers: number;
+    totalWatchSeconds: number;
+    avgWatchSeconds: number;
+    byLocation: Record<string, { interactions: number; watchSeconds: number }>;
+  } | null>(null);
+  const [creatorRangeInteractions, setCreatorRangeInteractions] = useState<
+    Array<{
+      occurredAt: string;
+      date: string;
+      videoId: string;
+      viewerId: string;
+      location: string;
+      device: string;
+      event: string;
+      watchSeconds: number;
+    }>
+  >([]);
 
   // M-Pesa Pass state
   const [storedPass, setStoredPass] = useState<StoredPass | null>(() => getStoredPass());
@@ -358,8 +385,45 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
       setActiveTab('creator');
       void verifyCreatorCode(initialCreatorCode);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCreatorCode]);
+
+  useEffect(() => {
+    if (!unlockedCreatorName || !unlockedProfileMeta?.code) return;
+    const creatorVideoIds = videos
+      .filter((v) => (v.creator || v.author || '').trim().toLowerCase() === unlockedCreatorName.trim().toLowerCase())
+      .map((v) => v.id);
+    if (creatorVideoIds.length === 0) return;
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+    if (!supabaseUrl) return;
+
+    let cancelled = false;
+    setCreatorRangeLoading(true);
+    const params = new URLSearchParams({
+      creator_code: unlockedProfileMeta.code,
+      video_ids: creatorVideoIds.join(','),
+      from: creatorFromDate,
+      to: creatorToDate,
+    });
+    fetch(`${supabaseUrl}/functions/v1/analytics-summary?${params.toString()}`, {
+      headers: supabaseAnonKey ? { apikey: supabaseAnonKey } : {},
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload) return;
+        if (payload.rangeSummary) setCreatorRangeSummary(payload.rangeSummary);
+        if (Array.isArray(payload.rangeInteractions)) setCreatorRangeInteractions(payload.rangeInteractions);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setCreatorRangeLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [unlockedCreatorName, unlockedProfileMeta?.code, creatorFromDate, creatorToDate, videos]);
 
   const tabs: ReadonlyArray<{ id: SettingsTabId; label: string; icon: typeof Monitor; requiresAuth?: boolean }> = [
     { id: 'general', label: t('settings.tabPlayback'), icon: Monitor },
@@ -983,6 +1047,202 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                                   </td>
                                 </tr>
                               ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Creator Date A -> Date B Audience Interactions & Duration */}
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h4 className="text-sm font-black text-white flex items-center gap-2">
+                              <Clock size={15} className="text-amber-400" />
+                              Audience Interactions &amp; Watch Duration
+                            </h4>
+                            <p className="text-xs text-zinc-400 mt-0.5">
+                              See who interacted with your titles, from where, and for how long between Date A and Date B.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {[
+                              { label: 'Today', days: 0 },
+                              { label: '7D', days: 7 },
+                              { label: '30D', days: 30 },
+                            ].map((preset) => (
+                              <button
+                                key={preset.label}
+                                type="button"
+                                onClick={() => {
+                                  const to = new Date().toISOString().slice(0, 10);
+                                  const from = new Date(Date.now() - preset.days * 86400000).toISOString().slice(0, 10);
+                                  setCreatorFromDate(from);
+                                  setCreatorToDate(to);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg border border-zinc-700 bg-zinc-950 text-[11px] font-bold text-zinc-300 hover:border-amber-500/50 hover:text-white"
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                            <input
+                              type="date"
+                              value={creatorFromDate}
+                              onChange={(e) => setCreatorFromDate(e.target.value)}
+                              aria-label="Creator analytics from date"
+                              className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-white"
+                            />
+                            <span className="text-xs text-zinc-500">→</span>
+                            <input
+                              type="date"
+                              value={creatorToDate}
+                              onChange={(e) => setCreatorToDate(e.target.value)}
+                              aria-label="Creator analytics to date"
+                              className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const titleById = new Map(videos.map((v) => [v.id, v.title]));
+                                const rows = [
+                                  ['Date', 'Time', 'Title', 'Viewer', 'Location', 'Device', 'Event', 'DurationSeconds'].join(','),
+                                  ...creatorRangeInteractions.map((row) =>
+                                    [
+                                      row.date,
+                                      row.occurredAt.slice(11, 19),
+                                      `"${(titleById.get(row.videoId) || row.videoId).replace(/"/g, '""')}"`,
+                                      `"${row.viewerId.replace(/"/g, '""')}"`,
+                                      `"${row.location.replace(/"/g, '""')}"`,
+                                      `"${row.device.replace(/"/g, '""')}"`,
+                                      row.event,
+                                      String(row.watchSeconds),
+                                    ].join(',')
+                                  ),
+                                ].join('\n');
+                                const blob = new Blob([rows], { type: 'text/csv;charset=utf-8;' });
+                                const link = document.createElement('a');
+                                link.href = URL.createObjectURL(blob);
+                                link.download = `tubetv-creator-interactions-${creatorFromDate}-to-${creatorToDate}.csv`;
+                                link.click();
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-xs font-bold text-white"
+                            >
+                              <Download size={13} />
+                              Export CSV
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                            <p className="text-[10px] font-bold uppercase text-zinc-400">Interactions</p>
+                            <p className="text-xl font-black text-white mt-0.5">
+                              {creatorRangeLoading ? '…' : (creatorRangeSummary?.totalInteractions ?? 0).toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                            <p className="text-[10px] font-bold uppercase text-zinc-400">Unique Viewers</p>
+                            <p className="text-xl font-black text-amber-400 mt-0.5">
+                              {creatorRangeLoading ? '…' : (creatorRangeSummary?.uniqueViewers ?? 0).toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                            <p className="text-[10px] font-bold uppercase text-zinc-400">Total Watch Time</p>
+                            <p className="text-xl font-black text-emerald-400 mt-0.5">
+                              {creatorRangeLoading
+                                ? '…'
+                                : `${Math.round((creatorRangeSummary?.totalWatchSeconds ?? 0) / 60)}m`}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                            <p className="text-[10px] font-bold uppercase text-zinc-400">Avg Duration</p>
+                            <p className="text-xl font-black text-white mt-0.5">
+                              {creatorRangeLoading ? '…' : `${creatorRangeSummary?.avgWatchSeconds ?? 0}s`}
+                            </p>
+                          </div>
+                        </div>
+
+                        {creatorRangeSummary && Object.keys(creatorRangeSummary.byLocation).length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(creatorRangeSummary.byLocation)
+                              .sort((a, b) => b[1].interactions - a[1].interactions)
+                              .slice(0, 8)
+                              .map(([loc, stats]) => (
+                                <span
+                                  key={loc}
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-[11px] text-zinc-300"
+                                >
+                                  <Globe size={11} className="text-amber-400" />
+                                  <strong className="text-white">{loc}</strong> · {stats.interactions} plays ·{' '}
+                                  {Math.round(stats.watchSeconds / 60)}m
+                                </span>
+                              ))}
+                          </div>
+                        )}
+
+                        <input
+                          type="text"
+                          value={creatorSearchQuery}
+                          onChange={(e) => setCreatorSearchQuery(e.target.value)}
+                          placeholder="Filter by title, viewer, location, or device..."
+                          className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-white placeholder-zinc-500"
+                        />
+
+                        <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-lg border border-zinc-800">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-zinc-950 text-zinc-400 border-b border-zinc-800 sticky top-0">
+                              <tr>
+                                <th className="py-2 px-3">Date / Time</th>
+                                <th className="py-2 px-3">Title</th>
+                                <th className="py-2 px-3">Viewer / Device</th>
+                                <th className="py-2 px-3">Location</th>
+                                <th className="py-2 px-3">Event</th>
+                                <th className="py-2 px-3 text-right">Duration</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-800/60">
+                              {(() => {
+                                const titleById = new Map(videos.map((v) => [v.id, v.title]));
+                                const q = creatorSearchQuery.trim().toLowerCase();
+                                const filtered = creatorRangeInteractions.filter((row) => {
+                                  if (!q) return true;
+                                  const t = (titleById.get(row.videoId) || row.videoId).toLowerCase();
+                                  return (
+                                    t.includes(q) ||
+                                    row.viewerId.toLowerCase().includes(q) ||
+                                    row.location.toLowerCase().includes(q) ||
+                                    row.device.toLowerCase().includes(q)
+                                  );
+                                });
+                                if (filtered.length === 0) {
+                                  return (
+                                    <tr>
+                                      <td colSpan={6} className="py-6 text-center text-zinc-500">
+                                        {creatorRangeLoading
+                                          ? 'Loading interaction logs...'
+                                          : 'No interactions recorded for this date range yet.'}
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                                return filtered.slice(0, 100).map((row, idx) => (
+                                  <tr key={`${row.occurredAt}-${row.videoId}-${idx}`}>
+                                    <td className="py-2 px-3 font-mono text-zinc-400 whitespace-nowrap">
+                                      {row.date} {row.occurredAt.slice(11, 16)}
+                                    </td>
+                                    <td className="py-2 px-3 font-semibold text-white">
+                                      {titleById.get(row.videoId) || row.videoId}
+                                    </td>
+                                    <td className="py-2 px-3 text-zinc-300">
+                                      {row.viewerId} · <span className="text-zinc-500">{row.device}</span>
+                                    </td>
+                                    <td className="py-2 px-3 text-zinc-300">{row.location}</td>
+                                    <td className="py-2 px-3 text-zinc-400">{row.event}</td>
+                                    <td className="py-2 px-3 text-right font-mono text-amber-300">
+                                      {row.watchSeconds}s
+                                    </td>
+                                  </tr>
+                                ));
+                              })()}
                             </tbody>
                           </table>
                         </div>

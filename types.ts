@@ -68,6 +68,9 @@ export interface Video {
   seriesFormat?: 'standard' | 'micro-drama';
   season?: number;        // Season number
   episode?: number;       // Episode number within season
+  nextReleaseDate?: string;     // Optional YYYY-MM-DD anchor for next coming-soon batch
+  releaseCadenceDays?: number;  // Optional days between coming-soon batches (default 7)
+  releaseBatchSize?: number;    // Optional episodes per coming-soon batch (default 5)
   introEndSeconds?: number;
   outroStartSeconds?: number;
   genre?: string;         // e.g. "Drama"
