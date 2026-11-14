@@ -461,9 +461,39 @@ const App: React.FC = () => {
 
   const isAdmin = isAdminUser(currentUser);
 
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [isLoadingVideos, setIsLoadingVideos] = useState(true);
-  const [isRealContent, setIsRealContent] = useState(false);
+  const CATALOGUE_CACHE_KEY = 'tube_catalogue_cache_v1';
+  const CATALOGUE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+  const preloadThumbnails = (list: Video[]) => {
+    if (typeof Image === 'undefined') return;
+    const seen = new Set<string>();
+    for (const item of list) {
+      for (const url of [item.seriesPosterUrl, item.thumbnail]) {
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        const img = new Image();
+        img.decoding = 'async';
+        img.src = url;
+        if (seen.size >= 16) return;
+      }
+    }
+  };
+
+  const [videos, setVideos] = useState<Video[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(CATALOGUE_CACHE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as { ts: number; items: Video[] };
+      if (Date.now() - parsed.ts < CATALOGUE_CACHE_TTL_MS && Array.isArray(parsed.items)) {
+        return parsed.items;
+      }
+    } catch {
+      // Ignore storage errors
+    }
+    return [];
+  });
+  const [isLoadingVideos, setIsLoadingVideos] = useState(() => videos.length === 0);
+  const [isRealContent, setIsRealContent] = useState(() => videos.length > 0);
   const [catalogueError, setCatalogueError] = useState('');
 
   useEffect(() => {
@@ -475,7 +505,9 @@ const App: React.FC = () => {
         setIsLoadingVideos(false);
         return;
       }
-      setIsLoadingVideos(true);
+      if (fresh || videos.length === 0) {
+        setIsLoadingVideos(true);
+      }
       setCatalogueError('');
       try {
         const bunnyItems = await fetchBunnyVideos(false, fresh);
@@ -486,15 +518,22 @@ const App: React.FC = () => {
           const visible = CONTENT_RATING_ENFORCED
             ? publicItems.filter((video) => PUBLIC_CONTENT_RATINGS.includes(normalizeContentRating(video.contentRating)))
             : publicItems.filter((video) => normalizeContentRating(video.contentRating) !== '18');
-          setVideos(visible.length > 0 ? visible : []);
+          const finalItems = visible.length > 0 ? visible : [];
+          setVideos(finalItems);
           setIsRealContent(true);
+          preloadThumbnails(finalItems);
+          try {
+            sessionStorage.setItem(CATALOGUE_CACHE_KEY, JSON.stringify({ ts: Date.now(), items: finalItems }));
+          } catch {
+            // Ignore quota errors
+          }
         } else {
           setVideos([]);
           setIsRealContent(true);
         }
       } catch (err) {
         console.error('Catalogue load failed:', err);
-        if (!cancelled) {
+        if (!cancelled && videos.length === 0) {
           setVideos([]);
           setIsRealContent(false);
           setCatalogueError('The catalogue could not be loaded. Please try again.');
