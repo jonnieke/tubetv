@@ -291,28 +291,22 @@ export default function LandingHero({
         {/* Rich Cinema Metadata Strip */}
         <div className="flex flex-wrap items-center gap-2 mb-2.5">
           <span className="inline-flex items-center gap-1 rounded bg-red-600 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow">
-            {isMicro ? 'MICRO DRAMA' : (real ? 'TUBE ORIGINAL' : 'DEMO PREMIERE')}
+            {isMicro ? 'MICRO DRAMA' : (real ? 'TUBETV ORIGINAL' : 'DEMO PREMIERE')}
           </span>
-          <span className="inline-flex items-center gap-1 rounded bg-amber-500/20 border border-amber-400/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
-            #{index + 1} {language === 'sw' ? 'INAYOVUMA NCHINI KENYA' : 'TRENDING IN KENYA'}
-          </span>
+          {(isMicro || video.episode) && !hasActivePass && (
+            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 border border-emerald-400/40 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">
+              {language === 'sw' ? 'VIPINDI 1 & 2 BURE' : 'EP 1 & 2 FREE'}
+            </span>
+          )}
           {video.episode && (
-            <span className="rounded border border-red-500/40 bg-red-950/60 px-2 py-0.5 text-[10px] font-bold text-red-200">
+            <span className="rounded border border-white/20 bg-black/50 px-2 py-0.5 text-[10px] font-bold text-zinc-200">
               {language === 'sw' ? `Kipindi cha ${video.episode}` : `Ep ${video.episode}`}
             </span>
           )}
-          <span className="rounded border border-white/25 bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200">
-            {video.contentRating || 'PG'}
+          <span className="text-[11px] font-semibold text-zinc-300">
+            {video.contentRating || 'PG'} · {video.genre || video.category}
+            {video.duration ? ` · ${video.duration}` : ''} · EN · SW
           </span>
-          <span className="rounded border border-white/20 bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
-            HD
-          </span>
-          <span className="rounded border border-white/20 bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
-            EN · SW
-          </span>
-          {video.duration && (
-            <span className="text-xs font-medium text-zinc-300">· {video.duration}</span>
-          )}
         </div>
 
         <p className="cinema-eyebrow">
@@ -357,6 +351,11 @@ export default function LandingHero({
             {saved ? <Check size={16} /> : <Plus size={16} />}
             {saved ? (language === 'sw' ? 'Imehifadhiwa' : 'In Watch List') : t('hero.watchLater')}
           </button>
+          {!hasActivePass && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/35 bg-emerald-950/60 px-3 py-1.5 text-[11px] font-bold text-emerald-300">
+              {language === 'sw' ? 'Fungua yote kuanzia KSh 10 · M-Pesa' : 'Unlock all from KSh 10 via M-Pesa'}
+            </span>
+          )}
         </div>
 
         {count > 1 && (

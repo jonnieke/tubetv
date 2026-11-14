@@ -175,16 +175,16 @@ export default function CinemaNavigation(props: Props) {
                   navigate(ViewState.SETTINGS, 'pass');
                 }
               }}
-              title="Get or restore your TubeTV Pass from KSh 10"
-              className="relative inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs px-3.5 py-1.5 shadow-lg shadow-red-950/60 border border-amber-400/50 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
+              title="Get or restore your TubeTV M-Pesa Pass from KSh 10"
+              className="relative inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 font-bold text-xs px-3.5 py-1.5 shadow-lg shadow-emerald-950/40 border border-emerald-500/50 hover:border-emerald-400 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
             >
-              <Ticket size={13} className="text-amber-200 group-hover:rotate-12 transition-transform" />
-              <span className="tracking-wide uppercase text-[11px] font-extrabold">
-                {language === 'sw' ? 'Pasi · KSh 10' : 'Pass · KSh 10'}
+              <Ticket size={13} className="text-emerald-400 group-hover:rotate-12 transition-transform" />
+              <span className="tracking-wide text-[11px] font-extrabold">
+                {language === 'sw' ? 'Pasi ya M-Pesa · KSh 10' : 'KSh 10 M-Pesa Pass'}
               </span>
               <span className="relative flex h-2 w-2 ml-0.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
               </span>
             </button>
           )}
