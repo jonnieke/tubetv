@@ -67,19 +67,25 @@ serve(async (req) => {
   const [qvRes, txRes] = await Promise.all([
     client
       .from("analytics_events")
-      .select("properties")
+      .select("properties, occurred_at")
       .eq("event_name", "qualified_view")
       .gte("occurred_at", since30d)
       .limit(5000),
     client
       .from("payment_transactions")
-      .select("amount_kes, region_code, currency")
+      .select("amount_kes, region_code, currency, provider, channel, plan_code, created_at")
       .eq("status", "succeeded")
       .gte("created_at", since30d)
       .limit(5000),
   ]);
 
   const qualifiedViewsByVideo: Record<string, number> = {};
+  const dailyMap = new Map<string, { revenueKes: number; qualifiedViews: number }>();
+  for (let i = 29; i >= 0; i -= 1) {
+    const dayKey = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    dailyMap.set(dayKey, { revenueKes: 0, qualifiedViews: 0 });
+  }
+
   if (Array.isArray(qvRes.data)) {
     for (const row of qvRes.data) {
       const props = (row.properties || {}) as Record<string, unknown>;
@@ -87,19 +93,46 @@ serve(async (req) => {
       if (vid) {
         qualifiedViewsByVideo[vid] = (qualifiedViewsByVideo[vid] || 0) + 1;
       }
+      const dayKey = typeof row.occurred_at === "string" ? row.occurred_at.slice(0, 10) : "";
+      const bucket = dayKey ? dailyMap.get(dayKey) : undefined;
+      if (bucket) bucket.qualifiedViews += 1;
     }
   }
 
   let grossRevenueKes30d = 0;
   const revenueByRegion: Record<string, number> = {};
+  const revenueByChannel: Record<string, number> = { mpesa: 0, card: 0 };
+  const revenueByPlan: Record<string, number> = { daily: 0, weekly: 0, monthly: 0 };
   if (Array.isArray(txRes.data)) {
     for (const tx of txRes.data) {
       const amt = Number(tx.amount_kes) || 0;
       const reg = String(tx.region_code || "KE").toUpperCase();
       grossRevenueKes30d += amt;
       revenueByRegion[reg] = (revenueByRegion[reg] || 0) + amt;
+
+      const ch = String(tx.channel || tx.provider || "").toLowerCase();
+      if (ch.includes("card")) {
+        revenueByChannel.card += amt;
+      } else {
+        revenueByChannel.mpesa += amt;
+      }
+
+      const plan = String(tx.plan_code || "").toLowerCase();
+      if (plan === "daily" || plan === "weekly" || plan === "monthly") {
+        revenueByPlan[plan] += amt;
+      }
+
+      const dayKey = typeof tx.created_at === "string" ? tx.created_at.slice(0, 10) : "";
+      const bucket = dayKey ? dailyMap.get(dayKey) : undefined;
+      if (bucket) bucket.revenueKes += amt;
     }
   }
+
+  const dailySeries = Array.from(dailyMap.entries()).map(([date, vals]) => ({
+    date,
+    revenueKes: vals.revenueKes,
+    qualifiedViews: vals.qualifiedViews,
+  }));
 
   return jsonReply(
     req,
@@ -110,6 +143,9 @@ serve(async (req) => {
       qualifiedViewsByVideo,
       grossRevenueKes30d,
       revenueByRegion,
+      revenueByChannel,
+      revenueByPlan,
+      dailySeries,
     },
     200,
     METHODS,
