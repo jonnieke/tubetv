@@ -6,6 +6,7 @@
 
 import { BunnyVideoItem, bunnyVideoToVideo } from '../services/bunnyService';
 import { Video } from '../types';
+import { isContentFree } from './monetization';
 
 export const MINIMUM_PAYOUT_THRESHOLD_KES = 1000;
 export const QUALIFIED_VIEW_SECONDS = 30;
@@ -39,6 +40,7 @@ export interface RoyaltyPoolConfig {
   gatewayFeePercent?: number;
   creatorPoolPercent?: number;
   payoutThresholdKes?: number;
+  premiumOnly?: boolean;
 }
 
 export interface CreatorPayoutProfile {
@@ -161,8 +163,10 @@ export function computeShareOfPlayRoyalties(
   const netCreatorPool = netPool * (poolPercent / 100);
   const platformShare = netPool - netCreatorPool;
 
+  const premiumOnly = config.premiumOnly ?? true;
+
   // Normalize all items to Video objects
-  const videos: { video: Video; rawViews: number; rawGuid: string }[] = items.map((item) => {
+  const allVideos: { video: Video; rawViews: number; rawGuid: string }[] = items.map((item) => {
     if ('guid' in item) {
       const v = bunnyVideoToVideo(item as BunnyVideoItem);
       return { video: v, rawViews: Number(item.views) || 0, rawGuid: item.guid };
@@ -170,6 +174,11 @@ export function computeShareOfPlayRoyalties(
     const v = item as Video;
     return { video: v, rawViews: v.views || 0, rawGuid: v.id };
   });
+
+  // Subscription revenue must only go to Premium (paid) content; exclude free Shorts and free teaser episodes.
+  const videos = premiumOnly
+    ? allVideos.filter(({ video }) => video.category !== 'Shorts' && !video.isShort && !isContentFree(video))
+    : allVideos;
 
   // Calculate qualified views per video
   // Best practice: 30-second minimum view qualification rate in vertical micro-dramas is ~65-80% of starts

@@ -469,21 +469,26 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   const rawIsPremium = getMeta(activeItem.metaTags, 'isPremium').toLowerCase().trim();
   const isShort = category === 'Shorts' || activeItem.isShort === true;
 
+  const isMicroDramaCat = seriesFormat === 'micro-drama' || category === 'Micro Dramas';
   let isPremium: boolean;
   if (isShort) {
     isPremium = false;
+  } else if (!isMicroDramaCat) {
+    // Except Shorts and Micro Dramas, everything else is Premium.
+    isPremium = true;
   } else if (rawTier === 'free' || rawIsPremium === 'false') {
     isPremium = false;
-  } else if (rawTier === 'premium' || rawIsPremium === 'true') {
-    isPremium = true;
   } else {
-    // By default: all videos are premium except shorts (episodes 1 & 2 remain free teaser hooks)
     isPremium = true;
   }
   const accessTier = isPremium ? ('premium' as const) : ('free' as const);
   const rawFreeEpisodes = getMeta(activeItem.metaTags, 'freeEpisodes');
   const parsedFreeEpisodes = rawFreeEpisodes ? parseInt(rawFreeEpisodes, 10) : NaN;
-  const freeEpisodes = Number.isFinite(parsedFreeEpisodes) && parsedFreeEpisodes >= 0 ? parsedFreeEpisodes : 2;
+  const freeEpisodes = Number.isFinite(parsedFreeEpisodes) && parsedFreeEpisodes >= 0
+    ? parsedFreeEpisodes
+    : isMicroDramaCat
+      ? 2
+      : 0;
 
 
   return {

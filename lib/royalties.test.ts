@@ -122,23 +122,35 @@ describe('Creator Royalties & Share of Play Engine', () => {
         thumbnail: '',
         views: 800,
         duration: '01:00',
-        isPremium: false,
+        isPremium: true,
         author: 'Big Creator',
-        category: 'Shorts',
+        category: 'Movies',
       },
       {
         id: 'vid-2',
-        title: 'Indie Short',
+        title: 'Indie Film',
         thumbnail: '',
         views: 200,
         duration: '01:00',
-        isPremium: false,
+        isPremium: true,
         author: 'Small Creator',
+        category: 'Movies',
+      },
+      {
+        id: 'vid-3',
+        title: 'Ticktock Viral Clip',
+        thumbnail: '',
+        views: 99999,
+        duration: '00:45',
+        isPremium: false,
+        author: 'Ticktock',
         category: 'Shorts',
       },
     ];
 
     const result = computeShareOfPlayRoyalties(mockVideos, config);
+
+    expect(result.creators.find((c) => c.creator === 'Ticktock')).toBeUndefined();
 
     const bigCreator = result.creators.find((c) => c.creator === 'Big Creator')!;
     const smallCreator = result.creators.find((c) => c.creator === 'Small Creator')!;

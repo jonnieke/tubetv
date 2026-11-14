@@ -79,7 +79,9 @@ serve(async (req) => {
       .limit(5000),
   ]);
 
+  const todayKey = new Date().toISOString().slice(0, 10);
   const qualifiedViewsByVideo: Record<string, number> = {};
+  const todayQualifiedViewsByVideo: Record<string, number> = {};
   const dailyMap = new Map<string, { revenueKes: number; qualifiedViews: number }>();
   for (let i = 29; i >= 0; i -= 1) {
     const dayKey = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
@@ -90,16 +92,20 @@ serve(async (req) => {
     for (const row of qvRes.data) {
       const props = (row.properties || {}) as Record<string, unknown>;
       const vid = typeof props.videoId === "string" ? props.videoId.trim() : "";
+      const dayKey = typeof row.occurred_at === "string" ? row.occurred_at.slice(0, 10) : "";
       if (vid) {
         qualifiedViewsByVideo[vid] = (qualifiedViewsByVideo[vid] || 0) + 1;
+        if (dayKey === todayKey) {
+          todayQualifiedViewsByVideo[vid] = (todayQualifiedViewsByVideo[vid] || 0) + 1;
+        }
       }
-      const dayKey = typeof row.occurred_at === "string" ? row.occurred_at.slice(0, 10) : "";
       const bucket = dayKey ? dailyMap.get(dayKey) : undefined;
       if (bucket) bucket.qualifiedViews += 1;
     }
   }
 
   let grossRevenueKes30d = 0;
+  let todayRevenueKes = 0;
   const revenueByRegion: Record<string, number> = {};
   const revenueByChannel: Record<string, number> = { mpesa: 0, card: 0 };
   const revenueByPlan: Record<string, number> = { daily: 0, weekly: 0, monthly: 0 };
@@ -123,6 +129,7 @@ serve(async (req) => {
       }
 
       const dayKey = typeof tx.created_at === "string" ? tx.created_at.slice(0, 10) : "";
+      if (dayKey === todayKey) todayRevenueKes += amt;
       const bucket = dayKey ? dailyMap.get(dayKey) : undefined;
       if (bucket) bucket.revenueKes += amt;
     }
@@ -141,7 +148,9 @@ serve(async (req) => {
       until: new Date().toISOString(),
       counts: Object.fromEntries(results.map((result) => [result.name, result.count || 0])),
       qualifiedViewsByVideo,
+      todayQualifiedViewsByVideo,
       grossRevenueKes30d,
+      todayRevenueKes,
       revenueByRegion,
       revenueByChannel,
       revenueByPlan,

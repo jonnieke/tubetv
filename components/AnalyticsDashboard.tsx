@@ -40,7 +40,9 @@ interface AnalyticsSummaryPayload {
   until?: string;
   counts: Record<string, number>;
   qualifiedViewsByVideo?: Record<string, number>;
+  todayQualifiedViewsByVideo?: Record<string, number>;
   grossRevenueKes30d?: number;
+  todayRevenueKes?: number;
   revenueByRegion?: Record<string, number>;
   revenueByChannel?: Record<string, number>;
   revenueByPlan?: Record<string, number>;
@@ -167,6 +169,7 @@ export default function AnalyticsDashboard({
   }, [effectiveVideos]);
 
   const grossRevenueKes30d = funnel?.grossRevenueKes30d ?? 0;
+  const todayRevenueKes = funnel?.todayRevenueKes ?? 0;
 
   const royaltySnapshot = useMemo(() => {
     const periodLabel = new Date().toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
@@ -176,11 +179,30 @@ export default function AnalyticsDashboard({
         periodLabel,
         grossSubscriptionRevenueKes: grossRevenueKes30d,
         payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
+        premiumOnly: true,
       },
-      undefined,
-      funnel?.qualifiedViewsByVideo,
+      {
+        measuredQualifiedViews: funnel?.qualifiedViewsByVideo,
+      },
     );
   }, [effectiveVideos, grossRevenueKes30d, funnel?.qualifiedViewsByVideo]);
+
+  const todayRoyaltySnapshot = useMemo(() => {
+    const todayMap = funnel?.todayQualifiedViewsByVideo || {};
+    const interactedToday = effectiveVideos.filter((v) => (todayMap[v.guid] ?? 0) > 0);
+    return computeShareOfPlayRoyalties(
+      interactedToday,
+      {
+        periodLabel: 'Today',
+        grossSubscriptionRevenueKes: todayRevenueKes,
+        payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
+        premiumOnly: true,
+      },
+      {
+        measuredQualifiedViews: todayMap,
+      },
+    );
+  }, [effectiveVideos, todayRevenueKes, funnel?.todayQualifiedViewsByVideo]);
 
   const channelSplit = useMemo(() => {
     const mpesa = funnel?.revenueByChannel?.mpesa ?? 0;
@@ -502,6 +524,64 @@ export default function AnalyticsDashboard({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Today's Revenue vs. Premium Content Interacted Today */}
+          <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-zinc-900/90 to-zinc-900 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300 mb-1">
+                  Today&apos;s Live Attribution
+                </div>
+                <h2 className="text-base font-bold text-white">
+                  Today&apos;s Revenue vs. Premium Content Interacted Today
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  Subscription revenue collected today ({formatKes(todayRevenueKes)}) attributed strictly to Premium titles watched today (60% Creator Pool: {formatKes(todayRoyaltySnapshot.netCreatorPoolKes)})
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-right">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-zinc-400">Today Revenue</div>
+                  <div className="text-lg font-black text-emerald-300">{formatKes(todayRevenueKes)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-zinc-400">Today Creator Pool</div>
+                  <div className="text-lg font-black text-amber-300">{formatKes(todayRoyaltySnapshot.netCreatorPoolKes)}</div>
+                </div>
+              </div>
+            </div>
+
+            {todayRoyaltySnapshot.content.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-zinc-400 uppercase tracking-wider text-[10px]">
+                      <th className="py-2 pr-4">Premium Title</th>
+                      <th className="py-2 pr-4">Studio / Creator</th>
+                      <th className="py-2 pr-4 text-right">Today&apos;s Qualified Views</th>
+                      <th className="py-2 pr-4 text-right">Today Share %</th>
+                      <th className="py-2 text-right">Today Creator Earnings</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/70">
+                    {todayRoyaltySnapshot.content.map((row) => (
+                      <tr key={row.videoId} className="hover:bg-zinc-800/30 transition-colors">
+                        <td className="py-2.5 pr-4 font-semibold text-white max-w-[240px] truncate">{row.title}</td>
+                        <td className="py-2.5 pr-4 text-zinc-300">{row.creator}</td>
+                        <td className="py-2.5 pr-4 text-right font-mono text-zinc-200">{row.qualifiedViews.toLocaleString('en-KE')}</td>
+                        <td className="py-2.5 pr-4 text-right font-mono text-zinc-300">{row.shareOfPoolPercent.toFixed(1)}%</td>
+                        <td className="py-2.5 text-right font-mono font-bold text-emerald-300">{formatKes(row.attributedRevenueKes)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-xs text-zinc-400">
+                No qualified interactions on Premium titles recorded yet today. As viewers watch Premium shows today, today&apos;s pass revenue will attribute here in real time.
+              </div>
+            )}
           </div>
 
           {/* Bottom Table: Title-by-Title Revenue & Share-of-Play */}
