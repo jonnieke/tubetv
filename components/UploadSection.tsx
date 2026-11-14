@@ -110,6 +110,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
   // AI Generation States
   const [isGeneratingMetadata, setIsGeneratingMetadata] = useState(false);
   const [isGeneratingThumbnail, setIsGeneratingThumbnail] = useState(false);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
 
   const queueRef = useRef<UploadItem[]>(queue);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -146,7 +147,29 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
   }, [isQueueProcessing, queue]);
 
   const updateQueueItem = (id: string, updates: Partial<UploadItem>) => {
-    setQueue((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+    setQueue((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const resetError = updates.metadata && item.status === 'error' ? { status: 'idle' as const, stageInfo: '' } : {};
+        return { ...item, ...resetError, ...updates };
+      })
+    );
+  };
+
+  const getMissingRequiredFields = (item: UploadItem): string[] => {
+    const missing: string[] = [];
+    if (!item.metadata.title.trim()) missing.push('Title');
+    if (item.metadata.contentRating === 'UNRATED') missing.push('KFCB content rating');
+    const episodic = item.metadata.category === 'Series' || item.metadata.category === 'Micro Dramas';
+    if (episodic) {
+      if (!item.metadata.seriesTitle.trim()) missing.push('Series title');
+      if (!/^[1-9]\d*$/.test(item.metadata.season)) missing.push('Season');
+      if (!/^[1-9]\d*$/.test(item.metadata.episode)) missing.push('Episode');
+      if (!item.metadata.seriesSynopsis.trim()) missing.push('Series synopsis');
+      if (!item.metadata.seasonSynopsis.trim()) missing.push('Season summary');
+      if (!item.metadata.episodeSynopsis.trim()) missing.push('Episode synopsis');
+    }
+    return missing;
   };
 
   const handleSeriesPoster = async (id: string, event: React.ChangeEvent<HTMLInputElement>) => {
@@ -273,7 +296,9 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
   const handleGenerateMetadata = async () => {
     if (!activeItem) return;
     setIsGeneratingMetadata(true);
+    setAiNotice(null);
     const result = await generateVideoMetadata(activeItem.file.name, activeItem.file.size);
+    if (result.error) setAiNotice(result.error);
     updateQueueItem(activeItem.id, {
       metadata: {
         ...activeItem.metadata,
@@ -708,9 +733,41 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
 
                 {/* Metadata Inputs */}
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center mb-1">
+                  <div className="flex flex-wrap justify-between items-center gap-2 mb-1">
                     <h3 className="font-bold text-white">Video Details</h3>
+                    <span className="text-[11px] text-zinc-400">
+                      Fields marked <span className="text-red-400 font-bold">*</span> are mandatory
+                    </span>
                   </div>
+
+                  {(() => {
+                    const missing = getMissingRequiredFields(activeItem);
+                    return (
+                      <div
+                        className={`rounded-xl border p-3.5 text-xs ${
+                          missing.length === 0
+                            ? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-200'
+                            : 'border-amber-500/40 bg-amber-950/20 text-amber-200'
+                        }`}
+                      >
+                        <div className="font-bold flex items-center justify-between gap-2">
+                          <span>
+                            {missing.length === 0
+                              ? 'All mandatory fields complete — ready to upload'
+                              : `Must-fill fields remaining (${missing.length})`}
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-black/30">
+                            KFCB Rating Required
+                          </span>
+                        </div>
+                        {missing.length > 0 && (
+                          <p className="mt-1 text-amber-300/90 leading-relaxed">
+                            Missing: <strong className="text-white">{missing.join(', ')}</strong>
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <button
                     type="button"
@@ -730,19 +787,32 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                       </>
                     )}
                   </button>
+                  {aiNotice && (
+                    <p className="text-xs text-amber-300 bg-amber-950/30 border border-amber-500/30 rounded-lg px-3 py-2">
+                      {aiNotice}
+                    </p>
+                  )}
 
-                  <input
-                    type="text"
-                    value={activeItem.metadata.title}
-                    onChange={(e) =>
-                      updateQueueItem(activeItem.id, {
-                        metadata: { ...activeItem.metadata, title: e.target.value },
-                      })
-                    }
-                    placeholder="Title"
-                    disabled={activeItem.status === 'completed'}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-white focus:outline-none focus:border-red-500 transition-colors"
-                  />
+                  <div>
+                    <label className="block text-xs text-zinc-300 font-medium mb-1 ml-1">
+                      Title <span className="text-red-400 font-bold">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={activeItem.metadata.title}
+                      onChange={(e) =>
+                        updateQueueItem(activeItem.id, {
+                          metadata: { ...activeItem.metadata, title: e.target.value },
+                        })
+                      }
+                      placeholder="Title"
+                      disabled={activeItem.status === 'completed'}
+                      className={`w-full bg-zinc-800 border rounded-lg p-3 text-white focus:outline-none focus:border-red-500 transition-colors ${
+                        !activeItem.metadata.title.trim() ? 'border-amber-500/60' : 'border-zinc-700'
+                      }`}
+                    />
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {activeItem.metadata.category === 'Micro Dramas' && (
@@ -786,7 +856,14 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs text-zinc-400 mb-1 ml-1">KFCB content rating</label>
+                      <label className="flex items-center justify-between text-xs text-zinc-300 font-medium mb-1 ml-1">
+                        <span>
+                          KFCB content rating <span className="text-red-400 font-bold">*</span>
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase ${activeItem.metadata.contentRating === 'UNRATED' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          {activeItem.metadata.contentRating === 'UNRATED' ? 'Must fill' : 'Selected'}
+                        </span>
+                      </label>
                       <select
                         required
                         value={activeItem.metadata.contentRating}
@@ -796,7 +873,9 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                           })
                         }
                         disabled={activeItem.status === 'completed'}
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-white focus:outline-none focus:border-red-500"
+                        className={`w-full bg-zinc-800 border rounded-lg p-3 text-white focus:outline-none focus:border-red-500 ${
+                          activeItem.metadata.contentRating === 'UNRATED' ? 'border-amber-500/70' : 'border-zinc-700'
+                        }`}
                       >
                         <option value="UNRATED">Select a rating</option>
                         <option value="GE">GE - General Exhibition</option>
@@ -928,7 +1007,9 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                       </legend>
                       <div className="grid gap-4 md:grid-cols-3">
                         <label className="md:col-span-3 text-xs text-zinc-300">
-                          Series title
+                          <span>
+                            Series title <span className="text-red-400 font-bold">*</span>
+                          </span>
                           <input
                             required
                             value={activeItem.metadata.seriesTitle}
@@ -939,11 +1020,15 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                             }
                             disabled={activeItem.status === 'completed'}
                             placeholder="The name shared by every episode"
-                            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white"
+                            className={`mt-1 w-full rounded-lg border bg-zinc-800 p-3 text-sm text-white ${
+                              !activeItem.metadata.seriesTitle.trim() ? 'border-amber-500/60' : 'border-zinc-700'
+                            }`}
                           />
                         </label>
                         <label className="text-xs text-zinc-300">
-                          Season
+                          <span>
+                            Season <span className="text-red-400 font-bold">*</span>
+                          </span>
                           <input
                             required
                             type="number"
@@ -960,7 +1045,9 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                           />
                         </label>
                         <label className="text-xs text-zinc-300">
-                          Episode
+                          <span>
+                            Episode <span className="text-red-400 font-bold">*</span>
+                          </span>
                           <input
                             required
                             type="number"
@@ -985,7 +1072,9 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                         ] as const
                       ).map(([key, label, placeholder]) => (
                         <label key={key} className="block text-xs text-zinc-300">
-                          {label}
+                          <span>
+                            {label} <span className="text-red-400 font-bold">*</span>
+                          </span>
                           <textarea
                             required
                             rows={2}
@@ -997,15 +1086,17 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                             }
                             disabled={activeItem.status === 'completed'}
                             placeholder={placeholder}
-                            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white"
+                            className={`mt-1 w-full rounded-lg border bg-zinc-800 p-3 text-sm text-white ${
+                              !activeItem.metadata[key].trim() ? 'border-amber-500/60' : 'border-zinc-700'
+                            }`}
                           />
                         </label>
                       ))}
                       <div className="grid gap-4 md:grid-cols-2">
                         {(
                           [
-                            ['seriesPosterUrl', 'Overall show poster URL', 'https://... (portrait 2:3 image)'],
-                            ['seriesTrailerUrl', 'Series trailer URL', 'https://... (public trailer link)'],
+                            ['seriesPosterUrl', 'Overall show poster URL (Optional)', 'https://... (portrait 2:3 image)'],
+                            ['seriesTrailerUrl', 'Series trailer URL (Optional)', 'https://... (public trailer link)'],
                           ] as const
                         ).map(([key, label, placeholder]) => (
                           <label key={key} className="text-xs text-zinc-300">
