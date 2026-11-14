@@ -36,7 +36,7 @@ const bunnyFunctionSource = readFileSync(
 
 describe('Bunny content classification', () => {
   it('allows an admin to classify existing videos', () => {
-    expect(adminSource).toContain("field('KFCB content rating', 'contentRating'");
+    expect(adminSource).toContain("field('Content rating', 'contentRating'");
     expect(adminSource).toContain("value=\"UNRATED\">Needs rating");
   });
 

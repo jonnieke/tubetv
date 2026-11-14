@@ -159,7 +159,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
   const getMissingRequiredFields = (item: UploadItem): string[] => {
     const missing: string[] = [];
     if (!item.metadata.title.trim()) missing.push('Title');
-    if (item.metadata.contentRating === 'UNRATED') missing.push('KFCB content rating');
+    if (item.metadata.contentRating === 'UNRATED') missing.push('Content rating');
     const episodic = item.metadata.category === 'Series' || item.metadata.category === 'Micro Dramas';
     if (episodic) {
       if (!item.metadata.seriesTitle.trim()) missing.push('Series title');
@@ -373,7 +373,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
 
   const uploadSingleItem = async (item: UploadItem) => {
     if (item.metadata.contentRating === 'UNRATED') {
-      updateQueueItem(item.id, { status: 'error', stageInfo: 'Choose a KFCB content rating before publishing.' });
+      updateQueueItem(item.id, { status: 'error', stageInfo: 'Choose a content rating before publishing.' });
       return;
     }
     const metadata = item.metadata;
@@ -757,7 +757,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                               : `Must-fill fields remaining (${missing.length})`}
                           </span>
                           <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-black/30">
-                            KFCB Rating Required
+                            Content Rating Required
                           </span>
                         </div>
                         {missing.length > 0 && (
@@ -858,7 +858,7 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                     <div>
                       <label className="flex items-center justify-between text-xs text-zinc-300 font-medium mb-1 ml-1">
                         <span>
-                          KFCB content rating <span className="text-red-400 font-bold">*</span>
+                          Content rating <span className="text-red-400 font-bold">*</span>
                         </span>
                         <span className={`text-[10px] font-bold uppercase ${activeItem.metadata.contentRating === 'UNRATED' ? 'text-amber-400' : 'text-emerald-400'}`}>
                           {activeItem.metadata.contentRating === 'UNRATED' ? 'Must fill' : 'Selected'}

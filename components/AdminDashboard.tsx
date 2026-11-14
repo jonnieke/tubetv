@@ -418,12 +418,12 @@ const EditModal = ({
 
           <div className="grid grid-cols-1 gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-2">
             <div>
-              {field('KFCB content rating', 'contentRating', { as: 'select', options: ['GE', 'PG', '16', '18', 'UNRATED'] })}
+              {field('Content rating', 'contentRating', { as: 'select', options: ['GE', 'PG', '16', '18', 'UNRATED'] })}
               <p className={`mt-1.5 text-xs ${form.contentRating === 'UNRATED' || form.contentRating === '18' ? 'text-amber-400' : 'text-zinc-500'}`}>
                 {ratingDescription(form.contentRating)}{form.contentRating === '18' ? ' - hidden from the public catalogue.' : form.contentRating === 'UNRATED' ? (CONTENT_RATING_ENFORCED ? ' - hidden from the public catalogue.' : ' - visible during the test phase only.') : ''}
               </p>
             </div>
-            {field('Classification number', 'classificationNumber', { placeholder: 'Optional KFCB certificate number' })}
+            {field('Classification number', 'classificationNumber', { placeholder: 'Optional certificate number' })}
           </div>
 
           {/* Monetization & Access Control */}

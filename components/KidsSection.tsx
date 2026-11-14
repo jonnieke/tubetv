@@ -58,7 +58,7 @@ const KidsSection: React.FC<KidsSectionProps> = ({
           <div className="lg:col-span-7 space-y-3.5">
             <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/15 border border-amber-300/30 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-200">
               <ShieldCheck size={13} className="text-emerald-300" />
-              {language === 'sw' ? 'Salama kwa Watoto · GE' : 'Safe & Warm · KFCB GE Rated'}
+              {language === 'sw' ? 'Salama kwa Watoto · GE' : 'Safe & Warm · GE Rated'}
             </div>
 
             <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight flex items-center gap-3">
