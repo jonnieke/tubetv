@@ -277,7 +277,7 @@ serve(async (req) => {
               phone: parsedPhone.e164,
             },
             mobile_money: {
-              phone: parsedPhone.digits,
+              phone: parsedPhone.e164,
               provider: "mpesa",
             },
           }),

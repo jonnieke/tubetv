@@ -100,7 +100,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const [isAutoCheckingPhone, setIsAutoCheckingPhone] = useState(false);
   const [mode, setMode] = useState<'buy' | 'restore'>('buy');
   const [regionCode, setRegionCode] = useState<RegionCode>(() => detectDefaultRegion());
-  const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'mpesa'>('paystack');
+  const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'mpesa'>('mpesa');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanCode>('daily');
   const [phone, setPhone] = useState(() => {
     try {
@@ -1009,35 +1009,6 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                       type="button"
                       disabled={isBusy}
                       onClick={() => {
-                        setPaymentMethod('paystack');
-                        setErrorMessage('');
-                        setTimeout(() => {
-                          const input = document.getElementById('paystack-email');
-                          input?.focus();
-                        }, 50);
-                      }}
-                      className={`p-2 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
-                        paymentMethod === 'paystack'
-                          ? 'bg-blue-950/40 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
-                          : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                      }`}
-                    >
-                      <CreditCard className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-                      <div>
-                        <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
-                          <span>{t('paywall.methodPaystack')}</span>
-                          {paymentMethod === 'paystack' && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                          )}
-                        </div>
-                        <div className="text-[10px] text-zinc-400 mt-0.5">{activeRegion.paymentMethodsLabel}</div>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => {
                         setPaymentMethod('mpesa');
                         setErrorMessage('');
                         setTimeout(() => {
@@ -1051,7 +1022,9 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                           : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
                     >
-                      <Smartphone className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                      <span className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <Smartphone className="w-4 h-4 text-emerald-400" />
+                      </span>
                       <div>
                         <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
                           <span>{t('paywall.methodMpesa')}</span>
@@ -1059,7 +1032,38 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                           )}
                         </div>
-                        <div className="text-[10px] text-zinc-400 mt-0.5">Instant Kenya STK</div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">Instant STK Push</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => {
+                        setPaymentMethod('paystack');
+                        setErrorMessage('');
+                        setTimeout(() => {
+                          const input = document.getElementById('paystack-email');
+                          input?.focus();
+                        }, 50);
+                      }}
+                      className={`p-2 rounded-xl border text-left flex items-start gap-2 transition-all cursor-pointer ${
+                        paymentMethod === 'paystack'
+                          ? 'bg-blue-950/40 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
+                          : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <span className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <CreditCard className="w-4 h-4 text-blue-300" />
+                      </span>
+                      <div>
+                        <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
+                          <span>{t('paywall.methodPaystack')}</span>
+                          {paymentMethod === 'paystack' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                          )}
+                        </div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">{activeRegion.paymentMethodsLabel}</div>
                       </div>
                     </button>
                   </div>
@@ -1183,12 +1187,18 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                 {status === 'prompt_sent' && (
                   <div className="p-4 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-center space-y-2">
                     <p className="text-sm font-bold text-emerald-300">
-                      {paymentMethod === 'paystack' ? t('paywall.openCheckout') : t('paywall.promptSentTitle')}
+                      {paymentMethod === 'paystack'
+                        ? t('paywall.openCheckout')
+                        : paystackAuthUrl
+                          ? 'Complete M-Pesa Payment'
+                          : t('paywall.promptSentTitle')}
                     </p>
                     <p className="text-xs text-zinc-300">
                       {paymentMethod === 'paystack'
                         ? t('paywall.paystackHint')
-                        : t('paywall.promptSentBody')}
+                        : paystackAuthUrl
+                          ? 'Tap the button below to authorize your M-Pesa prompt.'
+                          : t('paywall.promptSentBody')}
                     </p>
                     {paystackAuthUrl && (
                       <div className="pt-2">

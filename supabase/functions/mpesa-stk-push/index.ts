@@ -922,7 +922,7 @@ serve(async (req) => {
           ],
         },
         mobile_money: {
-          phone: parsedPhone.digits,
+          phone: parsedPhone.e164,
           provider: "mpesa",
         },
       }),
