@@ -314,7 +314,7 @@ export default function LandingHero({
             ? language === 'sw'
               ? 'Mfululizo Asili wa Kenya · Drama Fupi'
               : 'Kenyan Original · Micro Drama Series'
-            : (real ? video.author || 'TubeTV Studios' : language === 'sw' ? 'Orodha ya majaribio' : 'Demo catalogue') +
+            : (real ? 'TubeTV Originals' : language === 'sw' ? 'Orodha ya majaribio' : 'Demo catalogue') +
               ` · ${video.genre || video.category}`}
         </p>
         <h1>{video.seriesTitle || video.title}</h1>

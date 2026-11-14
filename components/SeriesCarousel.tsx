@@ -51,7 +51,7 @@ const SeriesCard: React.FC<{ episodes: Video[]; onPlay: (video: Video) => void; 
       </button>
       <div className="cinema-series-info p-4">
         <p className="cinema-card-kicker">
-          {portrait ? (language === 'sw' ? 'Tamthilia Fupi' : 'Micro Drama') : language === 'sw' ? 'Tamthilia' : 'Series'} · {first.author}
+          {portrait ? (language === 'sw' ? 'Tamthilia Fupi' : 'Micro Drama') : language === 'sw' ? 'Tamthilia' : 'Series'}
         </p>
         <h3 className="text-lg font-bold text-white">{first.seriesTitle || first.title}</h3>
         <p className="mt-1 text-xs text-zinc-400">

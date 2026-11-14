@@ -184,13 +184,11 @@ const ShortItem: React.FC<{
         <p className="text-white font-bold text-sm line-clamp-2 leading-tight mb-1 drop-shadow-md">
           {short.description}
         </p>
-        <p className="text-zinc-300 text-xs font-medium flex items-center gap-1">
-          {short.isAd ? (
+        {short.isAd && (
+          <p className="text-zinc-300 text-xs font-medium flex items-center gap-1">
             <span className="bg-yellow-500 text-black px-1.5 rounded text-[10px] font-bold">AD</span>
-          ) : (
-            short.author
-          )}
-        </p>
+          </p>
+        )}
       </div>
     </button>
   );

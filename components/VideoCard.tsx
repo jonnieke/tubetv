@@ -1580,7 +1580,6 @@ const VideoCard: React.FC<VideoCardProps> = ({
             {video.episode ? ` · Episode ${video.episode}` : ''}
           </p>
           <h3>{video.title}</h3>
-          <p className="catalogue-video-creator">{video.author}</p>
         </div>
       )}
     </div>

@@ -47,7 +47,7 @@ describe('catalogue artwork presentation', () => {
   it('keeps catalogue metadata quiet without fake zero-view popularity or inactive menus', () => {
     const html = renderToStaticMarkup(<VideoCard video={{ ...episode('standard'), views: 0 }} />);
     expect(html).toContain('Episode one');
-    expect(html).toContain('Producer');
+    expect(html).not.toContain('Producer');
     expect(html).not.toContain('0.0K views');
     expect(html).not.toContain('More options');
   });

@@ -147,8 +147,6 @@ export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
 
   if (spotlightVideos.length === 0) return null;
 
-  const featuredCreator = spotlightVideos[0]?.author || 'TubeTV Originals';
-
   return (
     <section
       aria-label="Creator Originals Spotlight"
@@ -162,8 +160,8 @@ export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
           </div>
           <h2 className="text-2xl md:text-3xl font-serif text-white leading-tight">
             {language === 'sw'
-              ? `Hadithi Halisi kutoka ${featuredCreator} na Studio za Kenya`
-              : `Original Cinema by ${featuredCreator} & Independent Studios`}
+              ? 'Hadithi Halisi kutoka Studio za Kenya'
+              : 'Original Cinema by Kenyan & Independent Studios'}
           </h2>
           <p className="text-xs md:text-sm text-zinc-300 leading-relaxed">
             {language === 'sw'
@@ -213,7 +211,7 @@ export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
                   {item.seriesTitle || item.title}
                 </p>
                 <p className="mt-0.5 text-[11px] text-zinc-400 truncate">
-                  {item.author} · {item.genre || item.category}
+                  {item.genre || item.category}
                 </p>
               </div>
             </button>
