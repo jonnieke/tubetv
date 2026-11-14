@@ -488,6 +488,7 @@ export async function startPaystackPayment(
     phone?: string;
     regionCode?: RegionCode;
     currency?: string;
+    channel?: 'card' | 'apple_pay' | 'mobile_money';
     returnPath?: string;
   } = {},
 ): Promise<PaystackInitiateResponse> {
@@ -511,6 +512,7 @@ export async function startPaystackPayment(
       phone: options.phone,
       regionCode: options.regionCode || detectDefaultRegion(),
       currency: options.currency || 'KES',
+      ...(options.channel ? { channel: options.channel } : {}),
       returnPath,
     },
     headers: { 'Idempotency-Key': idempotencyKey },

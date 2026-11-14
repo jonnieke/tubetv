@@ -59,6 +59,7 @@ declare global {
         ref?: string;
         reference?: string;
         access_code: string;
+        channels?: string[];
         callback?: (response: { reference: string }) => void;
         onClose?: () => void;
       }) => { openIframe: () => void };
@@ -319,7 +320,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const activeRegion = REGIONAL_PRICING[regionCode] || REGIONAL_PRICING.KE;
   const activePlan = SUBSCRIPTION_PLANS[selectedPlan];
 
-  const handlePaystackCheckout = async () => {
+  const handlePaystackCheckout = async (preferApplePay = false) => {
     clearTimers();
     setErrorMessage('');
 
@@ -343,7 +344,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       category: video?.category || 'Pass',
       isMicroDrama: isMicro,
       plan: selectedPlan,
-      channel: 'paystack',
+      channel: preferApplePay ? 'apple_pay' : 'paystack',
     });
 
     try {
@@ -364,6 +365,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         phone: cleanPhone || undefined,
         regionCode,
         currency: activeRegion.currency,
+        channel: preferApplePay ? 'apple_pay' : undefined,
         returnPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
       });
 
@@ -376,11 +378,11 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         setPaystackAuthUrl(result.authorizationUrl);
       }
 
-      // Check if Paystack Inline popup can be launched
+      // Check if Paystack Inline popup can be launched (bypass inline iframe for Apple Pay hosted flow)
       let inlineOpened = false;
       const publicKey = (result.publicKey || (import.meta.env.VITE_PAYSTACK_PUBLIC_KEY as string) || '').trim();
 
-      if (publicKey && typeof window !== 'undefined') {
+      if (!preferApplePay && publicKey && typeof window !== 'undefined') {
         const loaded = await loadPaystackInline().catch(() => false);
         if (loaded && window.PaystackPop?.setup) {
           try {
@@ -393,6 +395,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
               ref: result.reference,
               reference: result.reference,
               access_code: result.accessCode,
+              channels: ['card', 'apple_pay', 'mobile_money'],
               callback: () => {
                 // Polling below will verify and complete
               },
@@ -1109,11 +1112,21 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                         <ShieldCheck size={14} className="text-blue-400 shrink-0 mt-0.5" />
                         <span>{t('paywall.paystackHint')}</span>
                       </p>
-                      <div className="flex items-center gap-1.5 pt-0.5 text-[9px] font-bold text-zinc-400">
-                        <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">VISA</span>
-                        <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">Mastercard</span>
-                        <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">Amex</span>
-                        <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">Apple Pay</span>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[9px] font-bold text-zinc-400">
+                        <div className="flex items-center gap-1.5">
+                          <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">VISA</span>
+                          <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">Mastercard</span>
+                          <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">Amex</span>
+                          <span className="rounded bg-zinc-800 px-1 py-0.5 text-zinc-200">Apple Pay</span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void handlePaystackCheckout(true)}
+                          className="rounded-md bg-white text-black px-2 py-0.5 text-[10px] font-extrabold hover:bg-zinc-200 disabled:opacity-50"
+                        >
+                           Pay with Apple Pay
+                        </button>
                       </div>
                     </div>
                   </div>

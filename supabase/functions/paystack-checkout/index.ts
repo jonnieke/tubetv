@@ -253,9 +253,11 @@ serve(async (req) => {
     const requestedChannel = String(requestBody.channel || "").toLowerCase();
     const channels = requestedChannel === "mobile_money"
       ? ["mobile_money"]
-      : requestedChannel === "card"
-        ? ["card"]
-        : ["mobile_money", "card"];
+      : requestedChannel === "apple_pay"
+        ? ["apple_pay", "card"]
+        : requestedChannel === "card"
+          ? ["card", "apple_pay"]
+          : ["mobile_money", "card", "apple_pay"];
 
     // 1. If customer requested mobile_money with a Kenyan phone number, attempt direct STK Push charge
     if (requestedChannel === "mobile_money" && parsedPhone?.isKenyan && parsedPhone?.digits) {
