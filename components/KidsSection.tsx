@@ -177,6 +177,7 @@ const KidsSection: React.FC<KidsSectionProps> = ({
           onToggleWatchLater={onToggleWatchLater}
           isAuthenticated={isAuthenticated}
           onPlay={onPlay}
+          uniformAspect="video"
         />
       )}
 

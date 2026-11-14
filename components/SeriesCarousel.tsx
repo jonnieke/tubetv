@@ -14,22 +14,30 @@ interface Props {
   watchLaterIds: string[];
   isAuthenticated?: boolean;
   onPlay: (video: Video) => void;
+  uniformAspect?: 'video';
 }
 
-const SeriesCard: React.FC<{ episodes: Video[]; onPlay: (video: Video) => void; onDetails: () => void }> = ({
+const SeriesCard: React.FC<{
+  episodes: Video[];
+  onPlay: (video: Video) => void;
+  onDetails: () => void;
+  forceVideoAspect?: boolean;
+}> = ({
   episodes,
   onPlay,
   onDetails,
+  forceVideoAspect = false,
 }) => {
   const { language } = useLanguage();
   const first = episodes[0];
   const synopsis = episodes.find((episode) => episode.seriesSynopsis)?.seriesSynopsis;
   const portrait = isMicroDrama(first);
   const poster = episodes.map((episode) => publicMediaUrl(episode.seriesPosterUrl)).find(Boolean);
+  const useVertical = !forceVideoAspect && (portrait || Boolean(poster));
   return (
     <article
       className={`cinema-series-card shrink-0 overflow-hidden ${
-        portrait || poster ? 'cinema-series-vertical w-[200px] md:w-[240px]' : 'w-[300px] md:w-[340px]'
+        useVertical ? 'cinema-series-vertical w-[200px] md:w-[240px]' : 'w-[300px] md:w-[340px]'
       }`}
     >
       <button
@@ -41,7 +49,11 @@ const SeriesCard: React.FC<{ episodes: Video[]; onPlay: (video: Video) => void; 
             : `Explore ${first.seriesTitle || first.title} seasons and episodes`
         }
         className={`cinema-series-art relative block w-full overflow-hidden text-left group ${
-          portrait && !poster ? 'aspect-[9/16]' : poster ? 'aspect-[2/3]' : 'aspect-video'
+          useVertical
+            ? portrait && !poster
+              ? 'aspect-[9/16]'
+              : 'aspect-[2/3]'
+            : 'aspect-video'
         }`}
       >
         <CatalogueArtwork src={poster || first.thumbnail} className="h-full w-full object-cover" />
@@ -101,6 +113,17 @@ export default function SeriesCarousel({ title = 'Series', videos, ...props }: P
   }, [videos]);
 
   const hasMicro = useMemo(() => groups.some((epList) => epList[0] && isMicroDrama(epList[0])), [groups]);
+  const forceVideoAspect = useMemo(() => {
+    if (props.uniformAspect === 'video') return true;
+    let hasVertical = false;
+    let hasHorizontal = false;
+    for (const epList of groups) {
+      const isVert = isMicroDrama(epList[0]) || epList.some((ep) => Boolean(publicMediaUrl(ep.seriesPosterUrl)));
+      if (isVert) hasVertical = true;
+      else hasHorizontal = true;
+    }
+    return hasVertical && hasHorizontal;
+  }, [groups, props.uniformAspect]);
   const subtitle = !groups.length
     ? language === 'sw'
       ? 'Hadithi mpya zinakuja.'
@@ -145,6 +168,7 @@ export default function SeriesCarousel({ title = 'Series', videos, ...props }: P
             episodes={episodes}
             onPlay={props.onPlay}
             onDetails={() => setSelectedEpisodes(episodes)}
+            forceVideoAspect={forceVideoAspect}
           />
         ))}
       </div>
