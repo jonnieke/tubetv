@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import PaywallModal from '../components/PaywallModal';
 import VideoCard from '../components/VideoCard';
 import { PlaybackProvider } from '../contexts/PlaybackContext';
+import { LanguageProvider } from '../contexts/LanguageContext';
 import { filterVideosByRating, isKidsVideo } from './discovery';
 import { isVideoLocked } from './monetization';
 import { DEFAULT_PLAYBACK_PREFERENCES } from './viewerState';
@@ -36,7 +37,8 @@ describe('GTM readiness guardrails', () => {
     expect(html).toContain('KSh 50');
     expect(html).toContain('KSh 149');
     expect(html).toContain('Restore Pass');
-    expect(html).toContain('Paystack');
+    expect(html).toContain('Pay with M-Pesa');
+    expect(html).toContain('Debit / Credit Card (Visa, Mastercard)');
     expect(html).toContain('Card, Apple Pay, M-Pesa');
 
     const paywallSource = readFileSync(new URL('../components/PaywallModal.tsx', import.meta.url), 'utf8');
@@ -60,39 +62,60 @@ describe('GTM readiness guardrails', () => {
     expect(isVideoLocked(lockedVideo, true)).toBe(false);
 
     const lockedHtml = renderToStaticMarkup(
-      <PlaybackProvider
-        value={{
-          preferences: DEFAULT_PLAYBACK_PREFERENCES,
-          getProgress: () => undefined,
-          onEnded: () => {},
-          onProgress: () => {},
-          isLocked: () => true,
-          onRequireUnlock: () => {},
-        }}
-      >
-        <VideoCard video={lockedVideo} autoPlay playerOnly />
-      </PlaybackProvider>,
+      <LanguageProvider>
+        <PlaybackProvider
+          value={{
+            preferences: DEFAULT_PLAYBACK_PREFERENCES,
+            getProgress: () => undefined,
+            onEnded: () => {},
+            onProgress: () => {},
+            isLocked: () => true,
+            onRequireUnlock: () => {},
+          }}
+        >
+          <VideoCard video={lockedVideo} autoPlay playerOnly />
+        </PlaybackProvider>
+      </LanguageProvider>,
     );
 
     expect(lockedHtml).toContain('Unlock with M-Pesa');
     expect(lockedHtml).not.toContain('<video');
 
     const unlockedPausedHtml = renderToStaticMarkup(
-      <PlaybackProvider
-        value={{
-          preferences: DEFAULT_PLAYBACK_PREFERENCES,
-          getProgress: () => undefined,
-          onEnded: () => {},
-          onProgress: () => {},
-          isLocked: () => false,
-          onRequireUnlock: () => {},
-        }}
-      >
-        <VideoCard video={sampleVideo({ isPremium: false, accessTier: 'free' })} autoPlay={false} playerOnly />
-      </PlaybackProvider>,
+      <LanguageProvider>
+        <PlaybackProvider
+          value={{
+            preferences: DEFAULT_PLAYBACK_PREFERENCES,
+            getProgress: () => undefined,
+            onEnded: () => {},
+            onProgress: () => {},
+            isLocked: () => false,
+            onRequireUnlock: () => {},
+          }}
+        >
+          <VideoCard video={sampleVideo({ isPremium: false, accessTier: 'free' })} autoPlay={false} playerOnly />
+        </PlaybackProvider>
+      </LanguageProvider>,
     );
-    expect(unlockedPausedHtml).toContain('<video');
-    expect(unlockedPausedHtml).toContain('Resume Nairobi After Dark');
+    expect(unlockedPausedHtml).toContain('Play Nairobi After Dark');
+
+    const unlockedPlayingHtml = renderToStaticMarkup(
+      <LanguageProvider>
+        <PlaybackProvider
+          value={{
+            preferences: DEFAULT_PLAYBACK_PREFERENCES,
+            getProgress: () => undefined,
+            onEnded: () => {},
+            onProgress: () => {},
+            isLocked: () => false,
+            onRequireUnlock: () => {},
+          }}
+        >
+          <VideoCard video={sampleVideo({ isPremium: false, accessTier: 'free' })} autoPlay playerOnly />
+        </PlaybackProvider>
+      </LanguageProvider>,
+    );
+    expect(unlockedPlayingHtml).toContain('<video');
   });
 
   it('enforces word-boundary and KFCB GE rating rules for Kids discovery', () => {
