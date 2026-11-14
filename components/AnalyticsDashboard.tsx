@@ -47,7 +47,37 @@ interface AnalyticsSummaryPayload {
   revenueByChannel?: Record<string, number>;
   revenueByPlan?: Record<string, number>;
   dailySeries?: Array<{ date: string; revenueKes: number; qualifiedViews: number }>;
+  rangeSummary?: {
+    from: string;
+    to: string;
+    totalInteractions: number;
+    uniqueViewers: number;
+    totalWatchSeconds: number;
+    avgWatchSeconds: number;
+    byLocation: Record<string, { interactions: number; watchSeconds: number }>;
+  };
+  rangeInteractions?: Array<{
+    occurredAt: string;
+    date: string;
+    videoId: string;
+    viewerId: string;
+    location: string;
+    device: string;
+    event: string;
+    watchSeconds: number;
+  }>;
 }
+
+const formatWatchDuration = (sec: number) => {
+  if (!sec || sec <= 0) return '0s';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+  }
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+};
 
 const formatKes = (amount: number) =>
   `KSh ${Math.round(amount).toLocaleString('en-KE')}`;
@@ -92,6 +122,9 @@ export default function AnalyticsDashboard({
   const [newCatIcon, setNewCatIcon] = useState('Star');
   const [loadedVideos, setLoadedVideos] = useState<BunnyVideoItem[]>([]);
   const [funnel, setFunnel] = useState<AnalyticsSummaryPayload | null>(null);
+  const [dateFrom, setDateFrom] = useState<string>(() => new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [interactionSearch, setInteractionSearch] = useState<string>('');
 
   useEffect(() => {
     if (videos !== undefined) return;
@@ -117,7 +150,8 @@ export default function AnalyticsDashboard({
       } = await supabase.auth.getSession();
       if (!url || !session) return;
       try {
-        const response = await fetch(`${url}/functions/v1/analytics-summary`, {
+        const qs = new URLSearchParams({ from: dateFrom, to: dateTo }).toString();
+        const response = await fetch(`${url}/functions/v1/analytics-summary?${qs}`, {
           headers: {
             apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
             Authorization: `Bearer ${session.access_token}`,
@@ -132,7 +166,7 @@ export default function AnalyticsDashboard({
     return () => {
       active = false;
     };
-  }, []);
+  }, [dateFrom, dateTo]);
 
   const effectiveVideos = videos ?? loadedVideos;
 
@@ -582,6 +616,200 @@ export default function AnalyticsDashboard({
                 No qualified interactions on Premium titles recorded yet today. As viewers watch Premium shows today, today&apos;s pass revenue will attribute here in real time.
               </div>
             )}
+          </div>
+
+          {/* Detailed Date A -> Date B Audience Interactions & Watch Duration */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-white">
+                  Audience Interactions &amp; Watch Duration (Date A &rarr; Date B)
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  See who interacted with each title, from where, and for how long across any date range
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  aria-label="From date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-white"
+                />
+                <span className="text-xs text-zinc-500">to</span>
+                <input
+                  type="date"
+                  aria-label="To date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-white"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    setDateFrom(today);
+                    setDateTo(today);
+                  }}
+                  className="rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-zinc-200"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateFrom(new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
+                    setDateTo(new Date().toISOString().slice(0, 10));
+                  }}
+                  className="rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-zinc-200"
+                >
+                  7D
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateFrom(new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
+                    setDateTo(new Date().toISOString().slice(0, 10));
+                  }}
+                  className="rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-zinc-200"
+                >
+                  30D
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-400">Interactions</div>
+                <div className="text-lg font-black text-white mt-0.5">
+                  {(funnel?.rangeSummary?.totalInteractions ?? 0).toLocaleString('en-KE')}
+                </div>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-400">Unique Viewers</div>
+                <div className="text-lg font-black text-sky-300 mt-0.5">
+                  {(funnel?.rangeSummary?.uniqueViewers ?? 0).toLocaleString('en-KE')}
+                </div>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-400">Total Watch Time</div>
+                <div className="text-lg font-black text-emerald-300 mt-0.5">
+                  {formatWatchDuration(funnel?.rangeSummary?.totalWatchSeconds ?? 0)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-400">Avg Duration</div>
+                <div className="text-lg font-black text-amber-300 mt-0.5">
+                  {formatWatchDuration(funnel?.rangeSummary?.avgWatchSeconds ?? 0)}
+                </div>
+              </div>
+            </div>
+
+            {(() => {
+              const titleById = new Map(effectiveVideos.map((v) => [v.guid, v.title]));
+              const rows = (funnel?.rangeInteractions || []).filter((r) => {
+                if (!interactionSearch.trim()) return true;
+                const q = interactionSearch.toLowerCase();
+                const title = (titleById.get(r.videoId) || r.videoId).toLowerCase();
+                return (
+                  title.includes(q) ||
+                  r.location.toLowerCase().includes(q) ||
+                  r.viewerId.toLowerCase().includes(q) ||
+                  r.device.toLowerCase().includes(q)
+                );
+              });
+
+              const exportRangeCsv = () => {
+                const header = ['OccurredAt', 'Title', 'Viewer', 'Device', 'Location', 'Event', 'WatchSeconds'];
+                const csvRows = rows.map((r) => [
+                  r.occurredAt,
+                  `"${(titleById.get(r.videoId) || r.videoId).replace(/"/g, '""')}"`,
+                  r.viewerId,
+                  r.device,
+                  `"${r.location.replace(/"/g, '""')}"`,
+                  r.event,
+                  String(r.watchSeconds),
+                ]);
+                const blob = new Blob([[header.join(','), ...csvRows.map((c) => c.join(','))].join('\n')], {
+                  type: 'text/csv;charset=utf-8;',
+                });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `tubetv-interactions-${dateFrom}-to-${dateTo}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              };
+
+              return (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <input
+                      type="search"
+                      value={interactionSearch}
+                      onChange={(e) => setInteractionSearch(e.target.value)}
+                      placeholder="Filter by title, location (e.g. KE), viewer ID or device..."
+                      className="w-full sm:w-80 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-white placeholder-zinc-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={exportRangeCsv}
+                      disabled={rows.length === 0}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-white"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Export Range CSV ({rows.length})
+                    </button>
+                  </div>
+
+                  {rows.length > 0 ? (
+                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="sticky top-0 bg-zinc-900">
+                          <tr className="border-b border-zinc-800 text-zinc-400 uppercase tracking-wider text-[10px]">
+                            <th className="py-2 pr-4">Date &amp; Time</th>
+                            <th className="py-2 pr-4">Content</th>
+                            <th className="py-2 pr-4">Who (Viewer / Device)</th>
+                            <th className="py-2 pr-4">From Where</th>
+                            <th className="py-2 pr-4">Action</th>
+                            <th className="py-2 text-right">Duration</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/70">
+                          {rows.slice(0, 100).map((r, idx) => (
+                            <tr key={`${r.occurredAt}-${r.videoId}-${idx}`} className="hover:bg-zinc-800/30">
+                              <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
+                                {r.occurredAt ? new Date(r.occurredAt).toLocaleString('en-KE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : r.date}
+                              </td>
+                              <td className="py-2 pr-4 font-medium text-white max-w-[200px] truncate">
+                                {titleById.get(r.videoId) || r.videoId}
+                              </td>
+                              <td className="py-2 pr-4 text-zinc-300 font-mono text-[11px]">
+                                {r.viewerId} <span className="text-zinc-500 font-sans">({r.device})</span>
+                              </td>
+                              <td className="py-2 pr-4 text-zinc-300">{r.location}</td>
+                              <td className="py-2 pr-4">
+                                <span className="rounded bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300">
+                                  {r.event.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td className="py-2 text-right font-mono font-bold text-emerald-300">
+                                {formatWatchDuration(r.watchSeconds)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-xs text-zinc-400">
+                      No viewer interactions recorded between {dateFrom} and {dateTo}.
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* Bottom Table: Title-by-Title Revenue & Share-of-Play */}

@@ -31,11 +31,32 @@ export function sanitizeEventProperties(properties: EventProperties = {}) {
   );
 }
 
+function getAnonViewerMeta(): { viewerId?: string; device?: string } {
+  if (typeof window === 'undefined') return {};
+  let viewerId: string | undefined;
+  try {
+    viewerId = window.localStorage.getItem('tubetv_viewer_id') || undefined;
+    if (!viewerId) {
+      viewerId = `vw_${Math.random().toString(36).slice(2, 10)}`;
+      window.localStorage.setItem('tubetv_viewer_id', viewerId);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  const w = window.innerWidth || 1024;
+  const device = w < 640 ? 'Mobile' : w < 1024 ? 'Tablet' : 'Desktop';
+  return { viewerId, device };
+}
+
 export function trackEvent(name: AnalyticsEventName, properties: EventProperties = {}) {
   if (typeof window === 'undefined') return;
+  const meta = getAnonViewerMeta();
   const event = {
     name,
-    properties: sanitizeEventProperties(properties),
+    properties: sanitizeEventProperties({
+      ...meta,
+      ...properties,
+    }),
     path: window.location.pathname,
     occurredAt: new Date().toISOString(),
   };

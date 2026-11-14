@@ -85,16 +85,29 @@ serve(async (req) => {
     return new Response(null, { status: 400, headers: corsHeaders(req, METHODS) });
   }
 
+  const country =
+    req.headers.get("cf-ipcountry") ||
+    req.headers.get("x-vercel-ip-country") ||
+    "";
+  const city =
+    req.headers.get("cf-ipcity") ||
+    req.headers.get("x-vercel-ip-city") ||
+    "";
+
   const entries = Object.entries(body.properties || {}).slice(0, 12);
-  const properties = Object.fromEntries(
-    entries
-      .filter(
-        ([key, value]) =>
-          key.length <= 40 &&
-          (typeof value === "string" || typeof value === "number" || typeof value === "boolean"),
-      )
-      .map(([key, value]) => [key, typeof value === "string" ? value.slice(0, 120) : value]),
-  );
+  const properties = {
+    ...Object.fromEntries(
+      entries
+        .filter(
+          ([key, value]) =>
+            key.length <= 40 &&
+            (typeof value === "string" || typeof value === "number" || typeof value === "boolean"),
+        )
+        .map(([key, value]) => [key, typeof value === "string" ? value.slice(0, 120) : value]),
+    ),
+    ...(country ? { country: country.slice(0, 8) } : {}),
+    ...(city ? { city: decodeURIComponent(city).slice(0, 60) } : {}),
+  };
 
   const occurredAt = new Date(body.occurredAt);
   if (Number.isNaN(occurredAt.getTime()) || Math.abs(Date.now() - occurredAt.getTime()) > 86400000) {

@@ -62,9 +62,18 @@ serve(async (req) => {
     return jsonReply(req, { error: "Analytics unavailable." }, 503, METHODS, { "Cache-Control": "no-store" });
   }
 
-  // Also aggregate 30-day verified Qualified Views per videoId and succeeded payment_transactions revenue
+  const reqUrl = new URL(req.url);
+  const rawFrom = reqUrl.searchParams.get("from");
+  const rawTo = reqUrl.searchParams.get("to");
+  const parsedFrom = rawFrom && /^\d{4}-\d{2}-\d{2}$/.test(rawFrom) ? new Date(`${rawFrom}T00:00:00.000Z`) : new Date(Date.now() - 30 * 86400000);
+  const parsedTo = rawTo && /^\d{4}-\d{2}-\d{2}$/.test(rawTo) ? new Date(`${rawTo}T23:59:59.999Z`) : new Date();
+  const rangeFromIso = Number.isNaN(parsedFrom.getTime()) ? new Date(Date.now() - 30 * 86400000).toISOString() : parsedFrom.toISOString();
+  const rangeToIso = Number.isNaN(parsedTo.getTime()) ? new Date().toISOString() : parsedTo.toISOString();
+
+  // Also aggregate 30-day verified Qualified Views per videoId and succeeded payment_transactions revenue,
+  // plus detailed Date A -> Date B interaction & duration logs.
   const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
-  const [qvRes, txRes] = await Promise.all([
+  const [qvRes, txRes, rangeEventsRes] = await Promise.all([
     client
       .from("analytics_events")
       .select("properties, occurred_at")
@@ -77,6 +86,14 @@ serve(async (req) => {
       .eq("status", "succeeded")
       .gte("created_at", since30d)
       .limit(5000),
+    client
+      .from("analytics_events")
+      .select("event_name, properties, occurred_at")
+      .in("event_name", ["playback_start", "qualified_view", "playback_complete", "video_shared"])
+      .gte("occurred_at", rangeFromIso)
+      .lte("occurred_at", rangeToIso)
+      .order("occurred_at", { ascending: false })
+      .limit(1000),
   ]);
 
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -141,6 +158,64 @@ serve(async (req) => {
     qualifiedViews: vals.qualifiedViews,
   }));
 
+  const viewerSet = new Set<string>();
+  const byLocation: Record<string, { interactions: number; watchSeconds: number }> = {};
+  let rangeTotalWatchSeconds = 0;
+  const rangeInteractions: Array<{
+    occurredAt: string;
+    date: string;
+    videoId: string;
+    viewerId: string;
+    location: string;
+    device: string;
+    event: string;
+    watchSeconds: number;
+  }> = [];
+
+  if (Array.isArray(rangeEventsRes.data)) {
+    for (const row of rangeEventsRes.data) {
+      const props = (row.properties || {}) as Record<string, unknown>;
+      const videoId = typeof props.videoId === "string" ? props.videoId : "";
+      if (!videoId) continue;
+      const viewerId = typeof props.viewerId === "string" && props.viewerId ? props.viewerId : "Guest";
+      const city = typeof props.city === "string" ? props.city : "";
+      const country = typeof props.country === "string" ? props.country : "KE";
+      const location = city ? `${city}, ${country}` : country;
+      const device = typeof props.device === "string" && props.device ? props.device : "Web";
+      const watchSeconds = typeof props.watchSeconds === "number" && Number.isFinite(props.watchSeconds) ? Math.max(0, Math.round(props.watchSeconds)) : 0;
+      const occurredAt = typeof row.occurred_at === "string" ? row.occurred_at : "";
+
+      viewerSet.add(viewerId);
+      rangeTotalWatchSeconds += watchSeconds;
+      if (!byLocation[location]) byLocation[location] = { interactions: 0, watchSeconds: 0 };
+      byLocation[location].interactions += 1;
+      byLocation[location].watchSeconds += watchSeconds;
+
+      if (rangeInteractions.length < 250) {
+        rangeInteractions.push({
+          occurredAt,
+          date: occurredAt.slice(0, 10),
+          videoId,
+          viewerId,
+          location,
+          device,
+          event: String(row.event_name || "playback_start"),
+          watchSeconds,
+        });
+      }
+    }
+  }
+
+  const rangeSummary = {
+    from: rangeFromIso.slice(0, 10),
+    to: rangeToIso.slice(0, 10),
+    totalInteractions: Array.isArray(rangeEventsRes.data) ? rangeEventsRes.data.length : 0,
+    uniqueViewers: viewerSet.size,
+    totalWatchSeconds: rangeTotalWatchSeconds,
+    avgWatchSeconds: rangeInteractions.length > 0 ? Math.round(rangeTotalWatchSeconds / rangeInteractions.length) : 0,
+    byLocation,
+  };
+
   return jsonReply(
     req,
     {
@@ -155,6 +230,8 @@ serve(async (req) => {
       revenueByChannel,
       revenueByPlan,
       dailySeries,
+      rangeSummary,
+      rangeInteractions,
     },
     200,
     METHODS,
