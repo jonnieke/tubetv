@@ -104,6 +104,7 @@ const WatchLaterSection: React.FC<WatchLaterSectionProps> = ({ videos, watchLate
                   video={video}
                   isWatchLater={watchLaterIds.includes(video.id)}
                   onToggleWatchLater={onToggleWatchLater}
+                  uniformAspect="video"
                 />
                 {offlineEntry && (
                   <div className="flex items-center justify-between px-2 py-1 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-[11px] text-emerald-300">

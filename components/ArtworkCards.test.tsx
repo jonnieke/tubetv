@@ -5,6 +5,9 @@ import type { Video } from '../types';
 import CatalogueArtwork from './CatalogueArtwork';
 import SeriesCarousel from './SeriesCarousel';
 import VideoCard from './VideoCard';
+import VideoCarousel from './VideoCarousel';
+import { PlaybackProvider } from '../contexts/PlaybackContext';
+import { LanguageProvider } from '../contexts/LanguageContext';
 
 const episode = (format: 'standard' | 'micro-drama'): Video => ({ id: format, title: 'Episode one', seriesTitle: 'A real series', category: format === 'micro-drama' ? 'Micro Dramas' : 'Series', seriesFormat: format, thumbnail: '/episode.jpg', author: 'Producer', views: 0, duration: '10:00', isPremium: false, episode: 1 });
 const renderSeries = (video: Video) => renderToStaticMarkup(<SeriesCarousel videos={[video]} watchLaterIds={[]} onToggleWatchLater={() => {}} onPlay={() => {}} />);
@@ -47,5 +50,29 @@ describe('catalogue artwork presentation', () => {
     expect(html).toContain('Producer');
     expect(html).not.toContain('0.0K views');
     expect(html).not.toContain('More options');
+  });
+  it('keeps mixed VideoCarousel rows like Continue Watching uniformly landscape', () => {
+    const html = renderToStaticMarkup(
+      <LanguageProvider>
+        <PlaybackProvider
+          value={{
+            preferences: { autoplay: true, dataSaver: false, maxQuality: 'auto' },
+            getProgress: () => undefined,
+            onEnded: () => {},
+            onProgress: () => {},
+          }}
+        >
+          <VideoCarousel
+            title="Continue Watching"
+            videos={[episode('standard'), episode('micro-drama')]}
+            watchLaterIds={[]}
+            onToggleWatchLater={() => {}}
+            isAuthenticated={false}
+          />
+        </PlaybackProvider>
+      </LanguageProvider>,
+    );
+    expect(html).toContain('aspect-video');
+    expect(html).not.toContain('aspect-[9/16]');
   });
 });

@@ -41,6 +41,7 @@ interface VideoCardProps {
   playerOnly?: boolean;
   onPlay?: () => void;
   isLocked?: (video: Video) => boolean;
+  uniformAspect?: 'video' | 'portrait';
 }
 
 type SafariVideoElement = HTMLVideoElement & {
@@ -70,6 +71,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   playerOnly = false,
   onPlay,
   isLocked: propIsLocked,
+  uniformAspect,
 }) => {
   const { t } = useLanguage();
   const {
@@ -1010,7 +1012,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
     >
       <div
         className={`video-stage-frame relative ${
-          video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas' ? 'aspect-[9/16]' : 'aspect-video'
+          uniformAspect === 'video'
+            ? 'aspect-video'
+            : uniformAspect === 'portrait'
+              ? 'aspect-[9/16]'
+              : video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas'
+                ? 'aspect-[9/16]'
+                : 'aspect-video'
         } bg-black overflow-hidden`}
       >
         {!showVideoStage ? (

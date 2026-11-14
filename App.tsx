@@ -1487,6 +1487,7 @@ const App: React.FC = () => {
                           video={video}
                           isWatchLater={watchLater.includes(video.id)}
                           onToggleWatchLater={toggleWatchLater}
+                          uniformAspect="video"
                         />
                       </div>
                     ))}
@@ -1557,6 +1558,7 @@ const App: React.FC = () => {
                           video={video}
                           isWatchLater={watchLater.includes(video.id)}
                           onToggleWatchLater={toggleWatchLater}
+                          uniformAspect="video"
                         />
                       </div>
                     ))}
@@ -1586,6 +1588,7 @@ const App: React.FC = () => {
                           video={video}
                           isWatchLater={watchLater.includes(video.id)}
                           onToggleWatchLater={toggleWatchLater}
+                          uniformAspect="video"
                         />
                       </div>
                     ))}
@@ -1600,6 +1603,7 @@ const App: React.FC = () => {
                       video={video}
                       isWatchLater={watchLater.includes(video.id)}
                       onToggleWatchLater={toggleWatchLater}
+                      uniformAspect="video"
                     />
                   </div>
                 ))}
