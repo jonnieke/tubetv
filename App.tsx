@@ -10,6 +10,7 @@ import MicroDramaComingSoon from './components/MicroDramaComingSoon';
 import ViewerWelcome from './components/ViewerWelcome';
 import CatalogueArtwork from './components/CatalogueArtwork';
 import BrowseIntro from './components/BrowseIntro';
+import KidsSection from './components/KidsSection';
 import CatalogueEmptyState from './components/CatalogueEmptyState';
 import ShortsShelf from './components/ShortsShelf';
 import PWAInstallBanner from './components/PWAInstallBanner';
@@ -1253,7 +1254,7 @@ const App: React.FC = () => {
                 );
               })()}
 
-            {(currentView !== ViewState.HOME || searchQuery) && (
+            {(currentView !== ViewState.HOME && currentView !== ViewState.KIDS || searchQuery) && (
               <BrowseIntro
                 view={currentView}
                 subcategory={activeSubCategory}
@@ -1265,7 +1266,7 @@ const App: React.FC = () => {
               />
             )}
 
-            {!searchQuery && (
+            {!searchQuery && currentView !== ViewState.KIDS && (
               <div className="flex gap-2.5 overflow-x-auto pb-4 mb-6 no-scrollbar sticky top-0 z-10 bg-zinc-950/90 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
                 {currentSubCategories.map((cat) => {
                   const pillEmoji =
@@ -1304,6 +1305,15 @@ const App: React.FC = () => {
                     </button>
                   );
                 })}
+                {currentView === ViewState.HOME && (
+                  <button
+                    type="button"
+                    onClick={() => handleNavigate(ViewState.KIDS)}
+                    className="px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-colors border bg-sky-500/15 text-sky-300 border-sky-400/40 hover:bg-sky-400 hover:text-zinc-950"
+                  >
+                    🧒 {t('nav.kids')}
+                  </button>
+                )}
               </div>
             )}
 
@@ -1358,7 +1368,7 @@ const App: React.FC = () => {
               (currentView === ViewState.HOME && activeSubCategory !== 'Trending') ||
               (currentView === ViewState.ORIGINALS && activeSubCategory === 'All') ||
               (!Object.values(ViewState).includes(currentView as ViewState) && !searchQuery) ||
-              ([ViewState.EDUCATION, ViewState.FARMERS, ViewState.FAITH, ViewState.KIDS, ViewState.DIASPORA].includes(
+              ([ViewState.EDUCATION, ViewState.FARMERS, ViewState.FAITH, ViewState.DIASPORA].includes(
                 currentView as ViewState,
               ) &&
                 !searchQuery)) && (
@@ -1462,6 +1472,18 @@ const App: React.FC = () => {
                   );
                 })}
               </div>
+            ) : currentView === ViewState.KIDS && !searchQuery ? (
+              <KidsSection
+                videos={filteredVideos}
+                activeSubCategory={activeSubCategory}
+                subCategories={currentSubCategories}
+                onSelectSubCategory={setActiveSubCategory}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={isAuthenticated}
+                onPlay={openVideo}
+                onBackHome={() => handleNavigate(ViewState.HOME)}
+              />
             ) : currentView === ViewState.MICRO_DRAMAS && !searchQuery ? (
               hasMicroDramas ? (
                 <SeriesCarousel

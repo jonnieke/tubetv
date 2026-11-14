@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ChevronDown, Globe, Search, Smartphone, Ticket, UserRound, X } from 'lucide-react';
+import { Baby, CheckCircle2, ChevronDown, Globe, Search, Smartphone, Ticket, UserRound, X } from 'lucide-react';
 import { NavItem, ViewState, ViewStateOrString } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getStoredPass, type StoredPass } from '../lib/subscriptions';
@@ -101,6 +101,15 @@ export default function CinemaNavigation(props: Props) {
             onClick={() => navigate(ViewState.GENRES)}
           >
             {t('nav.genres')}
+          </button>
+          <button
+            type="button"
+            aria-current={props.view === ViewState.KIDS ? 'page' : undefined}
+            onClick={() => navigate(ViewState.KIDS)}
+            className="flex items-center gap-1.5 font-bold text-sky-300 hover:text-sky-200 transition-colors"
+          >
+            <Baby size={14} className="text-sky-300" />
+            <span>{t('nav.kids')}</span>
           </button>
           <button
             type="button"
