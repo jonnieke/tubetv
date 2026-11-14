@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeShareOfPlayRoyalties,
+  getQualifiedViewThresholdSeconds,
   parseDurationToSeconds,
   MINIMUM_PAYOUT_THRESHOLD_KES,
   RoyaltyPoolConfig,
@@ -155,5 +156,12 @@ describe('Creator Royalties & Share of Play Engine', () => {
     expect(result.eligibleCreatorsCount).toBe(1);
     expect(result.carriedForwardCreatorsCount).toBe(1);
     expect(result.totalEligiblePayoutKes).toBe(1200);
+  });
+
+  it('awards qualified views at 80% for paid content under 30 seconds', () => {
+    expect(getQualifiedViewThresholdSeconds(25, true)).toBeCloseTo(20, 2);
+    expect(getQualifiedViewThresholdSeconds(15, true)).toBeCloseTo(12, 2);
+    expect(getQualifiedViewThresholdSeconds(25, false)).toBe(30);
+    expect(getQualifiedViewThresholdSeconds(45, true)).toBe(30);
   });
 });

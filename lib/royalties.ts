@@ -9,8 +9,29 @@ import { Video } from '../types';
 
 export const MINIMUM_PAYOUT_THRESHOLD_KES = 1000;
 export const QUALIFIED_VIEW_SECONDS = 30;
+export const SHORT_PAID_DURATION_CUTOFF_SECONDS = 30;
+export const SHORT_PAID_QUALIFIED_RATIO = 0.8;
 export const DEFAULT_CREATOR_POOL_PERCENT = 60; // 60/40 revenue split in favor of creative (60% to creative, 40% platform)
 export const PAYMENT_GATEWAY_FEE_PERCENT = 1.5; // 1.5% Paystack Kenya fee
+
+/**
+ * Returns the minimum playback position (in seconds) required to award a Qualified View.
+ * For paid content shorter than 30 seconds, watching 80% counts as a Qualified View.
+ */
+export function getQualifiedViewThresholdSeconds(
+  durationSeconds: number,
+  isPaidContent: boolean,
+): number {
+  if (
+    isPaidContent &&
+    Number.isFinite(durationSeconds) &&
+    durationSeconds > 0 &&
+    durationSeconds < SHORT_PAID_DURATION_CUTOFF_SECONDS
+  ) {
+    return durationSeconds * SHORT_PAID_QUALIFIED_RATIO;
+  }
+  return QUALIFIED_VIEW_SECONDS;
+}
 
 export interface RoyaltyPoolConfig {
   periodLabel: string;

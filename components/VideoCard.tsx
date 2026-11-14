@@ -28,6 +28,7 @@ import { isLongFormatVideo, isVideoLocked, LONG_FORMAT_PREVIEW_SECONDS } from '.
 import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
 import { isVideoSavedOffline, removeOfflineVideo, saveVideoForOfflineCommute } from '../lib/offlineCache';
 import { trackEvent } from '../lib/analytics';
+import { getQualifiedViewThresholdSeconds } from '../lib/royalties';
 import { shouldSaveData } from '../lib/network';
 import CatalogueArtwork from './CatalogueArtwork';
 
@@ -857,8 +858,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
       saveCurrentProgress();
     }
 
-    // Share of Play: 30-Second Minimum Qualified View (QV)
-    if (!isHoverPlay && !qualifiedViewFiredRef.current && current >= 30) {
+    // Share of Play: 30s Qualified View (or 80% for paid content < 30s)
+    const isPaidContent = Boolean(
+      video.isPremium ||
+        video.accessTier === 'paid' ||
+        isLongFormatVideo(video) ||
+        (typeof video.episode === 'number' && video.episode >= 3),
+    );
+    const qualifiedThreshold = getQualifiedViewThresholdSeconds(total, isPaidContent);
+    if (!isHoverPlay && !qualifiedViewFiredRef.current && current >= qualifiedThreshold) {
       qualifiedViewFiredRef.current = true;
       trackEvent('qualified_view', {
         videoId: video.id,
