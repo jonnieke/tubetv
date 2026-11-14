@@ -31,7 +31,7 @@ export function sanitizeEventProperties(properties: EventProperties = {}) {
   );
 }
 
-function getAnonViewerMeta(): { viewerId?: string; device?: string } {
+function getAnonViewerMeta(): { viewerId?: string; device?: string; city?: string } {
   if (typeof window === 'undefined') return {};
   let viewerId: string | undefined;
   try {
@@ -43,9 +43,19 @@ function getAnonViewerMeta(): { viewerId?: string; device?: string } {
   } catch {
     // Ignore storage errors
   }
+  let city: string | undefined;
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (tz.includes('/') && !tz.startsWith('Etc/')) {
+      const segment = tz.split('/').pop()?.replace(/_/g, ' ').trim();
+      if (segment) city = segment;
+    }
+  } catch {
+    // Ignore Intl errors
+  }
   const w = window.innerWidth || 1024;
   const device = w < 640 ? 'Mobile' : w < 1024 ? 'Tablet' : 'Desktop';
-  return { viewerId, device };
+  return { viewerId, device, ...(city ? { city } : {}) };
 }
 
 export function trackEvent(name: AnalyticsEventName, properties: EventProperties = {}) {

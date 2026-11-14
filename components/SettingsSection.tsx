@@ -118,6 +118,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
     totalWatchSeconds: number;
     avgWatchSeconds: number;
     byLocation: Record<string, { interactions: number; watchSeconds: number }>;
+    byVideo?: Record<string, { interactions: number; watchSeconds: number; uniqueViewers: number }>;
   } | null>(null);
   const [creatorRangeInteractions, setCreatorRangeInteractions] = useState<
     Array<{
@@ -402,6 +403,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
     setCreatorRangeLoading(true);
     const params = new URLSearchParams({
       creator_code: unlockedProfileMeta.code,
+      creator_name: unlockedCreatorName,
       video_ids: creatorVideoIds.join(','),
       from: creatorFromDate,
       to: creatorToDate,
@@ -1178,6 +1180,50 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                                   {Math.round(stats.watchSeconds / 60)}m
                                 </span>
                               ))}
+                          </div>
+                        )}
+
+                        {creatorRangeSummary?.byVideo && Object.keys(creatorRangeSummary.byVideo).length > 0 && (
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 overflow-hidden">
+                            <div className="px-3 py-2 border-b border-zinc-800 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                              Performance by Title / Episode ({creatorFromDate} → {creatorToDate})
+                            </div>
+                            <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                              <table className="w-full text-left text-xs">
+                                <thead className="bg-zinc-950 text-zinc-500 border-b border-zinc-800">
+                                  <tr>
+                                    <th className="py-1.5 px-3">Title / Episode</th>
+                                    <th className="py-1.5 px-3 text-right">Interactions</th>
+                                    <th className="py-1.5 px-3 text-right">Viewers</th>
+                                    <th className="py-1.5 px-3 text-right">Watch Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-800/50">
+                                  {(() => {
+                                    const videoById = new Map(videos.map((v) => [v.id, v]));
+                                    return Object.entries(creatorRangeSummary.byVideo)
+                                      .sort((a, b) => b[1].watchSeconds - a[1].watchSeconds || b[1].interactions - a[1].interactions)
+                                      .slice(0, 15)
+                                      .map(([vid, stats]) => {
+                                        const v = videoById.get(vid);
+                                        const label = v
+                                          ? `${v.seriesTitle ? `${v.seriesTitle}${v.episode ? ` Ep ${v.episode}` : ''} · ` : ''}${v.title}`
+                                          : vid;
+                                        return (
+                                          <tr key={vid}>
+                                            <td className="py-1.5 px-3 font-medium text-zinc-200">{label}</td>
+                                            <td className="py-1.5 px-3 text-right font-mono text-zinc-300">{stats.interactions}</td>
+                                            <td className="py-1.5 px-3 text-right font-mono text-amber-400">{stats.uniqueViewers}</td>
+                                            <td className="py-1.5 px-3 text-right font-mono text-emerald-400">
+                                              {stats.watchSeconds >= 60 ? `${Math.round(stats.watchSeconds / 60)}m` : `${stats.watchSeconds}s`}
+                                            </td>
+                                          </tr>
+                                        );
+                                      });
+                                  })()}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         )}
 

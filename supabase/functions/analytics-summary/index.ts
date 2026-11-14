@@ -4,6 +4,16 @@ import { verifiedAdminId } from "../_shared/admin.ts";
 import { corsHeaders, isOriginAllowed, jsonReply } from "../_shared/cors.ts";
 
 const METHODS = "GET, OPTIONS";
+
+function generateDefaultPortalCode(creatorName: string): string {
+  const clean = (creatorName || "CREATOR").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const prefix = (clean.slice(0, 2) || "CR").padEnd(2, "X");
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash * 31 + clean.charCodeAt(i)) % 900 + 100;
+  }
+  return `TUBE-${prefix}${hash}`;
+}
 const names = [
   "catalogue_view",
   "playback_start",
@@ -38,6 +48,7 @@ serve(async (req) => {
 
   const reqUrl = new URL(req.url);
   const creatorCode = (reqUrl.searchParams.get("creator_code") || "").trim().toUpperCase();
+  const creatorName = (reqUrl.searchParams.get("creator_name") || "").trim();
   const requestedVideoIds = (reqUrl.searchParams.get("video_ids") || "")
     .split(",")
     .map((s) => s.trim())
@@ -69,9 +80,10 @@ serve(async (req) => {
       .select("creator_name")
       .eq("portal_access_code", creatorCode)
       .limit(1);
-    const hasProfile = Array.isArray(profileMatch) && profileMatch.length > 0;
-    const isDeterministicTubeCode = /^TUBE-[A-Z0-9]{2,16}$/.test(creatorCode);
-    if (!hasProfile && !isDeterministicTubeCode) {
+    const matchedProfileName = Array.isArray(profileMatch) && profileMatch.length > 0 ? String(profileMatch[0]?.creator_name || "") : "";
+    const hasProfile = Boolean(matchedProfileName) && (!creatorName || matchedProfileName.trim().toLowerCase() === creatorName.toLowerCase());
+    const matchesDeterministicCode = Boolean(creatorName) && creatorCode === generateDefaultPortalCode(creatorName);
+    if (!hasProfile && !matchesDeterministicCode) {
       return jsonReply(req, { error: "Invalid creator access code." }, 403, METHODS);
     }
 
@@ -91,6 +103,7 @@ serve(async (req) => {
 
     const viewerSet = new Set<string>();
     const byLocation: Record<string, { interactions: number; watchSeconds: number }> = {};
+    const byVideoMap = new Map<string, { interactions: number; watchSeconds: number; viewers: Set<string> }>();
     let totalWatchSeconds = 0;
     let totalInteractions = 0;
     const rangeInteractions: Array<{
@@ -123,6 +136,12 @@ serve(async (req) => {
       byLocation[location].interactions += 1;
       byLocation[location].watchSeconds += watchSeconds;
 
+      const vEntry = byVideoMap.get(videoId) || { interactions: 0, watchSeconds: 0, viewers: new Set<string>() };
+      vEntry.interactions += 1;
+      vEntry.watchSeconds += watchSeconds;
+      vEntry.viewers.add(viewerId);
+      byVideoMap.set(videoId, vEntry);
+
       if (rangeInteractions.length < 250) {
         rangeInteractions.push({
           occurredAt,
@@ -137,6 +156,13 @@ serve(async (req) => {
       }
     }
 
+    const byVideo = Object.fromEntries(
+      Array.from(byVideoMap.entries()).map(([vid, stats]) => [
+        vid,
+        { interactions: stats.interactions, watchSeconds: stats.watchSeconds, uniqueViewers: stats.viewers.size },
+      ]),
+    );
+
     return jsonReply(
       req,
       {
@@ -148,6 +174,7 @@ serve(async (req) => {
           totalWatchSeconds,
           avgWatchSeconds: totalInteractions > 0 ? Math.round(totalWatchSeconds / totalInteractions) : 0,
           byLocation,
+          byVideo,
         },
         rangeInteractions,
       },
