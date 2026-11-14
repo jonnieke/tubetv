@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import type { Video } from '../types';
-import { compareEpisodes, isMicroDrama, seriesKey } from '../lib/series';
+import { compareEpisodes, getSeriesEntryEpisode, isMicroDrama, seriesKey } from '../lib/series';
 import { publicMediaUrl } from '../lib/mediaUrl';
 import { useLanguage } from '../contexts/LanguageContext';
 import CatalogueArtwork from './CatalogueArtwork';
@@ -30,6 +30,8 @@ const SeriesCard: React.FC<{
 }) => {
   const { language } = useLanguage();
   const first = episodes[0];
+  const { entryEpisode, newEpisodes, hasNewBatch } = getSeriesEntryEpisode(episodes);
+  const hasSeparateNewBatch = hasNewBatch && entryEpisode.id !== first.id;
   const synopsis = episodes.find((episode) => episode.seriesSynopsis)?.seriesSynopsis;
   const portrait = isMicroDrama(first);
   const poster = episodes.map((episode) => publicMediaUrl(episode.seriesPosterUrl)).find(Boolean);
@@ -42,10 +44,10 @@ const SeriesCard: React.FC<{
     >
       <button
         type="button"
-        onClick={portrait ? () => onPlay(first) : onDetails}
+        onClick={portrait || hasSeparateNewBatch ? () => onPlay(entryEpisode) : onDetails}
         aria-label={
-          portrait
-            ? `Watch ${first.seriesTitle || first.title} from episode ${first.episode || 1}`
+          portrait || hasSeparateNewBatch
+            ? `Watch ${first.seriesTitle || first.title} from episode ${entryEpisode.episode || 1}`
             : `Explore ${first.seriesTitle || first.title} seasons and episodes`
         }
         className={`cinema-series-art relative block w-full overflow-hidden text-left group ${
@@ -57,6 +59,11 @@ const SeriesCard: React.FC<{
         }`}
       >
         <CatalogueArtwork src={poster || first.thumbnail} className="h-full w-full object-cover" />
+        {hasNewBatch && (
+          <span className="absolute top-2.5 left-2.5 z-10 rounded-full bg-emerald-500 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-zinc-950 shadow-md">
+            NEW{hasSeparateNewBatch ? ` · ${newEpisodes.length} Ep` : ''}
+          </span>
+        )}
         <span className="cinema-series-play" aria-hidden="true">
           <Play size={16} fill="currentColor" />
         </span>
@@ -79,20 +86,42 @@ const SeriesCard: React.FC<{
           {portrait ? (language === 'sw' ? ' · Wima' : ' · Vertical') : ''}
         </p>
         {synopsis && <p className="mt-3 line-clamp-3 text-sm leading-6 text-zinc-300">{synopsis}</p>}
-        <button
-          type="button"
-          onClick={onDetails}
-          className="series-details-trigger mt-4 w-full rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold hover:bg-zinc-800"
-          aria-label={`Synopsis and episodes for ${first.seriesTitle || first.title}`}
-        >
-          {portrait
-            ? language === 'sw'
-              ? 'Muhtasari & vipindi'
-              : 'Synopsis & episodes'
-            : language === 'sw'
-              ? 'Chunguza misimu & vipindi'
-              : 'Explore seasons & episodes'}
-        </button>
+        {hasSeparateNewBatch ? (
+          <div className="mt-4 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onPlay(entryEpisode)}
+              className="flex-1 rounded-lg bg-red-600 hover:bg-red-500 px-3 py-2 text-xs font-bold text-white transition-colors"
+            >
+              {language === 'sw'
+                ? `Mpya · Ep ${entryEpisode.episode || 1}`
+                : `Watch New (Ep ${entryEpisode.episode || 1})`}
+            </button>
+            <button
+              type="button"
+              onClick={onDetails}
+              className="series-details-trigger rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-800"
+              aria-label={`All episodes from episode 1 for ${first.seriesTitle || first.title}`}
+            >
+              {language === 'sw' ? 'Zote' : 'All'}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onDetails}
+            className="series-details-trigger mt-4 w-full rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold hover:bg-zinc-800"
+            aria-label={`Synopsis and episodes for ${first.seriesTitle || first.title}`}
+          >
+            {portrait
+              ? language === 'sw'
+                ? 'Muhtasari & vipindi'
+                : 'Synopsis & episodes'
+              : language === 'sw'
+                ? 'Chunguza misimu & vipindi'
+                : 'Explore seasons & episodes'}
+          </button>
+        )}
       </div>
     </article>
   );

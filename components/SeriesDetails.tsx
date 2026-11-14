@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Lock, Play, Plus, Share2, X } from 'lucide-react';
 import type { Video } from '../types';
-import { isMicroDrama, seriesSlug } from '../lib/series';
+import { buildComingSoonSchedule, getSeriesEntryEpisode, isMicroDrama, isNewEpisode, seriesSlug } from '../lib/series';
 import { isVideoLocked } from '../lib/monetization';
 import { publicMediaUrl } from '../lib/mediaUrl';
 import { usePlayback } from '../contexts/PlaybackContext';
@@ -28,6 +28,10 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
   const seasons = [...new Set(episodes.map((episode) => episode.season || 1))].sort((a, b) => a - b);
   const [season, setSeason] = useState(first.season || 1);
   const [seriesCopied, setSeriesCopied] = useState(false);
+  const [episodeRangeStart, setEpisodeRangeStart] = useState(0);
+  const { entryEpisode, newEpisodes, hasNewBatch } = getSeriesEntryEpisode(episodes);
+  const hasSeparateNewBatch = hasNewBatch && entryEpisode.id !== first.id;
+  const upcomingSlots = buildComingSoonSchedule(episodes, 60);
 
   const handleShareSeries = async () => {
     const slug = seriesSlug(first);
@@ -132,9 +136,21 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
                 </>
               )}
               <div className="series-details-actions">
-                <button type="button" className="cinema-primary" onClick={() => onPlay(seasonEpisodes[0])}>
+                {hasSeparateNewBatch && (
+                  <button type="button" className="cinema-primary" onClick={() => onPlay(entryEpisode)}>
+                    <Play size={15} fill="currentColor" />{' '}
+                    {language === 'sw'
+                      ? `Tazama Mpya (Ep ${entryEpisode.episode || 1})`
+                      : `Watch New (Ep ${entryEpisode.episode || 1})`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={hasSeparateNewBatch ? 'cinema-secondary' : 'cinema-primary'}
+                  onClick={() => onPlay(seasonEpisodes[0])}
+                >
                   <Play size={15} fill="currentColor" />{' '}
-                  {language === 'sw' ? `Anza msimu wa ${season}` : `Start season ${season}`}
+                  {language === 'sw' ? `Anza msimu wa ${season}` : `Start season ${season} (Ep 1)`}
                 </button>
                 {trailer && (
                   <a
@@ -194,9 +210,35 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
                     : 'Choose an episode to start this season.')}
             </p>
           </div>
+          {seasonEpisodes.length > 20 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {Array.from({ length: Math.ceil(seasonEpisodes.length / 20) }).map((_, idx) => {
+                const start = idx * 20;
+                const end = Math.min(start + 20, seasonEpisodes.length);
+                return (
+                  <button
+                    key={start}
+                    type="button"
+                    onClick={() => setEpisodeRangeStart(start)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors ${
+                      episodeRangeStart === start
+                        ? 'bg-red-600 text-white border-red-500'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                    }`}
+                  >
+                    Ep {start + 1}–{end}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <ol className={`series-details-episodes ${portrait ? '' : 'series-details-episodes-horizontal'}`}>
-            {seasonEpisodes.map((episode) => {
+            {(seasonEpisodes.length > 20
+              ? seasonEpisodes.slice(episodeRangeStart, episodeRangeStart + 20)
+              : seasonEpisodes
+            ).map((episode) => {
               const epLocked = isLocked ? isLocked(episode) : isVideoLocked(episode, false);
+              const epNew = isNewEpisode(episode);
               return (
                 <li key={episode.id}>
                   <button
@@ -215,6 +257,11 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
                           EPISODE {episode.episode || 1}
                           {episode.duration ? ` · ${episode.duration}` : ''}
                         </span>
+                        {epNew && (
+                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            NEW
+                          </span>
+                        )}
                         {epLocked && (
                           <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                             <Lock size={10} />
@@ -242,6 +289,25 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
               );
             })}
           </ol>
+          {upcomingSlots.length > 0 && (
+            <details className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+              <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center justify-between">
+                <span>Coming Soon · Next {upcomingSlots.length} Episodes Schedule</span>
+                <span className="text-[11px] text-amber-300">Release Dates</span>
+              </summary>
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-56 overflow-y-auto pr-1">
+                {upcomingSlots.map((slot) => (
+                  <div
+                    key={`${slot.season}-${slot.episode}`}
+                    className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-2.5 py-2 text-left"
+                  >
+                    <div className="text-xs font-bold text-white">Episode {slot.episode}</div>
+                    <div className="text-[11px] text-zinc-400 mt-0.5">{slot.releaseDate}</div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       </div>
     </div>

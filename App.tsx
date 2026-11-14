@@ -71,7 +71,7 @@ import {
 import { setVideoMetadata, videoPath } from './lib/seo';
 import LegalPage from './components/LegalPage';
 import { trackEvent } from './lib/analytics';
-import { compareEpisodes, isMicroDrama, nextEpisode, seriesKey, seriesSlug } from './lib/series';
+import { buildComingSoonSchedule, compareEpisodes, isMicroDrama, isNewEpisode, nextEpisode, seriesKey, seriesSlug } from './lib/series';
 import SponsorBanner from './components/SponsorBanner';
 import { filterDiscoveryVideos, filterVideosByRating, isKidsVideo } from './lib/discovery';
 import { recommendVideos, getRelatedVideos } from './lib/recommendations';
@@ -285,7 +285,17 @@ const App: React.FC = () => {
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
   const [hasActivePass, setHasActivePass] = useState<boolean>(() => Boolean(getStoredPass()));
   const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
+  const [pendingResumeVideoId, setPendingResumeVideoId] = useState<string | null>(null);
+  const [episodeRangeStart, setEpisodeRangeStart] = useState<number>(0);
   const [showBuyPassModal, setShowBuyPassModal] = useState<boolean>(false);
+
+  const openPaywallForVideo = useCallback((video: Video) => {
+    try {
+      sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
+      localStorage.setItem('tubetv_last_watched_video_id', video.id);
+    } catch {}
+    setPaywallVideo(video);
+  }, []);
   const [deviceSwitchedNotice, setDeviceSwitchedNotice] = useState<{ phone?: string; tier?: string } | null>(null);
   const [reclaimingPass, setReclaimingPass] = useState(false);
   const [expiringSoonMinutes, setExpiringSoonMinutes] = useState<number | null>(null);
@@ -388,12 +398,9 @@ const App: React.FC = () => {
               localStorage.getItem('tubetv_last_watched_video_id');
           } catch {}
           if (returnVideoId) {
-            const targetVideo = videos.find((v) => v.id === returnVideoId);
-            if (targetVideo) {
-              window.history.replaceState({}, '', `${videoPath(targetVideo.id)}${cleanSearch}`);
-              setActiveHeroVideo(targetVideo);
-              return;
-            }
+            setPendingResumeVideoId(returnVideoId);
+            window.history.replaceState({}, '', `${videoPath(returnVideoId)}${cleanSearch}`);
+            return;
           }
           window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
         })
@@ -677,15 +684,16 @@ const App: React.FC = () => {
       } catch {}
 
       if (isVideoLocked(video, hasActivePass)) {
-        setPaywallVideo(video);
+        openPaywallForVideo(video);
         return;
       }
       setIsVideoFinished(false);
       setModalAutoPlay(options?.autoPlay ?? true);
+      setEpisodeRangeStart(0);
       window.history.pushState({}, '', videoPath(video.id));
       setActiveHeroVideo(video);
     },
-    [hasActivePass],
+    [hasActivePass, openPaywallForVideo],
   );
 
   const closeVideo = useCallback(() => {
@@ -695,6 +703,22 @@ const App: React.FC = () => {
     }
     setActiveHeroVideo(null);
   }, []);
+
+  useEffect(() => {
+    if (!pendingResumeVideoId || videos.length === 0) return;
+    const target = videos.find((v) => v.id === pendingResumeVideoId);
+    if (target) {
+      setPendingResumeVideoId(null);
+      setPaywallVideo(null);
+      setIsVideoFinished(false);
+      setModalAutoPlay(true);
+      window.history.replaceState({}, '', videoPath(target.id));
+      setActiveHeroVideo(target);
+      try {
+        sessionStorage.removeItem('tubetv_paywall_target_video_id');
+      } catch {}
+    }
+  }, [pendingResumeVideoId, videos]);
 
   const [playerShareCopied, setPlayerShareCopied] = useState(false);
 
@@ -749,7 +773,7 @@ const App: React.FC = () => {
     const nextVideo = nextEpisode(ratingFilteredVideos, videoId);
     if (nextVideo) {
       if (isVideoLocked(nextVideo, hasActivePass)) {
-        setPaywallVideo(nextVideo);
+        openPaywallForVideo(nextVideo);
       } else {
         trackEvent('episode_next', { fromVideoId: videoId, toVideoId: nextVideo.id, automatic: true });
         openVideo(nextVideo);
@@ -831,7 +855,7 @@ const App: React.FC = () => {
       const video = videos.find((item) => item.id === id);
       if (video) {
         if (isVideoLocked(video, hasActivePass)) {
-          setPaywallVideo(video);
+          openPaywallForVideo(video);
         } else {
           setActiveHeroVideo(video);
         }
@@ -844,7 +868,7 @@ const App: React.FC = () => {
           const directVideo = bunnyVideoToVideo(item) as Video;
           if (directVideo.muted || normalizeContentRating(directVideo.contentRating) === '18') return;
           if (isVideoLocked(directVideo, hasActivePass)) {
-            setPaywallVideo(directVideo);
+            openPaywallForVideo(directVideo);
           } else {
             setActiveHeroVideo(directVideo);
           }
@@ -1284,7 +1308,7 @@ const App: React.FC = () => {
                       onPlay={() => openVideo(hero, { autoPlay: true })}
                       onMoreInfo={() => openVideo(hero, { autoPlay: false })}
                       onSave={() => toggleWatchLater(hero.id)}
-                      onRequireUnlock={(v) => setPaywallVideo(v)}
+                      onRequireUnlock={(v) => openPaywallForVideo(v)}
                       count={featuredVideos.length}
                       index={heroIndex % featuredVideos.length}
                       onSelect={setHeroIndex}
@@ -1706,7 +1730,7 @@ const App: React.FC = () => {
         onProgress: handleWatchProgress,
         hasActivePass,
         isLocked: (video) => isVideoLocked(video, hasActivePass),
-        onRequireUnlock: (video) => setPaywallVideo(video),
+        onRequireUnlock: (video) => openPaywallForVideo(video),
         onSelectVideo: openVideo,
         onOpenSettings: () => {
           closeVideo();
@@ -1776,12 +1800,21 @@ const App: React.FC = () => {
                   setShowBuyPassModal(false);
                   setHasActivePass(true);
                   if (target) {
+                    setIsVideoFinished(false);
+                    setModalAutoPlay(true);
                     window.history.pushState({}, '', videoPath(target.id));
                     setActiveHeroVideo(target);
+                    try {
+                      sessionStorage.removeItem('tubetv_paywall_target_video_id');
+                    } catch {}
+                  } else if (returnId) {
+                    setPendingResumeVideoId(returnId);
                   }
                   void refreshAccessState().then(() => {
                     setHasActivePass(true);
                     if (target) {
+                      setIsVideoFinished(false);
+                      setModalAutoPlay(true);
                       setActiveHeroVideo(target);
                     }
                   });
@@ -1859,7 +1892,7 @@ const App: React.FC = () => {
                     const next = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
                     if (next) {
                       if (isVideoLocked(next, hasActivePass)) {
-                        setPaywallVideo(next);
+                        openPaywallForVideo(next);
                       } else {
                         trackEvent('episode_next', {
                           fromVideoId: activeHeroVideo.id,
@@ -1947,7 +1980,7 @@ const App: React.FC = () => {
                         const next = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
                         if (next) {
                           if (isVideoLocked(next, hasActivePass)) {
-                            setPaywallVideo(next);
+                            openPaywallForVideo(next);
                           } else {
                             trackEvent('episode_next', {
                               fromVideoId: activeHeroVideo.id,
@@ -1975,44 +2008,126 @@ const App: React.FC = () => {
                     </details>
                   )}
                 </div>
-                {seriesKey(activeHeroVideo) && (
-                  <details className="cinema-player-episodes">
-                    <summary>
-                      {t('player.episodes')} <span>{t('player.seeAll')}</span>
-                    </summary>
-                    {activeHeroVideo.seriesSynopsis && <p>{activeHeroVideo.seriesSynopsis}</p>}
-                    {ratingFilteredVideos
-                      .filter((video) => seriesKey(video) === seriesKey(activeHeroVideo))
-                      .sort(compareEpisodes)
-                      .map((video) => {
-                        const locked = isVideoLocked(video, hasActivePass);
-                        return (
+                {seriesKey(activeHeroVideo) && (() => {
+                  const allSeriesEpisodes = ratingFilteredVideos
+                    .filter((video) => seriesKey(video) === seriesKey(activeHeroVideo))
+                    .sort(compareEpisodes);
+                  const firstEp = allSeriesEpisodes[0];
+                  const PAGE_SIZE = 20;
+                  const pageCount = Math.ceil(allSeriesEpisodes.length / PAGE_SIZE);
+                  const safeStart = episodeRangeStart < allSeriesEpisodes.length ? episodeRangeStart : 0;
+                  const visibleEpisodes =
+                    allSeriesEpisodes.length > PAGE_SIZE
+                      ? allSeriesEpisodes.slice(safeStart, safeStart + PAGE_SIZE)
+                      : allSeriesEpisodes;
+                  const upcomingSlots = buildComingSoonSchedule(allSeriesEpisodes, 60);
+
+                  return (
+                    <div className="bg-zinc-950 border-t border-zinc-800/80 p-5 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-sm font-black text-white">
+                            {t('player.episodes')} ({allSeriesEpisodes.length})
+                          </h3>
+                          {activeHeroVideo.seriesSynopsis && (
+                            <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">{activeHeroVideo.seriesSynopsis}</p>
+                          )}
+                        </div>
+                        {firstEp && firstEp.id !== activeHeroVideo.id && (
                           <button
                             type="button"
-                            key={video.id}
-                            aria-current={video.id === activeHeroVideo.id ? 'true' : undefined}
-                            onClick={() => openVideo(video)}
+                            onClick={() => openVideo(firstEp)}
+                            className="rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 text-xs font-bold text-white transition-colors"
                           >
-                            <CatalogueArtwork
-                              src={video.thumbnail}
-                              className={`cinema-player-episode-art ${
-                                isMicroDrama(video) ? 'cinema-player-episode-art-vertical' : ''
-                              }`}
-                            />
-                            <span className="cinema-player-episode-copy">
-                              <span className="flex items-center gap-1.5">
-                                S{video.season || 1} · E{video.episode || 1} — {video.title}
-                                {locked && (
-                                  <span className="text-[10px] text-amber-400 font-bold">🔒 {t('player.locked')}</span>
-                                )}
-                              </span>
-                              <small>{video.episodeSynopsis || video.description}</small>
-                            </span>
+                            All / From Ep {firstEp.episode || 1}
                           </button>
-                        );
-                      })}
-                  </details>
-                )}
+                        )}
+                      </div>
+
+                      {pageCount > 1 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {Array.from({ length: pageCount }).map((_, idx) => {
+                            const start = idx * PAGE_SIZE;
+                            const end = Math.min(start + PAGE_SIZE, allSeriesEpisodes.length);
+                            const activeRange = safeStart === start;
+                            return (
+                              <button
+                                key={start}
+                                type="button"
+                                onClick={() => setEpisodeRangeStart(start)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                                  activeRange
+                                    ? 'bg-red-600 text-white border-red-500'
+                                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                                }`}
+                              >
+                                Ep {start + 1}–{end}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                        {visibleEpisodes.map((video) => {
+                          const locked = isVideoLocked(video, hasActivePass);
+                          const isCurrent = video.id === activeHeroVideo.id;
+                          const isNew = isNewEpisode(video);
+                          return (
+                            <button
+                              type="button"
+                              key={video.id}
+                              aria-current={isCurrent ? 'true' : undefined}
+                              onClick={() => openVideo(video)}
+                              className={`shrink-0 flex flex-col items-start rounded-xl border px-3 py-2 text-left transition-all min-w-[118px] max-w-[150px] ${
+                                isCurrent
+                                  ? 'bg-red-600/20 border-red-500 text-white'
+                                  : 'bg-zinc-900/80 border-zinc-800 text-zinc-300 hover:border-zinc-600'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between w-full gap-1">
+                                <span className="text-xs font-black">
+                                  Ep {video.episode || 1}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  {isNew && (
+                                    <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1 py-0.2 text-[9px] font-extrabold text-emerald-300">
+                                      NEW
+                                    </span>
+                                  )}
+                                  {locked && <span className="text-[10px] text-amber-400">🔒</span>}
+                                </span>
+                              </div>
+                              <span className="mt-1 text-[11px] text-zinc-400 line-clamp-1 w-full">
+                                {video.title}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {upcomingSlots.length > 0 && (
+                        <details className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                          <summary className="cursor-pointer text-xs font-bold text-zinc-300 flex items-center justify-between">
+                            <span>Coming Soon · Next {upcomingSlots.length} Episodes Schedule</span>
+                            <span className="text-[11px] text-amber-300 font-semibold">View dates</span>
+                          </summary>
+                          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-52 overflow-y-auto pr-1">
+                            {upcomingSlots.map((slot) => (
+                              <div
+                                key={`${slot.season}-${slot.episode}`}
+                                className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-2.5 py-2 text-left"
+                              >
+                                <div className="text-[11px] font-bold text-white">Ep {slot.episode}</div>
+                                <div className="text-[10px] text-zinc-400 mt-0.5">{slot.releaseDate}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {playerRecommendations.length > 0 && (
                   <div className="cinema-player-recommended bg-zinc-950 p-5 border-t border-zinc-800/80">
@@ -2130,7 +2245,7 @@ const App: React.FC = () => {
                   type="button"
                   onClick={() => {
                     const target = activeHeroVideo || ratingFilteredVideos[0];
-                    if (target) setPaywallVideo(target);
+                    if (target) openPaywallForVideo(target);
                   }}
                   className="rounded-lg bg-emerald-500 hover:bg-emerald-400 px-3 py-1 font-bold text-black transition-colors"
                 >
