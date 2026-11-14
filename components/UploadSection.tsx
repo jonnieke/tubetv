@@ -44,6 +44,9 @@ interface UploadMetadata {
   episodeSynopsis: string;
   season: string;
   episode: string;
+  nextReleaseDate: string;
+  releaseBatchSize: string;
+  releaseCadenceDays: string;
   introEndSeconds: string;
   outroStartSeconds: string;
   accessTier: 'free' | 'premium';
@@ -209,6 +212,9 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
         episodeSynopsis: '',
         season: '1',
         episode: '',
+        nextReleaseDate: '',
+        releaseBatchSize: '',
+        releaseCadenceDays: '',
         introEndSeconds: '',
         outroStartSeconds: '',
         accessTier: uploadKind === 'Micro Dramas' ? 'premium' : 'free',
@@ -450,6 +456,15 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
               { property: 'season', value: metadata.season },
               { property: 'episode', value: metadata.episode },
               { property: 'seriesFormat', value: metadata.category === 'Micro Dramas' ? 'micro-drama' : 'standard' },
+              ...(metadata.nextReleaseDate.trim()
+                ? [{ property: 'nextReleaseDate', value: metadata.nextReleaseDate.trim() }]
+                : []),
+              ...(metadata.releaseBatchSize.trim()
+                ? [{ property: 'releaseBatchSize', value: metadata.releaseBatchSize.trim() }]
+                : []),
+              ...(metadata.releaseCadenceDays.trim()
+                ? [{ property: 'releaseCadenceDays', value: metadata.releaseCadenceDays.trim() }]
+                : []),
               ...(intro ? [{ property: 'introEndSeconds', value: intro }] : []),
               ...(outro ? [{ property: 'outroStartSeconds', value: outro }] : []),
             ]
@@ -1057,6 +1072,56 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
                             onChange={(e) =>
                               updateQueueItem(activeItem.id, {
                                 metadata: { ...activeItem.metadata, episode: e.target.value },
+                              })
+                            }
+                            disabled={activeItem.status === 'completed'}
+                            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white"
+                          />
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <label className="text-xs text-zinc-300">
+                          <span>Next release date</span>
+                          <input
+                            type="date"
+                            value={activeItem.metadata.nextReleaseDate}
+                            onChange={(e) =>
+                              updateQueueItem(activeItem.id, {
+                                metadata: { ...activeItem.metadata, nextReleaseDate: e.target.value },
+                              })
+                            }
+                            disabled={activeItem.status === 'completed'}
+                            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white"
+                          />
+                        </label>
+                        <label className="text-xs text-zinc-300">
+                          <span>Batch size (episodes)</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            placeholder="5"
+                            value={activeItem.metadata.releaseBatchSize}
+                            onChange={(e) =>
+                              updateQueueItem(activeItem.id, {
+                                metadata: { ...activeItem.metadata, releaseBatchSize: e.target.value },
+                              })
+                            }
+                            disabled={activeItem.status === 'completed'}
+                            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-sm text-white"
+                          />
+                        </label>
+                        <label className="text-xs text-zinc-300">
+                          <span>Cadence (days)</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="90"
+                            placeholder="7"
+                            value={activeItem.metadata.releaseCadenceDays}
+                            onChange={(e) =>
+                              updateQueueItem(activeItem.id, {
+                                metadata: { ...activeItem.metadata, releaseCadenceDays: e.target.value },
                               })
                             }
                             disabled={activeItem.status === 'completed'}

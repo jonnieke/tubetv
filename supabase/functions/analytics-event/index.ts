@@ -88,11 +88,22 @@ serve(async (req) => {
   const country =
     req.headers.get("cf-ipcountry") ||
     req.headers.get("x-vercel-ip-country") ||
+    req.headers.get("x-geo-country") ||
+    req.headers.get("fly-client-country") ||
     "";
-  const city =
+  const rawCity =
     req.headers.get("cf-ipcity") ||
     req.headers.get("x-vercel-ip-city") ||
+    req.headers.get("x-geo-city") ||
     "";
+  const city = (() => {
+    if (!rawCity) return "";
+    try {
+      return decodeURIComponent(rawCity);
+    } catch {
+      return rawCity;
+    }
+  })();
 
   const entries = Object.entries(body.properties || {}).slice(0, 12);
   const properties = {
@@ -105,8 +116,8 @@ serve(async (req) => {
         )
         .map(([key, value]) => [key, typeof value === "string" ? value.slice(0, 120) : value]),
     ),
-    ...(country ? { country: country.slice(0, 8) } : {}),
-    ...(city ? { city: decodeURIComponent(city).slice(0, 60) } : {}),
+    ...(country && country !== "XX" ? { country: country.slice(0, 8).toUpperCase() } : {}),
+    ...(city ? { city: city.slice(0, 60) } : {}),
   };
 
   const occurredAt = new Date(body.occurredAt);
