@@ -95,6 +95,21 @@ const TIER_RANKS: Record<string, number> = {
   monthly: 3,
 };
 
+function formatMpesaFailureMessage(raw?: string): string {
+  const msg = (raw || '').trim();
+  const lower = msg.toLowerCase();
+  if (lower.includes('no response from user') || lower.includes('ds timeout') || lower.includes('cannot be reached')) {
+    return 'The M-Pesa prompt timed out before PIN entry. Unlock your phone, keep it on screen, and tap Pay again.';
+  }
+  if (lower.includes('cancelled by user') || lower.includes('canceled by user')) {
+    return 'M-Pesa prompt was cancelled. Tap Pay again whenever you are ready.';
+  }
+  if (lower.includes('insufficient')) {
+    return 'Insufficient M-Pesa balance for this pass. Top up M-Pesa or switch to Card / Apple Pay.';
+  }
+  return msg || 'M-Pesa payment was cancelled or declined. You were not charged.';
+}
+
 export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, onClose }) => {
   const { language, t } = useLanguage();
   const [activePass, setActivePass] = useState<StoredPass | null>(() => getStoredPass());
@@ -565,9 +580,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
           if (txStatus === 'failed' || txStatus === 'cancelled') {
             clearTimers();
             setStatus('error');
-            setErrorMessage(
-              poll.transaction.result_description || 'M-Pesa payment was cancelled or declined. You were not charged.',
-            );
+            setErrorMessage(formatMpesaFailureMessage(poll.transaction.result_description));
             trackEvent('paywall_failed', {
               videoId: video?.id || 'pass_direct',
               plan: selectedPlan,
@@ -727,23 +740,23 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
 
         {/* Header Banner */}
         <div
-          className={`px-5 py-3.5 text-center shrink-0 ${
+          className={`px-4 sm:px-5 py-2.5 sm:py-3.5 text-center shrink-0 ${
             isMicro
               ? 'bg-gradient-to-b from-purple-950/60 to-zinc-950'
               : 'bg-gradient-to-b from-amber-950/60 to-zinc-950'
           } border-b border-zinc-900`}
         >
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 shadow-inner mb-2">
+          <div className="inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-zinc-900 border border-zinc-800 shadow-inner mb-1.5">
             {status === 'completed' ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
             ) : isMicro ? (
-              <Sparkles className="w-5 h-5 text-purple-400" />
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
             ) : (
-              <Lock className="w-5 h-5 text-amber-400" />
+              <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
             )}
           </div>
 
-          <h2 id="tubetv-paywall-title" className="text-lg font-black text-white tracking-tight">
+          <h2 id="tubetv-paywall-title" className="text-base sm:text-lg font-black text-white tracking-tight">
             {status === 'completed'
               ? t('paywall.passActivated')
               : isEpisodicCliffhanger
@@ -751,7 +764,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                 : t('paywall.premiumPass')}
           </h2>
 
-          <p className="text-zinc-400 text-xs mt-1 max-w-xs mx-auto leading-relaxed">
+          <p className="text-zinc-400 text-[11px] sm:text-xs mt-0.5 sm:mt-1 max-w-xs mx-auto leading-snug sm:leading-relaxed">
             {status === 'completed'
               ? t('paywall.confirmedResume')
               : isEpisodicCliffhanger
@@ -765,7 +778,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         </div>
 
         {status !== 'completed' && (
-          <div className="flex-1 overflow-y-auto px-5 py-3.5 space-y-3 no-scrollbar">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-3 space-y-2.5 no-scrollbar">
             {/* Buy vs Restore Switcher */}
             <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-zinc-900 border border-zinc-800" role="tablist">
               <button
