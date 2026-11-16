@@ -165,8 +165,8 @@ export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
           </h2>
           <p className="text-xs md:text-sm text-zinc-300 leading-relaxed">
             {language === 'sw'
-              ? 'Kila pasi ya TubeTV huwalipa watayarishaji wa filamu moja kwa moja (asilimia 60 ya mgao wa mapato ya jumla kupitia M-Pesa na Benki).'
-              : 'Every TubeTV Pass directly funds African filmmakers and storytellers — with 60% net revenue share and automated M-Pesa & bank royalty payouts.'}
+              ? 'Kila pasi ya TubeTV huwalipa watayarishaji wa filamu na wasimulizi wa hadithi za Kiafrika.'
+              : 'Every TubeTV Pass directly funds African filmmakers and storytellers.'}
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-1">
             {onApplyToPublish && (
