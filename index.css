@@ -235,10 +235,11 @@
  .shorts-actions button { padding: 9px; }
  .shorts-actions svg { width: 27px; height: 27px; }
  .shorts-caption { max-width: calc(100% - 70px); }
- .browse-intro { margin: -16px -16px 24px; padding: 35px 20px 25px; }
- .browse-intro::before { left: 20px; }
- .browse-intro-row { display: block; margin-bottom: 22px; }
- .browse-intro h1 { font-size: 42px; }
+ .browse-intro { margin: -16px -16px 12px; padding: 14px 16px 12px; }
+ .browse-intro::before { left: 16px; }
+ .browse-intro-row { display: block; margin: 4px 0 8px; }
+ .browse-intro h1 { font-size: 26px; }
+ .browse-intro-description { margin-top: 4px; font-size: 12px; line-height: 1.4; }
  .browse-clear-search { margin-top: 18px; }
  .catalogue-empty { padding: 55px 20px; }
  .cinema-main-home { margin-top: 0; padding-top: 0; }

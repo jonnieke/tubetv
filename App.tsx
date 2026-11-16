@@ -1140,10 +1140,10 @@ const App: React.FC = () => {
           : '';
 
     return (
-      <div className="space-y-4 animate-in fade-in duration-500">
+      <div className="space-y-3 animate-in fade-in duration-500">
         {sectionVideos.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-2 border-b border-zinc-800/80">
-            <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-zinc-800/80">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
               {['All', ...genres].map((genre) => {
                 const active = sectionGenre === genre;
                 return (
@@ -1151,7 +1151,7 @@ const App: React.FC = () => {
                     key={genre}
                     type="button"
                     onClick={() => setSectionGenre(genre)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                    className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
                       active
                         ? 'bg-red-600 text-white'
                         : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:border-zinc-600 hover:text-white'
@@ -1162,7 +1162,7 @@ const App: React.FC = () => {
                 );
               })}
             </div>
-            <div className="inline-flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1">
+            <div className="inline-flex self-start sm:self-auto items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-0.5 shrink-0">
               {sortOptions.map((opt) => (
                 <button
                   key={opt.id}
@@ -1450,7 +1450,7 @@ const App: React.FC = () => {
               />
             )}
 
-            {!searchQuery && currentView !== ViewState.KIDS && (
+            {!searchQuery && currentView !== ViewState.KIDS && (currentSubCategories.length > 1 || currentView === ViewState.HOME) && (
               <div className="flex gap-2.5 overflow-x-auto pb-3 mb-5 no-scrollbar md:sticky md:top-0 z-10 bg-zinc-950/95 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
                 {currentSubCategories.map((cat) => {
                   const pillEmoji =
