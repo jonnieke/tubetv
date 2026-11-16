@@ -154,7 +154,7 @@
 .cinema-player-header .cinema-logo { font-size: 25px; }
 .cinema-player-info h1 { font: 26px Georgia,serif; color: var(--cinema-cream); }
 .cinema-player-vertical .group { border: 0; border-radius: 0; transform: none !important; }
-.cinema-player-vertical .aspect-\[9\/16\] { height: 54dvh; aspect-ratio: auto; }
+.cinema-player-vertical .aspect-\[9\/16\] { max-height: 70dvh; }
 .cinema-player-episodes { background: #151c1e; padding: 20px; border-radius: 24px 24px 0 0; }
 .cinema-player-episodes::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 3px; background: #ddd; margin: -8px auto 18px; }
 .cinema-player-episodes summary { cursor: pointer; list-style: none; }
@@ -242,7 +242,7 @@
  .browse-clear-search { margin-top: 18px; }
  .catalogue-empty { padding: 55px 20px; }
  .cinema-main-home { margin-top: 0; padding-top: 0; }
- .cinema-player-vertical { max-height: 100dvh; height: 100dvh; border-radius: 0; border: 0; }
+ .cinema-player-vertical { max-height: 94dvh; border-radius: 12px; border: 0; }
  [role=dialog]:has(.cinema-player-vertical) { padding: 0; }
  .cinema-nav-row { flex-wrap: wrap; padding: 10px 20px 0; height: 105px; gap: 10px; }
  .cinema-logo { font-size: 26px; margin-right: auto; }

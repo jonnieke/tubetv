@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { ArrowLeft, Bookmark, ChevronRight, Lock, Play, Share2, Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Bookmark, ChevronRight, Heart, Lock, Play, Share2, Sparkles } from 'lucide-react';
 import type { Video } from '../types';
 import { buildComingSoonSchedule, isNewEpisode } from '../lib/series';
 
@@ -21,6 +21,23 @@ interface MicroDramaPlayerLayoutProps {
 }
 
 const PAGE_SIZE = 30;
+const LIKED_STORAGE_KEY = 'tubetv_liked_videos_v1';
+
+function readLikedIds(): string[] {
+  try {
+    const raw = window.localStorage.getItem(LIKED_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatCompactCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
 export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
   activeVideo,
@@ -39,6 +56,22 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
 }) => {
   const [plotExpanded, setPlotExpanded] = useState(false);
   const [showComingSoon, setShowComingSoon] = useState(false);
+  const [likedIds, setLikedIds] = useState<string[]>(() => (typeof window !== 'undefined' ? readLikedIds() : []));
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify(likedIds));
+    } catch {}
+  }, [likedIds]);
+
+  const isLiked = likedIds.includes(activeVideo.id);
+  const baseLikes = Math.max(0, Math.round((activeVideo.views || 0) * 0.15));
+  const likeCount = baseLikes + (isLiked ? 1 : 0);
+  const toggleLike = () => {
+    setLikedIds((prev) =>
+      prev.includes(activeVideo.id) ? prev.filter((id) => id !== activeVideo.id) : [...prev, activeVideo.id],
+    );
+  };
 
   const activeIdx = Math.max(
     0,
@@ -92,7 +125,7 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
       onClick={(e) => e.stopPropagation()}
     >
       {/* Left: Vertical 9:16 Stage */}
-      <div className="relative flex items-center justify-center bg-[#060608] p-3 sm:p-5 lg:border-r lg:border-zinc-800/80">
+      <div className="relative flex items-center justify-center bg-[#060608] p-2 sm:p-5 lg:border-r lg:border-zinc-800/80">
         <button
           type="button"
           onClick={onClose}
@@ -102,7 +135,7 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
           <ArrowLeft size={16} />
         </button>
 
-        <div className="w-full max-w-[360px] mx-auto cinema-player-vertical rounded-xl overflow-hidden shadow-2xl border border-zinc-800/70 bg-black">
+        <div className="w-full max-w-[270px] sm:max-w-[340px] lg:max-w-[360px] mx-auto rounded-xl overflow-hidden shadow-2xl border border-zinc-800/70 bg-black">
           {playerSlot}
         </div>
       </div>
@@ -164,7 +197,19 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
         )}
 
         {/* Action Row */}
-        <div className="grid grid-cols-3 gap-2 border-y border-zinc-800/80 py-3">
+        <div className="grid grid-cols-4 gap-2 border-y border-zinc-800/80 py-3">
+          <button
+            type="button"
+            onClick={toggleLike}
+            aria-pressed={isLiked}
+            className={`flex flex-col items-center justify-center gap-1 rounded-xl py-2 text-xs font-semibold transition-colors ${
+              isLiked ? 'text-rose-400 bg-rose-500/10' : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-white'
+            }`}
+          >
+            <Heart size={18} fill={isLiked ? 'currentColor' : 'none'} />
+            <span>{formatCompactCount(likeCount)}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => onToggleWatchLater(activeVideo.id)}
@@ -192,7 +237,7 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
               className="flex flex-col items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-500 transition-colors"
             >
               <Play size={18} fill="currentColor" />
-              <span>Watch Now</span>
+              <span>Watch</span>
             </button>
           ) : (
             <button
@@ -201,7 +246,7 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
               className="flex flex-col items-center justify-center gap-1 rounded-xl py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-800/60 hover:text-white transition-colors"
             >
               <Sparkles size={18} className="text-amber-400" />
-              <span>All / Ep {firstEp?.episode || 1}</span>
+              <span>Ep {firstEp?.episode || 1}</span>
             </button>
           )}
         </div>

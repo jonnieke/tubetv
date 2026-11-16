@@ -1451,7 +1451,7 @@ const App: React.FC = () => {
             )}
 
             {!searchQuery && currentView !== ViewState.KIDS && (
-              <div className="flex gap-2.5 overflow-x-auto pb-4 mb-6 no-scrollbar sticky top-0 z-10 bg-zinc-950/90 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
+              <div className="flex gap-2.5 overflow-x-auto pb-3 mb-5 no-scrollbar md:sticky md:top-0 z-10 bg-zinc-950/95 backdrop-blur py-2 -mx-4 px-4 md:-mx-8 md:px-8">
                 {currentSubCategories.map((cat) => {
                   const pillEmoji =
                     cat === 'Trending'
