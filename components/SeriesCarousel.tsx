@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { Bookmark, ChevronLeft, ChevronRight, ListVideo, Play } from 'lucide-react';
 import type { Video } from '../types';
 import { compareEpisodes, getSeriesEntryEpisode, isMicroDrama, seriesKey } from '../lib/series';
 import { publicMediaUrl } from '../lib/mediaUrl';
@@ -17,13 +17,23 @@ interface Props {
   uniformAspect?: 'video';
 }
 
+function formatCompactViews(views: number): string {
+  if (views >= 1_000_000) return `${(views / 1_000_000).toFixed(1)}M`;
+  if (views >= 1_000) return `${(views / 1_000).toFixed(1)}K`;
+  return String(views);
+}
+
 const SeriesCard: React.FC<{
   episodes: Video[];
+  watchLaterIds: string[];
+  onToggleWatchLater: (id: string) => void;
   onPlay: (video: Video) => void;
   onDetails: () => void;
   forceVideoAspect?: boolean;
 }> = ({
   episodes,
+  watchLaterIds,
+  onToggleWatchLater,
   onPlay,
   onDetails,
   forceVideoAspect = false,
@@ -36,6 +46,97 @@ const SeriesCard: React.FC<{
   const portrait = isMicroDrama(first);
   const poster = episodes.map((episode) => publicMediaUrl(episode.seriesPosterUrl)).find(Boolean);
   const useVertical = !forceVideoAspect && (portrait || Boolean(poster));
+  const totalViews = episodes.reduce((sum, ep) => sum + (ep.views || 0), 0);
+  const isSaved = watchLaterIds.includes(entryEpisode.id) || watchLaterIds.includes(first.id);
+
+  if (portrait && !forceVideoAspect) {
+    const ratingChip = first.contentRating && first.contentRating !== 'UNRATED' ? first.contentRating : null;
+    const genreChip = first.genre ? first.genre.split(',')[0].trim() : null;
+    const metaLine = [genreChip, language === 'sw' ? 'Tamthilia Fupi' : 'Micro Drama', ratingChip, `${episodes.length} Ep`]
+      .filter(Boolean)
+      .join(' | ');
+
+    return (
+      <article className="cinema-series-vertical group/card relative shrink-0 w-[185px] sm:w-[205px] md:w-[225px] rounded-2xl transition-all duration-300 md:hover:scale-[1.04] md:hover:z-30 md:hover:bg-[#17171f] md:hover:shadow-2xl md:hover:ring-1 md:hover:ring-zinc-700/80 p-1.5 -m-1.5">
+        <button
+          type="button"
+          onClick={() => onPlay(entryEpisode)}
+          aria-label={`Watch ${first.seriesTitle || first.title} from episode ${entryEpisode.episode || 1}`}
+          className={`relative block w-full ${poster ? 'aspect-[2/3]' : 'aspect-[9/16]'} overflow-hidden rounded-xl bg-zinc-900 text-left shadow-lg`}
+        >
+          <CatalogueArtwork
+            src={poster || first.thumbnail}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover/card:scale-105"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
+
+          {hasNewBatch ? (
+            <span className="absolute top-2.5 left-2.5 z-10 rounded-md bg-emerald-500 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-zinc-950 shadow">
+              NEW{hasSeparateNewBatch ? ` · ${newEpisodes.length} Ep` : ''}
+            </span>
+          ) : totalViews >= 50 ? (
+            <span className="absolute top-2.5 left-2.5 z-10 rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-white shadow">
+              Hot
+            </span>
+          ) : null}
+
+          <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-[11px] font-bold text-white/95">
+            <span className="rounded bg-black/60 backdrop-blur-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-zinc-200">
+              {hasSeparateNewBatch ? `Ep ${entryEpisode.episode || 1}` : `${episodes.length} Eps`}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded bg-black/60 backdrop-blur-sm px-1.5 py-0.5 text-[11px] font-bold">
+              <Play size={10} fill="currentColor" />
+              {totalViews > 0 ? formatCompactViews(totalViews) : `${episodes.length} Ep`}
+            </span>
+          </div>
+        </button>
+
+        <div className="pt-2.5 px-1 pb-1">
+          <h3 className="text-sm sm:text-[15px] font-bold text-white line-clamp-1 group-hover/card:text-red-400 transition-colors">
+            {first.seriesTitle || first.title}
+          </h3>
+          <p className="mt-0.5 text-[11px] text-zinc-400 line-clamp-1">{metaLine}</p>
+
+          {/* Expanded hover details on desktop, compact action bar on mobile */}
+          <div className="mt-2 space-y-2.5 md:max-h-0 md:opacity-0 md:overflow-hidden md:group-hover/card:max-h-40 md:group-hover/card:opacity-100 transition-all duration-300">
+            {synopsis && <p className="text-xs leading-relaxed text-zinc-300 line-clamp-2">{synopsis}</p>}
+            <div className="flex items-center gap-2 pt-0.5">
+              <button
+                type="button"
+                onClick={() => onPlay(entryEpisode)}
+                aria-label={`Play ${first.seriesTitle || first.title}`}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black hover:bg-zinc-200 transition-colors shadow"
+              >
+                <Play size={15} fill="currentColor" className="ml-0.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onToggleWatchLater(entryEpisode.id)}
+                aria-label={isSaved ? 'Remove from Watch Later' : 'Save to Watch Later'}
+                className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
+                  isSaved
+                    ? 'border-red-500 bg-red-600/20 text-red-400'
+                    : 'border-zinc-700 bg-zinc-800/90 text-zinc-200 hover:border-zinc-500 hover:text-white'
+                }`}
+              >
+                <Bookmark size={14} fill={isSaved ? 'currentColor' : 'none'} />
+              </button>
+              <button
+                type="button"
+                onClick={onDetails}
+                className="series-details-trigger flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/90 px-3 text-[11px] font-bold text-zinc-200 hover:border-zinc-500 hover:text-white transition-colors"
+                aria-label={`Synopsis and episodes for ${first.seriesTitle || first.title}`}
+              >
+                <ListVideo size={13} />
+                <span>{hasSeparateNewBatch ? 'All' : language === 'sw' ? 'Vipindi' : 'Episodes'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
   return (
     <article
       className={`cinema-series-card shrink-0 overflow-hidden ${
@@ -190,11 +291,13 @@ export default function SeriesCarousel({ title = 'Series', videos, ...props }: P
           </button>
         </div>
       </div>
-      <div ref={ref} className="flex items-start gap-4 overflow-x-auto pb-4 no-scrollbar">
+      <div ref={ref} className="flex items-start gap-4 overflow-x-auto py-3 pb-5 no-scrollbar">
         {groups.map((episodes) => (
           <SeriesCard
             key={seriesKey(episodes[0])}
             episodes={episodes}
+            watchLaterIds={props.watchLaterIds}
+            onToggleWatchLater={props.onToggleWatchLater}
             onPlay={props.onPlay}
             onDetails={() => setSelectedEpisodes(episodes)}
             forceVideoAspect={forceVideoAspect}
