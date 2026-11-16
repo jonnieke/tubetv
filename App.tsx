@@ -73,7 +73,14 @@ import LegalPage from './components/LegalPage';
 import { trackEvent } from './lib/analytics';
 import { buildComingSoonSchedule, compareEpisodes, isMicroDrama, isNewEpisode, nextEpisode, seriesKey, seriesSlug } from './lib/series';
 import SponsorBanner from './components/SponsorBanner';
-import { filterDiscoveryVideos, filterVideosByRating, isKidsVideo } from './lib/discovery';
+import {
+  CatalogSortMode,
+  filterDiscoveryVideos,
+  filterVideosByRating,
+  getLatestWithMoviesFirst,
+  isKidsVideo,
+  organizeCatalogByDateAndGenre,
+} from './lib/discovery';
 import { recommendVideos, getRelatedVideos } from './lib/recommendations';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
 import { shouldSaveData } from './lib/network';
@@ -992,6 +999,12 @@ const App: React.FC = () => {
     }
   };
 
+  const [sectionSort, setSectionSort] = useState<CatalogSortMode>('latest');
+  const [sectionGenre, setSectionGenre] = useState<string>('All');
+  const latestVideos = useMemo(
+    () => getLatestWithMoviesFirst(ratingFilteredVideos, 24),
+    [ratingFilteredVideos],
+  );
   const customCategory = navItems.find((item) => item.id === currentView && item.isCustom)?.label;
   const filteredVideos = useMemo(
     () => filterDiscoveryVideos(ratingFilteredVideos, currentView, activeSubCategory, searchQuery, customCategory),
@@ -999,6 +1012,8 @@ const App: React.FC = () => {
   );
 
   useEffect(() => {
+    setSectionSort('latest');
+    setSectionGenre('All');
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [currentView, activeSubCategory]);
 
@@ -1094,6 +1109,104 @@ const App: React.FC = () => {
   }
 
   const hasMicroDramas = ratingFilteredVideos.some(isMicroDrama);
+
+  const renderOrganizedSection = (
+    sectionVideos: Video[],
+    sectionLabel: string,
+    useSeriesCarousel: boolean,
+  ) => {
+    const { genres, filtered, genreShelves } = organizeCatalogByDateAndGenre(
+      sectionVideos,
+      sectionSort,
+      sectionGenre,
+    );
+    const sortOptions: { id: CatalogSortMode; label: string }[] = [
+      { id: 'latest', label: language === 'sw' ? 'Mpya Zaidi' : 'Latest Date' },
+      { id: 'views', label: language === 'sw' ? 'Zilizotazamwa Zaidi' : 'Most Viewed' },
+      { id: 'title', label: 'A–Z' },
+    ];
+    const ShelfComponent = useSeriesCarousel ? SeriesCarousel : VideoCarousel;
+    const shelfTitlePrefix =
+      sectionSort === 'latest'
+        ? language === 'sw'
+          ? 'Mpya Zaidi · '
+          : 'Latest '
+        : sectionSort === 'views'
+          ? language === 'sw'
+            ? 'Maarufu · '
+            : 'Top '
+          : '';
+
+    return (
+      <div className="space-y-4 animate-in fade-in duration-500">
+        {sectionVideos.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-2 border-b border-zinc-800/80">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {['All', ...genres].map((genre) => {
+                const active = sectionGenre === genre;
+                return (
+                  <button
+                    key={genre}
+                    type="button"
+                    onClick={() => setSectionGenre(genre)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                      active
+                        ? 'bg-red-600 text-white'
+                        : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:border-zinc-600 hover:text-white'
+                    }`}
+                  >
+                    {genre === 'All' ? (language === 'sw' ? 'Aina Zote' : 'All Genres') : genre}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="inline-flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1">
+              {sortOptions.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSectionSort(opt.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                    sectionSort === opt.id ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {filtered.length > 0 && (
+          <ShelfComponent
+            title={
+              sectionGenre === 'All'
+                ? `${shelfTitlePrefix}${sectionLabel}`
+                : `${sectionGenre} ${sectionLabel}`
+            }
+            videos={filtered}
+            watchLaterIds={watchLater}
+            onToggleWatchLater={toggleWatchLater}
+            isAuthenticated={isAuthenticated}
+            onPlay={openVideo}
+          />
+        )}
+
+        {sectionGenre === 'All' &&
+          genreShelves.map(({ genre, videos: shelfVideos }) => (
+            <ShelfComponent
+              key={genre}
+              title={`${genre} · ${sectionLabel}`}
+              videos={shelfVideos}
+              watchLaterIds={watchLater}
+              onToggleWatchLater={toggleWatchLater}
+              isAuthenticated={isAuthenticated}
+              onPlay={openVideo}
+            />
+          ))}
+      </div>
+    );
+  };
 
   const renderContent = () => {
     if (catalogueError) {
@@ -1422,6 +1535,15 @@ const App: React.FC = () => {
                 isAuthenticated={isAuthenticated}
               />
             )}
+            {currentView === ViewState.HOME && !searchQuery && latestVideos.length > 0 && (
+              <VideoCarousel
+                title={language === 'sw' ? 'Mpya Zaidi · Filamu Mpya Kwanza' : 'Latest · New Movies First'}
+                videos={latestVideos}
+                watchLaterIds={watchLater}
+                onToggleWatchLater={toggleWatchLater}
+                isAuthenticated={isAuthenticated}
+              />
+            )}
 
             {currentView === ViewState.HOME && !searchQuery && realShorts.length > 0 && (
               <ShortsShelf
@@ -1555,13 +1677,7 @@ const App: React.FC = () => {
               />
             ) : currentView === ViewState.MICRO_DRAMAS && !searchQuery ? (
               hasMicroDramas ? (
-                <SeriesCarousel
-                  title={t('nav.microDramas')}
-                  videos={ratingFilteredVideos.filter(isMicroDrama)}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  onPlay={openVideo}
-                />
+                renderOrganizedSection(ratingFilteredVideos.filter(isMicroDrama), t('nav.microDramas'), true)
               ) : (
                 <MicroDramaComingSoon
                   onMovies={() => handleNavigate(ViewState.ORIGINALS, 'Movies')}
@@ -1585,14 +1701,7 @@ const App: React.FC = () => {
                   </div>
                 ) : activeSubCategory === 'Micro Dramas' ? (
                   hasMicroDramas ? (
-                    <SeriesCarousel
-                      title={t('nav.microDramas')}
-                      videos={ratingFilteredVideos.filter(isMicroDrama)}
-                      watchLaterIds={watchLater}
-                      onToggleWatchLater={toggleWatchLater}
-                      isAuthenticated={isAuthenticated}
-                      onPlay={openVideo}
-                    />
+                    renderOrganizedSection(ratingFilteredVideos.filter(isMicroDrama), t('nav.microDramas'), true)
                   ) : (
                     <MicroDramaComingSoon
                       onMovies={() => handleNavigate(ViewState.ORIGINALS, 'Movies')}
@@ -1600,47 +1709,9 @@ const App: React.FC = () => {
                     />
                   )
                 ) : activeSubCategory === 'Series' ? (
-                  <>
-                    {filteredVideos.length > 0 && (
-                      <SeriesCarousel
-                        title={t('nav.series')}
-                        videos={filteredVideos}
-                        watchLaterIds={watchLater}
-                        onToggleWatchLater={toggleWatchLater}
-                        onPlay={openVideo}
-                      />
-                    )}
-                  </>
+                  renderOrganizedSection(filteredVideos, t('nav.series'), true)
                 ) : activeSubCategory === 'Movies' ? (
-                  <>
-                    {filteredVideos.length > 0 && (
-                      <VideoCarousel
-                        title={t('nav.movies')}
-                        videos={filteredVideos}
-                        watchLaterIds={watchLater}
-                        onToggleWatchLater={toggleWatchLater}
-                        isAuthenticated={isAuthenticated}
-                      />
-                    )}
-                    {availableGenres.map((genre) => {
-                      const genreVideos = filteredVideos.filter(
-                        (v) =>
-                          (v.genre || '').toLowerCase().includes(genre.toLowerCase()) ||
-                          (v.tags || []).some((tag) => tag.toLowerCase().includes(genre.toLowerCase())),
-                      );
-                      if (genreVideos.length === 0) return null;
-                      return (
-                        <VideoCarousel
-                          key={genre}
-                          title={`${genre} Movies`}
-                          videos={genreVideos}
-                          watchLaterIds={watchLater}
-                          onToggleWatchLater={toggleWatchLater}
-                          isAuthenticated={isAuthenticated}
-                        />
-                      );
-                    })}
-                  </>
+                  renderOrganizedSection(filteredVideos, t('nav.movies'), false)
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {filteredVideos.map((video) => (

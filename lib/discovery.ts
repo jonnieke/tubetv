@@ -163,3 +163,98 @@ export function filterDiscoveryVideos(
       video.title.toLocaleLowerCase().includes(term),
   );
 }
+
+export type CatalogSortMode = 'latest' | 'views' | 'title';
+
+/** Returns a comparable epoch timestamp (ms) for sorting catalogue items by release/upload date. */
+export function getVideoTimestamp(video: Video): number {
+  const uploadMs = video.uploadDate ? Date.parse(video.uploadDate) : NaN;
+  if (Number.isFinite(uploadMs)) return uploadMs;
+  const editorialMs = video.editorialUpdatedAt ? Date.parse(video.editorialUpdatedAt) : NaN;
+  if (Number.isFinite(editorialMs)) return editorialMs;
+  if (video.productionYear && Number.isFinite(video.productionYear)) {
+    return Date.UTC(video.productionYear, 0, 1);
+  }
+  return 0;
+}
+
+/** Returns true when a title is a standalone movie/film (not a Short, Series, or Micro Drama). */
+export function isStandaloneMovie(video: Video): boolean {
+  if (video.category === 'Shorts' || video.isShort) return false;
+  if (isMicroDrama(video) || video.category === 'Series' || Boolean(video.seriesTitle?.trim())) return false;
+  return ['Movies', 'Originals'].includes(video.category);
+}
+
+/** Builds the homepage Latest carousel ordered by date descending, placing the latest movies first. */
+export function getLatestWithMoviesFirst(videos: Video[], limit = 24): Video[] {
+  const nonShorts = videos.filter((v) => v.category !== 'Shorts' && !v.isShort);
+  const byNewest = (a: Video, b: Video) =>
+    getVideoTimestamp(b) - getVideoTimestamp(a) || (b.views || 0) - (a.views || 0);
+  const movies = nonShorts.filter(isStandaloneMovie).sort(byNewest);
+  const others = nonShorts.filter((v) => !isStandaloneMovie(v)).sort(byNewest);
+  return [...movies, ...others].slice(0, limit);
+}
+
+function extractGenresFromVideo(video: Video): string[] {
+  const genres: string[] = [];
+  if (video.genre) {
+    for (const part of video.genre.split(',')) {
+      const clean = part.trim();
+      if (clean) genres.push(clean);
+    }
+  }
+  return genres;
+}
+
+/** Organizes a Movies, Series, or Micro Dramas section by date, genre, and sort mode. */
+export function organizeCatalogByDateAndGenre(
+  videos: Video[],
+  sortMode: CatalogSortMode = 'latest',
+  selectedGenre = 'All',
+) {
+  const sortFn = (a: Video, b: Video) => {
+    if (sortMode === 'views') {
+      return (b.views || 0) - (a.views || 0) || getVideoTimestamp(b) - getVideoTimestamp(a);
+    }
+    if (sortMode === 'title') {
+      return a.title.localeCompare(b.title);
+    }
+    return getVideoTimestamp(b) - getVideoTimestamp(a) || (b.views || 0) - (a.views || 0);
+  };
+
+  const genreMap = new Map<string, string>();
+  for (const v of videos) {
+    for (const g of extractGenresFromVideo(v)) {
+      const key = g.toLowerCase();
+      if (!genreMap.has(key)) genreMap.set(key, g);
+    }
+  }
+  const genres = Array.from(genreMap.values()).sort((a, b) => a.localeCompare(b));
+
+  const matchesGenre = (video: Video, genre: string) => {
+    const term = genre.toLowerCase();
+    return (
+      extractGenresFromVideo(video).some((g) => g.toLowerCase() === term) ||
+      (video.tags || []).some((t) => t.toLowerCase() === term)
+    );
+  };
+
+  const sortedAll = [...videos].sort(sortFn);
+  const filtered =
+    !selectedGenre || selectedGenre === 'All'
+      ? sortedAll
+      : sortedAll.filter((v) => matchesGenre(v, selectedGenre));
+
+  const genreShelves = genres
+    .map((genre) => ({
+      genre,
+      videos: sortedAll.filter((v) => matchesGenre(v, genre)),
+    }))
+    .filter((shelf) => shelf.videos.length > 0);
+
+  return {
+    genres,
+    filtered,
+    genreShelves,
+  };
+}

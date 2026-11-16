@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ViewState, type Video } from '../types';
-import { filterDiscoveryVideos } from './discovery';
+import { filterDiscoveryVideos, getLatestWithMoviesFirst, organizeCatalogByDateAndGenre } from './discovery';
 
 const video = (id: string, title: string, category: string, overrides: Partial<Video> = {}): Video => ({ id, title, category, author: 'TubeTV', thumbnail: '', duration: '5:00', views: 0, isPremium: false, ...overrides });
 const library = [video('film', 'Love in Nairobi', 'Movies'), video('lesson', 'Iron deficiency', 'Education', { genre: 'Nutrition' }), video('child', 'Safari Song', 'Kids', { tags: ['Learning'] })];
@@ -51,5 +51,27 @@ describe('discovery filtering', () => {
     expect(filterDiscoveryVideos(collection, ViewState.GENRES, 'Drama', '').map(item => item.id)).toEqual(['m1', 's1']);
     expect(filterDiscoveryVideos(collection, ViewState.ORIGINALS, 'Drama', '').map(item => item.id)).toEqual(['m1', 's1']);
     expect(filterDiscoveryVideos(collection, ViewState.ORIGINALS, 'Action', '').map(item => item.id)).toEqual(['m2']);
+  });
+  it('places latest movies first in the Latest carousel and excludes shorts', () => {
+    const items = [
+      video('short1', 'Quick Clip', 'Shorts', { uploadDate: '2026-11-15' }),
+      video('series1', 'Newest Show', 'Series', { seriesTitle: 'Show A', uploadDate: '2026-11-14' }),
+      video('movie-old', 'Older Film', 'Movies', { uploadDate: '2026-10-01' }),
+      video('movie-new', 'Latest Film', 'Movies', { uploadDate: '2026-11-12' }),
+    ];
+    expect(getLatestWithMoviesFirst(items).map(v => v.id)).toEqual(['movie-new', 'movie-old', 'series1']);
+  });
+  it('organizes movies, series, and micro dramas by date and genre', () => {
+    const movies = [
+      video('m1', 'Zulu', 'Movies', { genre: 'Drama, Action', uploadDate: '2026-10-01', views: 50 }),
+      video('m2', 'Alpha', 'Movies', { genre: 'Comedy', uploadDate: '2026-11-10', views: 10 }),
+      video('m3', 'Beta', 'Movies', { genre: 'Drama', uploadDate: '2026-11-12', views: 20 }),
+    ];
+    const latestAll = organizeCatalogByDateAndGenre(movies, 'latest', 'All');
+    expect(latestAll.filtered.map(v => v.id)).toEqual(['m3', 'm2', 'm1']);
+    expect(latestAll.genres).toEqual(['Action', 'Comedy', 'Drama']);
+
+    const dramaViews = organizeCatalogByDateAndGenre(movies, 'views', 'Drama');
+    expect(dramaViews.filtered.map(v => v.id)).toEqual(['m1', 'm3']);
   });
 });
