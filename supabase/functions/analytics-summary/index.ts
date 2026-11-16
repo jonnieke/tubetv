@@ -200,9 +200,9 @@ serve(async (req) => {
   }
 
   // Also aggregate 30-day verified Qualified Views per videoId and succeeded payment_transactions revenue,
-  // plus detailed Date A -> Date B interaction & duration logs.
+  // plus detailed Date A -> Date B interaction, revenue & QV logs.
   const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
-  const [qvRes, txRes, rangeEventsRes] = await Promise.all([
+  const [qvRes, txRes, rangeEventsRes, rangeTxRes] = await Promise.all([
     client
       .from("analytics_events")
       .select("properties, occurred_at")
@@ -223,6 +223,13 @@ serve(async (req) => {
       .lte("occurred_at", rangeToIso)
       .order("occurred_at", { ascending: false })
       .limit(1000),
+    client
+      .from("payment_transactions")
+      .select("amount_kes, region_code, created_at")
+      .eq("status", "succeeded")
+      .gte("created_at", rangeFromIso)
+      .lte("created_at", rangeToIso)
+      .limit(5000),
   ]);
 
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -301,11 +308,15 @@ serve(async (req) => {
     watchSeconds: number;
   }> = [];
 
+  const rangeQualifiedViewsByVideo: Record<string, number> = {};
   if (Array.isArray(rangeEventsRes.data)) {
     for (const row of rangeEventsRes.data) {
       const props = (row.properties || {}) as Record<string, unknown>;
       const videoId = typeof props.videoId === "string" ? props.videoId : "";
       if (!videoId) continue;
+      if (row.event_name === "qualified_view") {
+        rangeQualifiedViewsByVideo[videoId] = (rangeQualifiedViewsByVideo[videoId] || 0) + 1;
+      }
       const viewerId = typeof props.viewerId === "string" && props.viewerId ? props.viewerId : "Guest";
       const city = typeof props.city === "string" ? props.city : "";
       const country = typeof props.country === "string" ? props.country : "KE";
@@ -335,6 +346,17 @@ serve(async (req) => {
     }
   }
 
+  let rangeRevenueKes = 0;
+  const rangeRevenueByRegion: Record<string, number> = {};
+  if (Array.isArray(rangeTxRes.data)) {
+    for (const tx of rangeTxRes.data) {
+      const amt = Number(tx.amount_kes) || 0;
+      const reg = String(tx.region_code || "KE").toUpperCase();
+      rangeRevenueKes += amt;
+      rangeRevenueByRegion[reg] = (rangeRevenueByRegion[reg] || 0) + amt;
+    }
+  }
+
   const rangeSummary = {
     from: rangeFromIso.slice(0, 10),
     to: rangeToIso.slice(0, 10),
@@ -355,6 +377,9 @@ serve(async (req) => {
       todayQualifiedViewsByVideo,
       grossRevenueKes30d,
       todayRevenueKes,
+      rangeRevenueKes,
+      rangeRevenueByRegion,
+      rangeQualifiedViewsByVideo,
       revenueByRegion,
       revenueByChannel,
       revenueByPlan,

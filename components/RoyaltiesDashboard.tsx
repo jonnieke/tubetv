@@ -51,7 +51,10 @@ interface RoyaltiesDashboardProps {
 }
 
 export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardProps) {
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('November 2026 (Current)');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('Last 30 Days');
+  const [fromDate, setFromDate] = useState<string>(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
+  const [toDate, setToDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [durationPreset, setDurationPreset] = useState<'today' | '7d' | '30d' | 'custom'>('30d');
   const [poolWindow, setPoolWindow] = useState<'30d' | 'today'>('30d');
   const [grossRevenueInput, setGrossRevenueInput] = useState<number>(0);
   const [revenue30dKes, setRevenue30dKes] = useState<number>(0);
@@ -89,39 +92,50 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
     const fetchTransactionsRevenue = async () => {
       setLoadingDb(true);
       try {
-        // 1. Try admin analytics-summary Edge Function (returns verified QVs + succeeded revenue by region)
-        const { data: summaryData } = await supabase.functions.invoke('analytics-summary', {
-          method: 'GET',
-        });
+        // 1. Try admin analytics-summary Edge Function (returns verified QVs + succeeded revenue by region for Date A -> Date B)
+        const { data: summaryData } = await supabase.functions.invoke(
+          `analytics-summary?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
+          { method: 'GET' },
+        );
         if (active && summaryData) {
           setHasSummaryLoaded(true);
-          if (summaryData.qualifiedViewsByVideo && typeof summaryData.qualifiedViewsByVideo === 'object') {
-            const q30 = summaryData.qualifiedViewsByVideo as Record<string, number>;
-            setQvs30d(q30);
-            setMeasuredQVs(q30);
-          }
+          const rangeQvs =
+            summaryData.rangeQualifiedViewsByVideo && typeof summaryData.rangeQualifiedViewsByVideo === 'object'
+              ? (summaryData.rangeQualifiedViewsByVideo as Record<string, number>)
+              : (summaryData.qualifiedViewsByVideo as Record<string, number>) || {};
+          setQvs30d(rangeQvs);
+          setMeasuredQVs(rangeQvs);
+
           if (summaryData.todayQualifiedViewsByVideo && typeof summaryData.todayQualifiedViewsByVideo === 'object') {
             setQvsToday(summaryData.todayQualifiedViewsByVideo as Record<string, number>);
           }
-          if (summaryData.revenueByRegion && typeof summaryData.revenueByRegion === 'object') {
-            setRevenueByRegion(summaryData.revenueByRegion as Record<string, number>);
-          }
-          const summaryRev = Number(summaryData.grossRevenueKes30d) || 0;
+          const activeRegionRev =
+            summaryData.rangeRevenueByRegion && typeof summaryData.rangeRevenueByRegion === 'object'
+              ? (summaryData.rangeRevenueByRegion as Record<string, number>)
+              : (summaryData.revenueByRegion as Record<string, number>) || {};
+          setRevenueByRegion(activeRegionRev);
+
+          const rangeRev =
+            typeof summaryData.rangeRevenueKes === 'number'
+              ? summaryData.rangeRevenueKes
+              : Number(summaryData.grossRevenueKes30d) || 0;
           const summaryTodayRev = Number(summaryData.todayRevenueKes) || 0;
-          setRevenue30dKes(summaryRev);
+          setRevenue30dKes(rangeRev);
           setTodayRevenueKes(summaryTodayRev);
-          setLiveDbRevenue(summaryRev);
-          setGrossRevenueInput(summaryRev);
+          setLiveDbRevenue(rangeRev);
+          setGrossRevenueInput(rangeRev);
         }
 
-        // 2. Fallback 30-day payment_transactions query only if analytics-summary did not return revenue
-        if (!summaryData || typeof summaryData.grossRevenueKes30d !== 'number') {
-          const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
+        // 2. Fallback payment_transactions query scoped to fromDate -> toDate only if analytics-summary did not return revenue
+        if (!summaryData || (typeof summaryData.rangeRevenueKes !== 'number' && typeof summaryData.grossRevenueKes30d !== 'number')) {
+          const fromIso = `${fromDate}T00:00:00.000Z`;
+          const toIso = `${toDate}T23:59:59.999Z`;
           const { data, error } = await supabase
             .from('payment_transactions')
             .select('amount_kes, status, created_at')
             .eq('status', 'succeeded')
-            .gte('created_at', since30d);
+            .gte('created_at', fromIso)
+            .lte('created_at', toIso);
 
           if (!error && data && active) {
             const totalFromDb = data.reduce((sum, tx) => sum + (Number(tx.amount_kes) || 0), 0);
@@ -167,7 +181,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
     return () => {
       active = false;
     };
-  }, []);
+  }, [fromDate, toDate]);
 
   // Compute Share of Play and Royalties
   const activeMeasuredQVs = poolWindow === 'today' ? qvsToday : measuredQVs;
@@ -337,17 +351,58 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
             <option value="Wise / Bank Wire (Diaspora USD/GBP/EUR)">🌍 Wise / Wire (Diaspora)</option>
           </select>
 
-          {/* Period Selector */}
-          <select
-            value={selectedPeriod}
-            onChange={(e) => setSelectedPeriod(e.target.value)}
-            className="bg-zinc-800 text-white text-sm font-semibold rounded-xl px-4 py-2.5 border border-zinc-700 focus:outline-none focus:border-red-500"
-          >
-            <option value="November 2026 (Current)">November 2026 (Current Cycle)</option>
-            <option value="October 2026">October 2026 (Closed Cycle)</option>
-            <option value="September 2026">September 2026</option>
-            <option value="All Time Catalogue">All Time Catalogue</option>
-          </select>
+          {/* Duration Filter Presets + Date A -> Date B */}
+          <div className="flex flex-wrap items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-xl p-1.5">
+            {([
+              { id: 'today', label: 'Today', days: 0 },
+              { id: '7d', label: '7D', days: 7 },
+              { id: '30d', label: '30D', days: 30 },
+            ] as const).map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  const to = new Date().toISOString().slice(0, 10);
+                  const from = new Date(Date.now() - preset.days * 86400000).toISOString().slice(0, 10);
+                  setDurationPreset(preset.id);
+                  setPoolWindow(preset.id === 'today' ? 'today' : '30d');
+                  setFromDate(from);
+                  setToDate(to);
+                  setSelectedPeriod(preset.id === 'today' ? 'Today' : `Last ${preset.days} Days`);
+                }}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  durationPreset === preset.id ? 'bg-red-600 text-white' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+            <input
+              type="date"
+              value={fromDate}
+              aria-label="Royalties from date"
+              onChange={(e) => {
+                setDurationPreset('custom');
+                setPoolWindow('30d');
+                setFromDate(e.target.value);
+                setSelectedPeriod(`${e.target.value} to ${toDate}`);
+              }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white"
+            />
+            <span className="text-xs text-zinc-500">→</span>
+            <input
+              type="date"
+              value={toDate}
+              aria-label="Royalties to date"
+              onChange={(e) => {
+                setDurationPreset('custom');
+                setPoolWindow('30d');
+                setToDate(e.target.value);
+                setSelectedPeriod(`${fromDate} to ${e.target.value}`);
+              }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white"
+            />
+          </div>
 
           {/* CSV Export Buttons */}
           <button
@@ -436,6 +491,21 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           </button>
         </div>
       )}
+
+      {/* Live Revenue Calculation Formula Breakdown */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 text-xs text-zinc-300 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <span className="font-bold text-white uppercase tracking-wider mr-2">How Royalties Work ({fromDate} → {toDate}):</span>
+          <span>
+            Gross <strong className="text-white">KES {royaltyResult.grossRevenueKes.toLocaleString()}</strong>
+            {' '}− 1.5% Gateway Fee (<strong className="text-zinc-200">KES {royaltyResult.gatewayFeesKes.toLocaleString()}</strong>)
+            {' '}= Net Pool <strong className="text-white">KES {royaltyResult.netSubscriptionPoolKes.toLocaleString()}</strong>
+            {' '}× {creatorPoolPercent}% = Creator Pool <strong className="text-emerald-400">KES {royaltyResult.netCreatorPoolKes.toLocaleString()}</strong>
+            {' '}÷ <strong className="text-amber-300">{royaltyResult.totalQualifiedViews.toLocaleString()} Premium 30s+ QVs</strong>
+          </span>
+        </div>
+        <span className="text-[11px] text-zinc-400">Only Premium titles share the pool (payout eligible at ≥ KSh 1,000)</span>
+      </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
