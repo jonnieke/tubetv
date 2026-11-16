@@ -270,6 +270,10 @@
  .cinema-poster-label { font-size: 6px; }
  .cinema-landscapes { grid-auto-columns: 46%; gap: 10px; }
  .cinema-home { padding-bottom: 65px; }
+ .landing-hero { min-height: 350px; margin-bottom: 14px; }
+ .landing-hero-copy { padding: 36px 16px 18px; }
+ .landing-hero h1 { font-size: 28px; margin: 6px 0 8px; }
+ .landing-hero-synopsis { font-size: 12px; line-height: 1.45; -webkit-line-clamp: 2; }
  .cinema-footer { padding: 24px 20px; flex-direction: column; gap: 4px; }
  .cinema-details { padding: 25px 18px; }
 }

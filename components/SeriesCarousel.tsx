@@ -57,7 +57,7 @@ const SeriesCard: React.FC<{
       .join(' | ');
 
     return (
-      <article className="cinema-series-vertical group/card relative shrink-0 w-[185px] sm:w-[205px] md:w-[225px] rounded-2xl transition-all duration-300 md:hover:scale-[1.04] md:hover:z-30 md:hover:bg-[#17171f] md:hover:shadow-2xl md:hover:ring-1 md:hover:ring-zinc-700/80 p-1.5 -m-1.5">
+      <article className="cinema-series-vertical group/card relative snap-start shrink-0 w-[152px] sm:w-[195px] md:w-[225px] rounded-2xl transition-all duration-300 md:hover:scale-[1.04] md:hover:z-30 md:hover:bg-[#17171f] md:hover:shadow-2xl md:hover:ring-1 md:hover:ring-zinc-700/80 p-1.5 -m-1.5">
         <button
           type="button"
           onClick={() => onPlay(entryEpisode)}
@@ -266,11 +266,11 @@ export default function SeriesCarousel({ title = 'Series', videos, ...props }: P
     ref.current?.scrollBy({ left: direction * ref.current.clientWidth * 0.8, behavior: 'smooth' });
 
   return (
-    <section aria-label={title} className="mb-12 px-4 md:px-0">
-      <div className="mb-5 flex items-center justify-between gap-4">
+    <section aria-label={title} className="mb-7 md:mb-12 px-4 md:px-0">
+      <div className="mb-3 md:mb-5 flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">{title}</h2>
-          <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>
+          <h2 className="text-lg md:text-2xl font-bold">{title}</h2>
+          <p className="mt-0.5 md:mt-1 text-xs md:text-sm text-zinc-400">{subtitle}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -291,7 +291,7 @@ export default function SeriesCarousel({ title = 'Series', videos, ...props }: P
           </button>
         </div>
       </div>
-      <div ref={ref} className="flex items-start gap-4 overflow-x-auto py-3 pb-5 no-scrollbar">
+      <div ref={ref} className="flex items-start gap-3 md:gap-4 overflow-x-auto snap-x snap-mandatory py-2 md:py-3 pb-4 md:pb-5 no-scrollbar">
         {groups.map((episodes) => (
           <SeriesCard
             key={seriesKey(episodes[0])}

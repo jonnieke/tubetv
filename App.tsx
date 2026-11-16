@@ -2385,7 +2385,7 @@ const App: React.FC = () => {
             ref={mainRef}
             className={`flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar ${
               currentView === ViewState.HOME && !searchQuery ? 'landing-main' : ''
-            } ${currentView === ViewState.SHORTS ? 'shorts-main' : ''}`}
+            } ${currentView === ViewState.SHORTS ? 'shorts-main' : 'pb-24 md:pb-8'}`}
           >
             <SectionErrorBoundary label="this view" onReset={() => handleNavigate(ViewState.HOME)}>
               <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>

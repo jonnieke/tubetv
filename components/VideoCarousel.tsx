@@ -32,8 +32,8 @@ const VideoCarousel: React.FC<VideoCarouselProps> = ({
   if (videos.length === 0) return null;
 
   return (
-    <div className="landing-video-carousel mb-12 group/carousel relative">
-      <h2 className="text-2xl font-bold text-white mb-4 px-4 md:px-0 flex items-center justify-between">
+    <div className="landing-video-carousel mb-7 md:mb-12 group/carousel relative">
+      <h2 className="text-lg md:text-2xl font-bold text-white mb-3 md:mb-4 px-4 md:px-0 flex items-center justify-between">
         {title}
       </h2>
       
@@ -49,10 +49,10 @@ const VideoCarousel: React.FC<VideoCarouselProps> = ({
         
         <div 
           ref={scrollRef}
-          className="flex gap-4 overflow-x-auto no-scrollbar scroll-smooth px-4 md:px-0 pb-6"
+          className="flex gap-3 md:gap-4 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory px-4 md:px-0 pb-2 md:pb-6"
         >
           {videos.map((video) => (
-            <div key={video.id} className="landing-video-slot min-w-[280px] md:min-w-[320px] w-[280px] md:w-[320px]">
+            <div key={video.id} className="landing-video-slot snap-start min-w-[235px] sm:min-w-[270px] md:min-w-[320px] w-[235px] sm:w-[270px] md:w-[320px]">
               <VideoCard 
                 video={video}
                 isWatchLater={watchLaterIds.includes(video.id)}

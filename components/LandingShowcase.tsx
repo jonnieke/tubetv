@@ -96,7 +96,7 @@ export const TopTenCarousel: React.FC<TopTenCarouselProps> = ({
 
       <div
         ref={rowRef}
-        className="flex gap-5 overflow-x-auto no-scrollbar pb-3 pt-1 scroll-smooth"
+        className="flex gap-3.5 md:gap-5 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-3 pt-1 scroll-smooth"
       >
         {topTen.map((video, idx) => (
           <div
