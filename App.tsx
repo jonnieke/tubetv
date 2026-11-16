@@ -98,6 +98,7 @@ import {
 import type { SettingsTabId } from './components/SettingsSection';
 import { TranslationKey } from './translations';
 import { SectionErrorBoundary } from './components/ErrorBoundary';
+import { MicroDramaPlayerLayout } from './components/MicroDramaPlayerLayout';
 import { isDynamicChunkLoadError, triggerChunkRecoveryReload } from './lib/chunkRecovery';
 
 function lazyWithRetry<T extends React.ComponentType<any>>(
@@ -1906,82 +1907,119 @@ const App: React.FC = () => {
           </SectionErrorBoundary>
         )}
 
-        {activeHeroVideo && (
-          <div
-            ref={playerDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Playing ${activeHeroVideo.title}`}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-2 sm:p-4 md:p-8"
-            onClick={closeVideo}
-          >
+        {activeHeroVideo && (() => {
+          const microMode = isMicroDrama(activeHeroVideo);
+          const microEpisodes = microMode
+            ? (() => {
+                const key = seriesKey(activeHeroVideo);
+                const list = key
+                  ? ratingFilteredVideos.filter((video) => seriesKey(video) === key).sort(compareEpisodes)
+                  : [activeHeroVideo];
+                return list.length > 0 ? list : [activeHeroVideo];
+              })()
+            : [];
+          const playerNode = (
+            <VideoCard
+              key={`${activeHeroVideo.id}:${replayNonce}`}
+              video={activeHeroVideo}
+              autoPlay={modalAutoPlay}
+              playerOnly
+              onPlay={() => setModalAutoPlay(true)}
+              isLocked={(v) => isVideoLocked(v, hasActivePass)}
+              nextEpisode={nextEpisode(ratingFilteredVideos, activeHeroVideo.id)}
+              onNextEpisode={() => {
+                const next = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
+                if (next) {
+                  if (isVideoLocked(next, hasActivePass)) {
+                    openPaywallForVideo(next);
+                  } else {
+                    trackEvent('episode_next', {
+                      fromVideoId: activeHeroVideo.id,
+                      toVideoId: next.id,
+                      automatic: false,
+                    });
+                    openVideo(next);
+                  }
+                }
+              }}
+            />
+          );
+
+          return (
             <div
-              className={`cinema-player relative w-full max-h-[94dvh] overflow-y-auto ${
-                isMicroDrama(activeHeroVideo) ? 'cinema-player-vertical max-w-sm' : 'max-w-5xl'
-              }`}
-              onClick={(event) => event.stopPropagation()}
+              ref={playerDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Playing ${activeHeroVideo.title}`}
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-2 sm:p-4 md:p-8"
+              onClick={closeVideo}
             >
-              <div className="cinema-player-header">
-                <button type="button" aria-label={t('player.backToBrowsing')} onClick={closeVideo}>
-                  ←
-                </button>
-                <span className="cinema-logo">
-                  Tube<span>TV</span>
-                </span>
-                <div className="flex items-center gap-1.5 sm:gap-2 mr-9">
-                  <button
-                    type="button"
-                    onClick={() => handleWhatsAppShareCurrentVideo(activeHeroVideo)}
-                    title={language === 'sw' ? 'Shiriki kwenye WhatsApp' : 'Share on WhatsApp'}
-                    className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/60 px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-bold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 transition-all active:scale-95 cursor-pointer"
-                  >
-                    <Share2 size={12} />
-                    <span>WhatsApp</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleShareCurrentVideo(activeHeroVideo)}
-                    title={language === 'sw' ? 'Shiriki kipindi hiki' : 'Share this video'}
-                    className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900/90 px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-bold text-zinc-200 hover:border-zinc-500 hover:text-white transition-all active:scale-95 cursor-pointer"
-                  >
-                    {playerShareCopied ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
-                    <span>{playerShareCopied ? (language === 'sw' ? 'Imenakiliwa!' : 'Copied!') : (language === 'sw' ? 'Shiriki' : 'Share')}</span>
-                  </button>
-                </div>
-              </div>
-              <button
-                type="button"
-                aria-label="Close player"
-                onClick={closeVideo}
-                className="absolute top-3 right-3 z-50 rounded-full p-2 text-white hover:bg-zinc-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-              <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
-                <VideoCard
-                  key={`${activeHeroVideo.id}:${replayNonce}`}
-                  video={activeHeroVideo}
-                  autoPlay={modalAutoPlay}
-                  playerOnly
-                  onPlay={() => setModalAutoPlay(true)}
+              {microMode ? (
+                <MicroDramaPlayerLayout
+                  activeVideo={activeHeroVideo}
+                  episodes={microEpisodes}
+                  hasActivePass={hasActivePass}
+                  isWatchLater={watchLater.includes(activeHeroVideo.id)}
+                  modalAutoPlay={modalAutoPlay}
+                  language={language}
                   isLocked={(v) => isVideoLocked(v, hasActivePass)}
-                  nextEpisode={nextEpisode(ratingFilteredVideos, activeHeroVideo.id)}
-                  onNextEpisode={() => {
-                    const next = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
-                    if (next) {
-                      if (isVideoLocked(next, hasActivePass)) {
-                        openPaywallForVideo(next);
-                      } else {
-                        trackEvent('episode_next', {
-                          fromVideoId: activeHeroVideo.id,
-                          toVideoId: next.id,
-                          automatic: false,
-                        });
-                        openVideo(next);
-                      }
+                  onSelectEpisode={(ep) => {
+                    if (isVideoLocked(ep, hasActivePass)) {
+                      openPaywallForVideo(ep);
+                    } else {
+                      openVideo(ep);
                     }
                   }}
+                  onStartPlayback={() => setModalAutoPlay(true)}
+                  onToggleWatchLater={toggleWatchLater}
+                  onShare={handleWhatsAppShareCurrentVideo}
+                  onOpenTrailer={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
+                  onClose={closeVideo}
+                  playerSlot={<Suspense fallback={<LoadingPanel label={t('common.loading')} />}>{playerNode}</Suspense>}
                 />
+              ) : (
+                <div
+                  className="cinema-player relative w-full max-h-[94dvh] overflow-y-auto max-w-5xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="cinema-player-header">
+                    <button type="button" aria-label={t('player.backToBrowsing')} onClick={closeVideo}>
+                      ←
+                    </button>
+                    <span className="cinema-logo">
+                      Tube<span>TV</span>
+                    </span>
+                    <div className="flex items-center gap-1.5 sm:gap-2 mr-9">
+                      <button
+                        type="button"
+                        onClick={() => handleWhatsAppShareCurrentVideo(activeHeroVideo)}
+                        title={language === 'sw' ? 'Shiriki kwenye WhatsApp' : 'Share on WhatsApp'}
+                        className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-950/60 px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-bold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Share2 size={12} />
+                        <span>WhatsApp</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleShareCurrentVideo(activeHeroVideo)}
+                        title={language === 'sw' ? 'Shiriki kipindi hiki' : 'Share this video'}
+                        className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900/90 px-2.5 py-1 text-[11px] sm:px-3 sm:text-xs font-bold text-zinc-200 hover:border-zinc-500 hover:text-white transition-all active:scale-95 cursor-pointer"
+                      >
+                        {playerShareCopied ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
+                        <span>{playerShareCopied ? (language === 'sw' ? 'Imenakiliwa!' : 'Copied!') : (language === 'sw' ? 'Shiriki' : 'Share')}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close player"
+                    onClick={closeVideo}
+                    className="absolute top-3 right-3 z-50 rounded-full p-2 text-white hover:bg-zinc-700"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                  <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
+                    {playerNode}
                 {isVideoFinished && !nextEpisode(ratingFilteredVideos, activeHeroVideo.id) && (
                   <div className="bg-gradient-to-r from-red-950/80 via-zinc-900 to-zinc-950 border-b border-red-500/40 p-4 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in duration-300">
                     <div>
@@ -2253,8 +2291,10 @@ const App: React.FC = () => {
                 )}
               </Suspense>
             </div>
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
 
         <div
           className={`cinema-shell flex-1 flex flex-col h-screen overflow-hidden relative ${
