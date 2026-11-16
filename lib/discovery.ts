@@ -207,6 +207,31 @@ export function getLatestWithMoviesFirst(videos: Video[], limit = 24): Video[] {
     .slice(0, limit);
 }
 
+/** Builds Trending Now by ranking recent momentum (recency + views) while excluding the Top 10 chart when enough titles exist. */
+export function getTrendingVideos(videos: Video[], limit = 20, now = Date.now()): Video[] {
+  const topTenIds = new Set(
+    [...videos]
+      .sort((a, b) => (b.views || 0) - (a.views || 0))
+      .slice(0, 10)
+      .map((v) => v.id),
+  );
+  const candidates = videos.filter((v) => v.category !== 'Shorts' && !v.isShort);
+  const nonTopTen = candidates.filter((v) => !topTenIds.has(v.id));
+  const pool = nonTopTen.length >= 5 ? nonTopTen : candidates;
+
+  const momentumScore = (v: Video) => {
+    const ts = getVideoTimestamp(v);
+    const ageDays = ts > 0 ? Math.max(0, (now - ts) / 86_400_000) : 180;
+    const recencyBoost = Math.max(0, 60 - ageDays) * 1.5;
+    const viewScore = Math.log10((v.views || 0) + 1) * 20;
+    return recencyBoost + viewScore;
+  };
+
+  return [...pool]
+    .sort((a, b) => momentumScore(b) - momentumScore(a) || (b.views || 0) - (a.views || 0))
+    .slice(0, limit);
+}
+
 function extractGenresFromVideo(video: Video): string[] {
   const genres: string[] = [];
   if (video.genre) {

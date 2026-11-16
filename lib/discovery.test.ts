@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ViewState, type Video } from '../types';
-import { filterDiscoveryVideos, getLatestWithMoviesFirst, organizeCatalogByDateAndGenre } from './discovery';
+import { filterDiscoveryVideos, getLatestWithMoviesFirst, getTrendingVideos, organizeCatalogByDateAndGenre } from './discovery';
 
 const video = (id: string, title: string, category: string, overrides: Partial<Video> = {}): Video => ({ id, title, category, author: 'TubeTV', thumbnail: '', duration: '5:00', views: 0, isPremium: false, ...overrides });
 const library = [video('film', 'Love in Nairobi', 'Movies'), video('lesson', 'Iron deficiency', 'Education', { genre: 'Nutrition' }), video('child', 'Safari Song', 'Kids', { tags: ['Learning'] })];
@@ -79,5 +79,18 @@ describe('discovery filtering', () => {
 
     const dramaViews = organizeCatalogByDateAndGenre(movies, 'views', 'Drama');
     expect(dramaViews.filtered.map(v => v.id)).toEqual(['m1', 'm3']);
+  });
+  it('differentiates Trending Now from Top 10 by excluding Top 10 and ranking recent momentum', () => {
+    const now = Date.parse('2026-11-16T00:00:00Z');
+    const top10 = Array.from({ length: 10 }, (_, i) =>
+      video(`top${i + 1}`, `Top ${i + 1}`, 'Movies', { views: 1000 - i * 10, uploadDate: '2026-01-01' }),
+    );
+    const rising = video('rising', 'Rising Hit', 'Movies', { views: 80, uploadDate: '2026-11-15' });
+    const older = Array.from({ length: 5 }, (_, i) =>
+      video(`old${i + 1}`, `Old ${i + 1}`, 'Movies', { views: 20, uploadDate: '2026-02-01' }),
+    );
+    const trending = getTrendingVideos([...top10, rising, ...older], 20, now);
+    expect(trending[0].id).toBe('rising');
+    expect(trending.some(v => v.id === 'top1')).toBe(false);
   });
 });

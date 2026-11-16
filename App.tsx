@@ -78,6 +78,7 @@ import {
   filterDiscoveryVideos,
   filterVideosByRating,
   getLatestWithMoviesFirst,
+  getTrendingVideos,
   isKidsVideo,
   organizeCatalogByDateAndGenre,
 } from './lib/discovery';
@@ -1606,7 +1607,7 @@ const App: React.FC = () => {
                 <VideoCarousel
                   key="Trending"
                   title={t('shelf.trendingNow')}
-                  videos={[...ratingFilteredVideos].sort((a, b) => b.views - a.views).slice(0, 20)}
+                  videos={getTrendingVideos(ratingFilteredVideos, 20)}
                   watchLaterIds={watchLater}
                   onToggleWatchLater={toggleWatchLater}
                   isAuthenticated={isAuthenticated}
