@@ -76,16 +76,13 @@ export async function subscribeToPushNotifications(customPhone?: string): Promis
       const auth = rawSub.keys?.auth || '';
 
       if (endpoint && p256dh && auth) {
-        await supabase.from('push_subscriptions').upsert(
-          {
-            endpoint,
-            p256dh,
-            auth,
-            phone: phone || null,
-            device_hint: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 100) : null,
-          },
-          { onConflict: 'endpoint' }
-        );
+        await supabase.rpc('register_push_subscription', {
+          p_endpoint: endpoint,
+          p_p256dh: p256dh,
+          p_auth: auth,
+          p_phone: phone || null,
+          p_device_hint: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 100) : null,
+        });
       }
     }
 

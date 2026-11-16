@@ -25,7 +25,7 @@ export function isOriginAllowed(req: Request): boolean {
   try {
     const url = new URL(origin);
     if (url.hostname === "tube.co.ke" || url.hostname.endsWith(".tube.co.ke")) return true;
-    if (url.hostname.endsWith(".vercel.app")) return true;
+    if (url.hostname.startsWith("tubetv-") && url.hostname.endsWith(".vercel.app")) return true;
     if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return true;
   } catch {
     // Malformed origin
