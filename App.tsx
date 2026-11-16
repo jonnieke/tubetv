@@ -1537,7 +1537,7 @@ const App: React.FC = () => {
             )}
             {currentView === ViewState.HOME && !searchQuery && latestVideos.length > 0 && (
               <VideoCarousel
-                title={language === 'sw' ? 'Mpya Zaidi · Filamu Mpya Kwanza' : 'Latest · New Movies First'}
+                title={language === 'sw' ? 'Mpya Zaidi' : 'Latest'}
                 videos={latestVideos}
                 watchLaterIds={watchLater}
                 onToggleWatchLater={toggleWatchLater}

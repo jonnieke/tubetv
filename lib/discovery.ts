@@ -166,7 +166,7 @@ export function filterDiscoveryVideos(
 
 export type CatalogSortMode = 'latest' | 'views' | 'title';
 
-/** Returns a comparable epoch timestamp (ms) for sorting catalogue items by release/upload date. */
+/** Returns a comparable epoch timestamp (ms) for sorting catalogue items by platform ingest date. */
 export function getVideoTimestamp(video: Video): number {
   const uploadMs = video.uploadDate ? Date.parse(video.uploadDate) : NaN;
   if (Number.isFinite(uploadMs)) return uploadMs;
@@ -178,6 +178,14 @@ export function getVideoTimestamp(video: Video): number {
   return 0;
 }
 
+/** Returns UTC midnight timestamp (ms) for the day the item was ingested onto the platform. */
+export function getIngestDayTimestamp(video: Video): number {
+  const ts = getVideoTimestamp(video);
+  if (!ts) return 0;
+  const d = new Date(ts);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
 /** Returns true when a title is a standalone movie/film (not a Short, Series, or Micro Drama). */
 export function isStandaloneMovie(video: Video): boolean {
   if (video.category === 'Shorts' || video.isShort) return false;
@@ -185,14 +193,18 @@ export function isStandaloneMovie(video: Video): boolean {
   return ['Movies', 'Originals'].includes(video.category);
 }
 
-/** Builds the homepage Latest carousel ordered by date descending, placing the latest movies first. */
+/** Builds the homepage Latest carousel ordered by platform ingest day descending (movies first within the same day). */
 export function getLatestWithMoviesFirst(videos: Video[], limit = 24): Video[] {
-  const nonShorts = videos.filter((v) => v.category !== 'Shorts' && !v.isShort);
-  const byNewest = (a: Video, b: Video) =>
-    getVideoTimestamp(b) - getVideoTimestamp(a) || (b.views || 0) - (a.views || 0);
-  const movies = nonShorts.filter(isStandaloneMovie).sort(byNewest);
-  const others = nonShorts.filter((v) => !isStandaloneMovie(v)).sort(byNewest);
-  return [...movies, ...others].slice(0, limit);
+  return videos
+    .filter((v) => v.category !== 'Shorts' && !v.isShort)
+    .sort((a, b) => {
+      const dayDiff = getIngestDayTimestamp(b) - getIngestDayTimestamp(a);
+      if (dayDiff !== 0) return dayDiff;
+      const movieDiff = (isStandaloneMovie(b) ? 1 : 0) - (isStandaloneMovie(a) ? 1 : 0);
+      if (movieDiff !== 0) return movieDiff;
+      return getVideoTimestamp(b) - getVideoTimestamp(a) || (b.views || 0) - (a.views || 0);
+    })
+    .slice(0, limit);
 }
 
 function extractGenresFromVideo(video: Video): string[] {

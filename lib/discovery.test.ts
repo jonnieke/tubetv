@@ -52,14 +52,20 @@ describe('discovery filtering', () => {
     expect(filterDiscoveryVideos(collection, ViewState.ORIGINALS, 'Drama', '').map(item => item.id)).toEqual(['m1', 's1']);
     expect(filterDiscoveryVideos(collection, ViewState.ORIGINALS, 'Action', '').map(item => item.id)).toEqual(['m2']);
   });
-  it('places latest movies first in the Latest carousel and excludes shorts', () => {
+  it('orders Latest by platform ingest day descending, with movies first on the same day, excluding shorts', () => {
     const items = [
-      video('short1', 'Quick Clip', 'Shorts', { uploadDate: '2026-11-15' }),
-      video('series1', 'Newest Show', 'Series', { seriesTitle: 'Show A', uploadDate: '2026-11-14' }),
-      video('movie-old', 'Older Film', 'Movies', { uploadDate: '2026-10-01' }),
-      video('movie-new', 'Latest Film', 'Movies', { uploadDate: '2026-11-12' }),
+      video('short1', 'Quick Clip', 'Shorts', { uploadDate: '2026-11-16T10:00:00Z' }),
+      video('series-same-day', 'Same Day Show', 'Series', { seriesTitle: 'Show A', uploadDate: '2026-11-14T12:00:00Z' }),
+      video('movie-old', 'Older Film', 'Movies', { uploadDate: '2026-10-01T08:00:00Z' }),
+      video('movie-same-day', 'Same Day Film', 'Movies', { uploadDate: '2026-11-14T09:00:00Z' }),
+      video('series-newest-day', 'Newest Day Show', 'Series', { seriesTitle: 'Show B', uploadDate: '2026-11-15T08:00:00Z' }),
     ];
-    expect(getLatestWithMoviesFirst(items).map(v => v.id)).toEqual(['movie-new', 'movie-old', 'series1']);
+    expect(getLatestWithMoviesFirst(items).map(v => v.id)).toEqual([
+      'series-newest-day',
+      'movie-same-day',
+      'series-same-day',
+      'movie-old',
+    ]);
   });
   it('organizes movies, series, and micro dramas by date and genre', () => {
     const movies = [
