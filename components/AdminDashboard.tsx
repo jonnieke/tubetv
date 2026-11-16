@@ -1057,7 +1057,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {activeTab === 'upload' && (
         <div className="animate-in fade-in duration-500">
-          <UploadSection onUploadComplete={onUploadComplete} creatorName={creatorName} />
+          <UploadSection
+            onUploadComplete={onUploadComplete}
+            onManageExisting={() => setActiveTab('content')}
+            creatorName={creatorName}
+          />
         </div>
       )}
 

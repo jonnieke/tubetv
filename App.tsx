@@ -1181,7 +1181,13 @@ const App: React.FC = () => {
             </div>
           );
         }
-        return <UploadSection onUploadComplete={handleUploadComplete} creatorName={userPhone || 'Admin'} />;
+        return (
+          <UploadSection
+            onUploadComplete={handleUploadComplete}
+            onManageExisting={() => handleNavigate(ViewState.ADMIN)}
+            creatorName={userPhone || 'Admin'}
+          />
+        );
       case ViewState.ANALYTICS:
         if (!isAuthenticated) {
           return (

@@ -71,6 +71,7 @@ interface UploadItem {
 
 interface UploadSectionProps {
   onUploadComplete?: (video: Video) => void;
+  onManageExisting?: () => void;
   creatorName?: string;
 }
 
@@ -95,7 +96,7 @@ const CATEGORIES = [
   'Trending',
 ];
 
-const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creatorName = 'Creator' }) => {
+const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, onManageExisting, creatorName = 'Creator' }) => {
   const [uploadKind, setUploadKind] = useState('Originals');
   // Queue State
   const [queue, setQueue] = useState<UploadItem[]>([]);
@@ -586,7 +587,19 @@ const UploadSection: React.FC<UploadSectionProps> = ({ onUploadComplete, creator
     <div className="flex flex-col lg:flex-row min-h-full bg-zinc-950">
       {/* LEFT COLUMN: EDITOR / DROP ZONE */}
       <div className="flex-1 overflow-y-auto p-6 lg:p-12 relative">
-        <h1 className="text-3xl font-bold text-white mb-8">Upload Content</h1>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+          <h1 className="text-3xl font-bold text-white">Upload Content</h1>
+          {onManageExisting && (
+            <button
+              type="button"
+              onClick={onManageExisting}
+              className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 hover:border-red-500/50 px-4 py-2.5 text-xs font-bold text-white transition-colors"
+            >
+              <ListVideo className="w-4 h-4 text-red-400" />
+              Edit Existing Bunny Videos
+            </button>
+          )}
+        </div>
         <fieldset className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
           <legend className="px-2 text-sm font-semibold text-zinc-200">Choose an ingest path</legend>
           <div className="flex flex-wrap gap-2">
