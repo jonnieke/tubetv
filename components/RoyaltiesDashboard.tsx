@@ -52,7 +52,13 @@ interface RoyaltiesDashboardProps {
 
 export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<string>('November 2026 (Current)');
-  const [grossRevenueInput, setGrossRevenueInput] = useState<number>(35000);
+  const [poolWindow, setPoolWindow] = useState<'30d' | 'today'>('30d');
+  const [grossRevenueInput, setGrossRevenueInput] = useState<number>(0);
+  const [revenue30dKes, setRevenue30dKes] = useState<number>(0);
+  const [todayRevenueKes, setTodayRevenueKes] = useState<number>(0);
+  const [qvs30d, setQvs30d] = useState<Record<string, number>>({});
+  const [qvsToday, setQvsToday] = useState<Record<string, number>>({});
+  const [hasSummaryLoaded, setHasSummaryLoaded] = useState<boolean>(false);
   const [isEditingPool, setIsEditingPool] = useState<boolean>(false);
   const [creatorPoolPercent, setCreatorPoolPercent] = useState<number>(DEFAULT_CREATOR_POOL_PERCENT);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -88,29 +94,39 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           method: 'GET',
         });
         if (active && summaryData) {
+          setHasSummaryLoaded(true);
           if (summaryData.qualifiedViewsByVideo && typeof summaryData.qualifiedViewsByVideo === 'object') {
-            setMeasuredQVs(summaryData.qualifiedViewsByVideo as Record<string, number>);
+            const q30 = summaryData.qualifiedViewsByVideo as Record<string, number>;
+            setQvs30d(q30);
+            setMeasuredQVs(q30);
+          }
+          if (summaryData.todayQualifiedViewsByVideo && typeof summaryData.todayQualifiedViewsByVideo === 'object') {
+            setQvsToday(summaryData.todayQualifiedViewsByVideo as Record<string, number>);
           }
           if (summaryData.revenueByRegion && typeof summaryData.revenueByRegion === 'object') {
             setRevenueByRegion(summaryData.revenueByRegion as Record<string, number>);
           }
           const summaryRev = Number(summaryData.grossRevenueKes30d) || 0;
-          if (summaryRev > 0) {
-            setLiveDbRevenue(summaryRev);
-            setGrossRevenueInput(summaryRev);
-          }
+          const summaryTodayRev = Number(summaryData.todayRevenueKes) || 0;
+          setRevenue30dKes(summaryRev);
+          setTodayRevenueKes(summaryTodayRev);
+          setLiveDbRevenue(summaryRev);
+          setGrossRevenueInput(summaryRev);
         }
 
-        // 2. Also query payment_transactions fallback
-        const { data, error } = await supabase
-          .from('payment_transactions')
-          .select('amount_kes, status')
-          .eq('status', 'succeeded');
+        // 2. Fallback 30-day payment_transactions query only if analytics-summary did not return revenue
+        if (!summaryData || typeof summaryData.grossRevenueKes30d !== 'number') {
+          const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
+          const { data, error } = await supabase
+            .from('payment_transactions')
+            .select('amount_kes, status, created_at')
+            .eq('status', 'succeeded')
+            .gte('created_at', since30d);
 
-        if (!error && data && data.length > 0 && active) {
-          const totalFromDb = data.reduce((sum, tx) => sum + (Number(tx.amount_kes) || 0), 0);
-          setLiveDbRevenue(totalFromDb);
-          if (totalFromDb > 0) {
+          if (!error && data && active) {
+            const totalFromDb = data.reduce((sum, tx) => sum + (Number(tx.amount_kes) || 0), 0);
+            setRevenue30dKes(totalFromDb);
+            setLiveDbRevenue(totalFromDb);
             setGrossRevenueInput(totalFromDb);
           }
         }
@@ -154,19 +170,22 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
   }, []);
 
   // Compute Share of Play and Royalties
+  const activeMeasuredQVs = poolWindow === 'today' ? qvsToday : measuredQVs;
   const royaltyResult = useMemo(() => {
     return computeShareOfPlayRoyalties(
       videos,
       {
-        periodLabel: selectedPeriod,
+        periodLabel: poolWindow === 'today' ? 'Today (Live)' : selectedPeriod,
         grossSubscriptionRevenueKes: grossRevenueInput,
         creatorPoolPercent,
         gatewayFeePercent: PAYMENT_GATEWAY_FEE_PERCENT,
         payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
       },
-      Object.keys(measuredQVs).length > 0 ? { measuredQualifiedViews: measuredQVs } : undefined,
+      hasSummaryLoaded || Object.keys(activeMeasuredQVs).length > 0
+        ? { measuredQualifiedViews: activeMeasuredQVs }
+        : undefined,
     );
-  }, [videos, selectedPeriod, grossRevenueInput, creatorPoolPercent, measuredQVs]);
+  }, [videos, selectedPeriod, poolWindow, grossRevenueInput, creatorPoolPercent, activeMeasuredQVs, hasSummaryLoaded]);
 
   // Filtered Creatives
   const filteredCreators = useMemo(() => {
@@ -437,6 +456,36 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1">
             <span>Paystack fee (1.5%): -KES {royaltyResult.gatewayFeesKes.toLocaleString()}</span>
           </p>
+          <div className="mt-3 inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 text-[11px] font-bold">
+            <button
+              type="button"
+              onClick={() => {
+                setPoolWindow('30d');
+                setMeasuredQVs(qvs30d);
+                setLiveDbRevenue(revenue30dKes);
+                setGrossRevenueInput(revenue30dKes);
+              }}
+              className={`px-2.5 py-1 rounded-md transition-colors ${
+                poolWindow === '30d' ? 'bg-amber-500 text-black' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              30-Day Pool
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPoolWindow('today');
+                setMeasuredQVs(qvsToday);
+                setLiveDbRevenue(todayRevenueKes);
+                setGrossRevenueInput(todayRevenueKes);
+              }}
+              className={`px-2.5 py-1 rounded-md transition-colors ${
+                poolWindow === 'today' ? 'bg-emerald-500 text-black' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Today&apos;s Pool
+            </button>
+          </div>
 
           {isEditingPool && (
             <div className="mt-4 pt-3 border-t border-zinc-800 space-y-3">
