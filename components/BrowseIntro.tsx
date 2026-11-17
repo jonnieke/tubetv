@@ -9,6 +9,12 @@ const sections: Partial<Record<ViewState, { label: string; description: string; 
     description: 'Short-form vertical stories built for mobile — start free with opening episodes.',
     swDescription: 'Tamthilia fupi za wima kwa simu — anza bure na vipindi vya kwanza.',
   },
+  [ViewState.SCHOOL_FLIX]: {
+    label: 'School Flix',
+    swLabel: 'School Flix',
+    description: 'Talent, drama, music and creative performances from schools and universities across Kenya.',
+    swDescription: 'Vipaji, tamthilia, muziki na maigizo ya ubunifu kutoka shule na vyuo vikuu Kenya.',
+  },
   [ViewState.EDUCATION]: {
     label: 'Education',
     swLabel: 'Elimu',

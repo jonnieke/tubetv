@@ -8,6 +8,7 @@ const destinations = [
   { label: 'Series', swLabel: 'Tamthilia', caption: 'Deeper journeys.', swCaption: 'Safari ndefu.', icon: Monitor, view: ViewState.ORIGINALS, category: 'Series' },
   { label: 'Micro Dramas', swLabel: 'Tamthilia Fupi', caption: 'Shorter. Bolder. Closer.', swCaption: 'Fupi. Kali. Karibu.', icon: Smartphone, view: ViewState.MICRO_DRAMAS },
   { label: 'Shorts', swLabel: 'Shorts', caption: 'Real life. Right now.', swCaption: 'Maisha halisi sasa.', icon: SquarePlay, view: ViewState.SHORTS },
+  { label: 'School Flix', swLabel: 'School Flix', caption: 'Next gen talent.', swCaption: 'Vipaji vya shule.', icon: BookOpen, view: ViewState.SCHOOL_FLIX },
   { label: 'Education', swLabel: 'Elimu', caption: 'Knowledge for tomorrow.', swCaption: 'Maarifa ya kesho.', icon: BookOpen, view: ViewState.EDUCATION },
   { label: 'Live', swLabel: 'Moja kwa Moja', caption: 'In the moment.', swCaption: 'Mubashara sasa.', icon: Radio, view: ViewState.LIVE },
 ];

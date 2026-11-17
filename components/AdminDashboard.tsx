@@ -31,6 +31,7 @@ const CATEGORIES = [
   'Series',
   'Micro Dramas',
   'Shorts',
+  'School Flix',
   'Farmers',
   'Education',
   'Faith',

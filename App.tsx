@@ -169,6 +169,7 @@ const INITIAL_NAV_ITEMS: NavItem[] = [
   { id: ViewState.ORIGINALS, label: 'Originals', labelKey: 'nav.originals', iconName: 'Clapperboard', icon: Clapperboard },
   { id: ViewState.GENRES, label: 'Genres', labelKey: 'nav.genres', iconName: 'Movie', icon: Film },
   { id: ViewState.SHORTS, label: 'Shorts', labelKey: 'nav.shorts', iconName: 'Smartphone', icon: Smartphone },
+  { id: ViewState.SCHOOL_FLIX, label: 'School Flix', labelKey: 'nav.schoolflix', iconName: 'GraduationCap', icon: GraduationCap },
   { id: ViewState.EDUCATION, label: 'Education', labelKey: 'nav.education', iconName: 'GraduationCap', icon: GraduationCap },
   { id: ViewState.FARMERS, label: 'Farmers', labelKey: 'nav.farmers', iconName: 'Sprout', icon: Sprout },
   { id: ViewState.FAITH, label: 'Faith', labelKey: 'nav.faith', iconName: 'Heart', icon: Heart },
@@ -633,6 +634,14 @@ const App: React.FC = () => {
           parsed.splice(originalsIdx >= 0 ? originalsIdx + 1 : 3, 0, INITIAL_NAV_ITEMS[3]);
         }
 
+        if (!parsed.some((item) => item.id === ViewState.SCHOOL_FLIX)) {
+          const shortsIdx = parsed.findIndex((item) => item.id === ViewState.SHORTS);
+          const schoolFlixItem = INITIAL_NAV_ITEMS.find((item) => item.id === ViewState.SCHOOL_FLIX);
+          if (schoolFlixItem) {
+            parsed.splice(shortsIdx >= 0 ? shortsIdx + 1 : 5, 0, schoolFlixItem);
+          }
+        }
+
         return parsed.map((item) => ({
           ...item,
           icon: ICON_MAP[item.iconName || 'PlayCircle'] || PlayCircle,
@@ -941,6 +950,8 @@ const App: React.FC = () => {
 
   const getSubCategories = (view: ViewStateOrString) => {
     switch (view) {
+      case ViewState.SCHOOL_FLIX:
+        return ['All', 'High School', 'University', 'Drama', 'Music', 'Comedy'];
       case ViewState.EDUCATION:
         return ['All', 'CBC', 'High School', 'Revision', 'AI Learning', 'Teachers'];
       case ViewState.FARMERS:
@@ -1561,7 +1572,7 @@ const App: React.FC = () => {
               (currentView === ViewState.HOME && activeSubCategory !== 'Trending') ||
               (currentView === ViewState.ORIGINALS && activeSubCategory === 'All') ||
               (!Object.values(ViewState).includes(currentView as ViewState) && !searchQuery) ||
-              ([ViewState.EDUCATION, ViewState.FARMERS, ViewState.FAITH, ViewState.DIASPORA].includes(
+              ([ViewState.SCHOOL_FLIX, ViewState.EDUCATION, ViewState.FARMERS, ViewState.FAITH, ViewState.DIASPORA].includes(
                 currentView as ViewState,
               ) &&
                 !searchQuery)) && (
@@ -2395,6 +2406,7 @@ const App: React.FC = () => {
                   currentView === ViewState.MICRO_DRAMAS ||
                   currentView === ViewState.GENRES ||
                   [
+                    ViewState.SCHOOL_FLIX,
                     ViewState.EDUCATION,
                     ViewState.FARMERS,
                     ViewState.FAITH,

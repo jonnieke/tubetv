@@ -418,6 +418,9 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   const rawCategory = getMeta(activeItem.metaTags, 'category') || 'Uncategorized';
   
   const categoryMap: Record<string, string> = {
+    'school flix': 'School Flix',
+    'schoolflix': 'School Flix',
+    'schools': 'School Flix',
     'farmers': 'Farmers',
     'farming': 'Farmers',
     'agriculture': 'Farmers',

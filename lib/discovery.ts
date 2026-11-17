@@ -5,6 +5,7 @@ import { isMicroDrama } from './series';
 
 const categoryForView: Partial<Record<ViewState, string>> = {
   [ViewState.MICRO_DRAMAS]: 'Micro Dramas',
+  [ViewState.SCHOOL_FLIX]: 'School Flix',
   [ViewState.EDUCATION]: 'Education',
   [ViewState.FARMERS]: 'Farmers',
   [ViewState.FAITH]: 'Faith',
@@ -72,7 +73,12 @@ export function filterDiscoveryVideos(
   } else {
     const category = categoryForView[view as ViewState];
     if (category) {
-      result = result.filter((video) => video.category === category || (view === ViewState.MICRO_DRAMAS && isMicroDrama(video)));
+      result = result.filter(
+        (video) =>
+          video.category === category ||
+          (view === ViewState.MICRO_DRAMAS && isMicroDrama(video)) ||
+          (view === ViewState.SCHOOL_FLIX && video.category?.toLowerCase().replace(/\s+/g, '') === 'schoolflix'),
+      );
     } else if (customCategory) {
       result = result.filter(
         (video) =>
