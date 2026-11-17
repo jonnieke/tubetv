@@ -147,12 +147,29 @@ export interface UserCentricPlayInput {
   viewerKey: string;
   videoId: string;
   watchSeconds?: number;
+  maxDurationSeconds?: number;
+  dayKey?: string;
+}
+
+export const MAX_CREDITED_WATCH_SECONDS = 5400; // 90-minute cap per play to block AFK movie streaming
+
+/**
+ * Computes a balanced sub-linear (square-root) watch weight so long-form movies
+ * earn fairly more than short episodes without allowing AFK/idle streaming to dominate.
+ */
+export function computeBalancedWatchWeight(watchSeconds = 30, maxDurationSeconds?: number): number {
+  const cap =
+    maxDurationSeconds && maxDurationSeconds > 0
+      ? Math.min(MAX_CREDITED_WATCH_SECONDS, maxDurationSeconds)
+      : MAX_CREDITED_WATCH_SECONDS;
+  const clamped = Math.max(QUALIFIED_VIEW_SECONDS, Math.min(cap, Number(watchSeconds) || QUALIFIED_VIEW_SECONDS));
+  return Math.sqrt(clamped / 60);
 }
 
 /**
  * Allocates each subscriber's own gross payment strictly to the Premium videos
- * that specific subscriber watched (User-Centric Payment System), preventing
- * heavy binge-watchers from diluting other subscribers' creators.
+ * that specific subscriber watched (User-Centric Payment System), using balanced
+ * square-root duration weighting and 1-play-per-viewer-per-video-per-day anti-farming.
  */
 export function computeUserCentricVideoGross(
   passes: UserCentricPassInput[],
@@ -167,18 +184,34 @@ export function computeUserCentricVideoGross(
     spendByViewer.set(key, (spendByViewer.get(key) || 0) + amt);
   }
 
-  const playsByViewer = new Map<string, Map<string, number>>();
+  // Deduplicate replays per (viewerKey, videoId, dayKey) keeping the longest capped play
+  const dedupedDayBest = new Map<string, { viewerKey: string; videoId: string; weight: number }>();
+  const unkeyedPlays: { viewerKey: string; videoId: string; weight: number }[] = [];
+
   for (const ev of plays) {
     const key = (ev.viewerKey || '').trim();
     const vid = (ev.videoId || '').trim();
     if (!key || !vid || !eligibleVideoIds.has(vid)) continue;
-    const weight = Math.max(1, Number(ev.watchSeconds) || 30);
-    let vidMap = playsByViewer.get(key);
+    const weight = computeBalancedWatchWeight(ev.watchSeconds, ev.maxDurationSeconds);
+    if (ev.dayKey) {
+      const dedupeKey = `${key}::${vid}::${ev.dayKey}`;
+      const existing = dedupedDayBest.get(dedupeKey);
+      if (!existing || weight > existing.weight) {
+        dedupedDayBest.set(dedupeKey, { viewerKey: key, videoId: vid, weight });
+      }
+    } else {
+      unkeyedPlays.push({ viewerKey: key, videoId: vid, weight });
+    }
+  }
+
+  const playsByViewer = new Map<string, Map<string, number>>();
+  for (const item of [...dedupedDayBest.values(), ...unkeyedPlays]) {
+    let vidMap = playsByViewer.get(item.viewerKey);
     if (!vidMap) {
       vidMap = new Map<string, number>();
-      playsByViewer.set(key, vidMap);
+      playsByViewer.set(item.viewerKey, vidMap);
     }
-    vidMap.set(vid, (vidMap.get(vid) || 0) + weight);
+    vidMap.set(item.videoId, (vidMap.get(item.videoId) || 0) + item.weight);
   }
 
   const userCentricGrossByVideo: Record<string, number> = {};

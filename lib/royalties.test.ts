@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  computeBalancedWatchWeight,
   computeShareOfPlayRoyalties,
   computeUserCentricVideoGross,
   getQualifiedViewThresholdSeconds,
@@ -209,5 +210,33 @@ describe('Creator Royalties & Share of Play Engine', () => {
     const creatorB = result.creators.find((c) => c.creator === 'Creator B')!;
     expect(creatorA.netEarningsKes).toBeCloseTo(5.91, 2);
     expect(creatorB.netEarningsKes).toBeCloseTo(5.91, 2);
+  });
+
+  it('balances movies vs short episodes with sqrt weighting, 90m cap, and daily replay deduplication', () => {
+    // 2-min micro episode vs 90-min movie vs 4-hour AFK movie
+    const microWeight = computeBalancedWatchWeight(120);
+    const movieWeight = computeBalancedWatchWeight(5400);
+    const afkMovieWeight = computeBalancedWatchWeight(14400);
+    expect(microWeight).toBeCloseTo(Math.sqrt(2), 2);
+    expect(movieWeight).toBeCloseTo(Math.sqrt(90), 2);
+    expect(afkMovieWeight).toBe(movieWeight); // AFK beyond 90m adds zero extra weight
+
+    // Same viewer looping movie 10 times in one day counts only once
+    const { userCentricGrossByVideo } = computeUserCentricVideoGross(
+      [{ viewerKey: 'u1', amountKes: 10 }],
+      [
+        { viewerKey: 'u1', videoId: 'micro-1', watchSeconds: 120, dayKey: '2026-11-17' },
+        ...Array.from({ length: 10 }, () => ({
+          viewerKey: 'u1',
+          videoId: 'movie-1',
+          watchSeconds: 5400,
+          dayKey: '2026-11-17',
+        })),
+      ],
+      new Set(['micro-1', 'movie-1']),
+    );
+    // Movie gets sqrt(90)/(sqrt(90)+sqrt(2)) ≈ 87% of KES 10, Micro gets ~13% (not 97.8% vs 2.2% and not 10x looped)
+    expect(userCentricGrossByVideo['movie-1']).toBeCloseTo(10 * (movieWeight / (movieWeight + microWeight)), 2);
+    expect(userCentricGrossByVideo['micro-1']).toBeCloseTo(10 * (microWeight / (movieWeight + microWeight)), 2);
   });
 });

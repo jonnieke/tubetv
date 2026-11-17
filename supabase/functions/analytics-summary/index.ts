@@ -365,7 +365,8 @@ serve(async (req) => {
     }
   }
 
-  const playsByPayer = new Map<string, Map<string, number>>();
+  // Deduplicate replays per (payerKey, videoId, dayKey) and apply square-root duration weighting (capped at 90 min)
+  const dedupedDayBest = new Map<string, { payerKey: string; vid: string; weight: number }>();
   if (Array.isArray(rangeEventsRes.data)) {
     for (const row of rangeEventsRes.data) {
       if (row.event_name !== "qualified_view" && row.event_name !== "playback_complete") continue;
@@ -373,14 +374,26 @@ serve(async (req) => {
       const vid = typeof props.videoId === "string" ? props.videoId.trim() : "";
       const payerKey = String(props.userId || props.phone || props.viewerId || "").trim();
       if (!vid || !payerKey || payerKey === "Guest") continue;
-      const weight = typeof props.watchSeconds === "number" && props.watchSeconds > 0 ? props.watchSeconds : 30;
-      let vidMap = playsByPayer.get(payerKey);
-      if (!vidMap) {
-        vidMap = new Map<string, number>();
-        playsByPayer.set(payerKey, vidMap);
+      const rawWatch = typeof props.watchSeconds === "number" && props.watchSeconds > 0 ? props.watchSeconds : 30;
+      const clampedWatch = Math.max(30, Math.min(5400, rawWatch));
+      const weight = Math.sqrt(clampedWatch / 60);
+      const dayKey = typeof row.occurred_at === "string" ? row.occurred_at.slice(0, 10) : "unknown";
+      const dedupeKey = `${payerKey}::${vid}::${dayKey}`;
+      const existing = dedupedDayBest.get(dedupeKey);
+      if (!existing || weight > existing.weight) {
+        dedupedDayBest.set(dedupeKey, { payerKey, vid, weight });
       }
-      vidMap.set(vid, (vidMap.get(vid) || 0) + weight);
     }
+  }
+
+  const playsByPayer = new Map<string, Map<string, number>>();
+  for (const item of dedupedDayBest.values()) {
+    let vidMap = playsByPayer.get(item.payerKey);
+    if (!vidMap) {
+      vidMap = new Map<string, number>();
+      playsByPayer.set(item.payerKey, vidMap);
+    }
+    vidMap.set(item.vid, (vidMap.get(item.vid) || 0) + item.weight);
   }
 
   const rangeUserCentricGrossByVideo: Record<string, number> = {};
