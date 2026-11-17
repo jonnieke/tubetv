@@ -414,9 +414,6 @@ const VideoCard: React.FC<VideoCardProps> = ({
         hlsRef.current = hls;
         hls.loadSource(activeVideoSrc);
         hls.attachMedia(currentEl);
-        hls.on(Hls.Events.BUFFER_STALLED, () => {
-          hls.startLoad();
-        });
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           if (cancelled || !videoRef.current) {
             hls.destroy();
@@ -450,7 +447,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
         });
 
         hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (!data.fatal || cancelled) return;
+          if (cancelled) return;
+          if (!data.fatal) {
+            if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+              hls.startLoad();
+            }
+            return;
+          }
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             console.warn('HLS network error, recovering stream...', data);
             hls.startLoad();
@@ -861,7 +864,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     // Share of Play: 30s Qualified View (or 80% for paid content < 30s)
     const isPaidContent = Boolean(
       video.isPremium ||
-        video.accessTier === 'paid' ||
+        video.accessTier === 'premium' ||
         isLongFormatVideo(video) ||
         (typeof video.episode === 'number' && video.episode >= 3),
     );

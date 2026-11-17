@@ -580,7 +580,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
           if (txStatus === 'failed' || txStatus === 'cancelled') {
             clearTimers();
             setStatus('error');
-            setErrorMessage(formatMpesaFailureMessage(poll.transaction.result_description));
+            setErrorMessage(formatMpesaFailureMessage(poll.transaction.result_description ?? undefined));
             trackEvent('paywall_failed', {
               videoId: video?.id || 'pass_direct',
               plan: selectedPlan,
@@ -1253,7 +1253,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                           type="button"
                           onClick={() => {
                             setStatus('idle');
-                            setFeedback(null);
+                            setErrorMessage('');
                           }}
                           className="text-emerald-300 hover:text-emerald-200 underline cursor-pointer"
                         >
@@ -1265,7 +1265,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                           onClick={() => {
                             setPaymentMethod('paystack');
                             setStatus('idle');
-                            setFeedback(null);
+                            setErrorMessage('');
                           }}
                           className="text-blue-300 hover:text-blue-200 underline cursor-pointer"
                         >

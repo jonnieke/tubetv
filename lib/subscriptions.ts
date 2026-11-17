@@ -594,11 +594,22 @@ export async function restorePaystackPass(reference: string, emailOrPhone?: stri
   return stored;
 }
 
+export interface MpesaCheckoutTransaction {
+  id: string;
+  status: string;
+  checkoutToken: string;
+  checkoutRequestId?: string;
+  reference?: string;
+  authorizationUrl?: string;
+  message?: string;
+  isRatiba?: boolean;
+}
+
 export async function startMpesaPayment(
   planCode: SubscriptionPlanCode,
   phone: string,
   options?: { autoRenew?: boolean },
-) {
+): Promise<MpesaCheckoutTransaction> {
   if (!isSupabaseConfigured) {
     throw new Error('M-Pesa payments are not configured in this environment.');
   }

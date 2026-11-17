@@ -56,7 +56,7 @@ describe('catalogue artwork presentation', () => {
       <LanguageProvider>
         <PlaybackProvider
           value={{
-            preferences: { autoplay: true, dataSaver: false, maxQuality: 'auto' },
+            preferences: { autoplay: true, dataSaver: false, quality: 'auto', captions: false, maximumRating: '16' },
             getProgress: () => undefined,
             onEnded: () => {},
             onProgress: () => {},

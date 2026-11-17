@@ -41,6 +41,7 @@ export interface BunnyVideoItem {
   dateUploaded: string;
   storageSize: number;
   collectionId?: string;
+  isShort?: boolean;
   metaTags: { property: string; value: string }[];
   availableResolutions?: string;
 }

@@ -391,7 +391,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
   useEffect(() => {
     if (!unlockedCreatorName || !unlockedProfileMeta?.code) return;
     const creatorVideoIds = videos
-      .filter((v) => (v.creator || v.author || '').trim().toLowerCase() === unlockedCreatorName.trim().toLowerCase())
+      .filter((v) => (v.author || '').trim().toLowerCase() === unlockedCreatorName.trim().toLowerCase())
       .map((v) => v.id);
     if (creatorVideoIds.length === 0) return;
 
@@ -840,9 +840,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            if (videos.length > 0) {
-                              onRequireUnlock?.(videos[0]);
-                            }
+                            onOpenBuyPass?.();
                           }}
                           className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 transition shadow cursor-pointer"
                         >

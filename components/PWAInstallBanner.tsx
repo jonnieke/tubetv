@@ -24,7 +24,6 @@ export async function triggerPwaPrompt(): Promise<boolean> {
     await globalDeferredPrompt.prompt();
     const choice = await globalDeferredPrompt.userChoice;
     if (choice.outcome === 'accepted') {
-      trackEvent('pwa_installed', { trigger: 'manual' });
       globalDeferredPrompt = null;
       return true;
     }
@@ -87,7 +86,6 @@ export default function PWAInstallBanner() {
       setIsStandalone(true);
       setDeferredPrompt(null);
       globalDeferredPrompt = null;
-      trackEvent('pwa_installed', { trigger: 'automatic' });
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -115,7 +113,6 @@ export default function PWAInstallBanner() {
       await deferredPrompt.prompt();
       const choice = await deferredPrompt.userChoice;
       if (choice.outcome === 'accepted') {
-        trackEvent('pwa_installed', { trigger: 'banner' });
         setDismissed(true);
       }
       setDeferredPrompt(null);

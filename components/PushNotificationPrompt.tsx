@@ -44,7 +44,6 @@ export default function PushNotificationPrompt({ seriesTitle, onSubscribed, inli
     if (result.success) {
       setSuccess(true);
       setPermission('granted');
-      trackEvent('push_notifications_enabled', { seriesTitle: seriesTitle || 'all' });
       onSubscribed?.();
       setTimeout(() => setDismissed(true), 3500);
     } else {

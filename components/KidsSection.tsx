@@ -207,7 +207,7 @@ const KidsSection: React.FC<KidsSectionProps> = ({
                   video={video}
                   isWatchLater={watchLaterIds.includes(video.id)}
                   onToggleWatchLater={onToggleWatchLater}
-                  onSelectVideo={onPlay}
+                  onPlay={() => onPlay(video, { autoPlay: true })}
                   uniformAspect="video"
                 />
               </div>
