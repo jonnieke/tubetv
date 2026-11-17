@@ -878,6 +878,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
         episode: video.episode || 1,
         category: video.category,
         watchSeconds: Math.round(current),
+        isPaid: isVideoLocked(video, false),
       });
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
@@ -1189,6 +1190,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                           watchSeconds: Math.round(currentTime),
                           category: video.category,
                           skippedOutro: true,
+                          isPaid: isVideoLocked(video, false),
                         });
                         onNextEpisode();
                       } else if (videoRef.current) {
@@ -1269,6 +1271,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                     watchSeconds: Math.round(total),
                     category: video.category,
                     seriesId: video.seriesId || '',
+                    isPaid: isVideoLocked(video, false),
                   });
                   // If short video completed without reaching 30s threshold, award Qualified View on full completion
                   if (!qualifiedViewFiredRef.current && (total >= 15 || total >= (duration || 0) * 0.9)) {
@@ -1280,6 +1283,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                       episode: video.episode || 1,
                       category: video.category,
                       watchSeconds: Math.round(total),
+                      isPaid: isVideoLocked(video, false),
                     });
                   }
                 }

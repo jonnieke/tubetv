@@ -31,14 +31,36 @@ export function sanitizeEventProperties(properties: EventProperties = {}) {
   );
 }
 
-function getAnonViewerMeta(): { viewerId?: string; device?: string; city?: string } {
+function normalizeAnalyticsPhone(raw: string): string | undefined {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('254') && digits.length === 12) return `+${digits}`;
+  if (digits.startsWith('0') && digits.length === 10 && /^0[17]/.test(digits)) return `+254${digits.slice(1)}`;
+  if (/^[17]\d{8}$/.test(digits)) return `+254${digits}`;
+  return undefined;
+}
+
+function getAnonViewerMeta(): { viewerId?: string; device?: string; city?: string; phone?: string; passRef?: string } {
   if (typeof window === 'undefined') return {};
   let viewerId: string | undefined;
+  let phone: string | undefined;
+  let passRef: string | undefined;
   try {
     viewerId = window.localStorage.getItem('tubetv_viewer_id') || undefined;
     if (!viewerId) {
       viewerId = `vw_${Math.random().toString(36).slice(2, 10)}`;
       window.localStorage.setItem('tubetv_viewer_id', viewerId);
+    }
+    const rawPass = window.localStorage.getItem('tubetv_pass');
+    if (rawPass) {
+      const parsed = JSON.parse(rawPass) as { phone?: string; mpesaReceipt?: string; expiresAt?: number };
+      if (!parsed.expiresAt || parsed.expiresAt > Date.now()) {
+        if (parsed.phone) phone = normalizeAnalyticsPhone(parsed.phone);
+        if (!phone && parsed.mpesaReceipt) passRef = String(parsed.mpesaReceipt).trim().slice(0, 80);
+      }
+    }
+    if (!phone) {
+      const savedPhone = window.localStorage.getItem('tubetv_saved_phone') || '';
+      if (savedPhone) phone = normalizeAnalyticsPhone(savedPhone);
     }
   } catch {
     // Ignore storage errors
@@ -55,7 +77,13 @@ function getAnonViewerMeta(): { viewerId?: string; device?: string; city?: strin
   }
   const w = window.innerWidth || 1024;
   const device = w < 640 ? 'Mobile' : w < 1024 ? 'Tablet' : 'Desktop';
-  return { viewerId, device, ...(city ? { city } : {}) };
+  return {
+    viewerId,
+    device,
+    ...(city ? { city } : {}),
+    ...(phone ? { phone } : {}),
+    ...(passRef ? { passRef } : {}),
+  };
 }
 
 export function trackEvent(name: AnalyticsEventName, properties: EventProperties = {}) {

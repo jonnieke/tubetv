@@ -202,7 +202,7 @@ serve(async (req) => {
   // Also aggregate 30-day verified Qualified Views per videoId and succeeded payment_transactions revenue,
   // plus detailed Date A -> Date B interaction, revenue & QV logs.
   const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
-  const [qvRes, txRes, rangeEventsRes, rangeTxRes] = await Promise.all([
+  const [qvRes, txRes, rangeEventsRes, rangeTxRes, rangeRoyaltyEventsRes] = await Promise.all([
     client
       .from("analytics_events")
       .select("properties, occurred_at")
@@ -225,10 +225,17 @@ serve(async (req) => {
       .limit(1000),
     client
       .from("payment_transactions")
-      .select("amount_kes, region_code, created_at, user_id, phone_e164")
+      .select("amount_kes, region_code, created_at, user_id, phone_e164, mpesa_receipt")
       .eq("status", "succeeded")
       .gte("created_at", rangeFromIso)
       .lte("created_at", rangeToIso)
+      .limit(5000),
+    client
+      .from("analytics_events")
+      .select("event_name, properties, occurred_at")
+      .in("event_name", ["qualified_view", "playback_complete"])
+      .gte("occurred_at", rangeFromIso)
+      .lte("occurred_at", rangeToIso)
       .limit(5000),
   ]);
 
@@ -346,6 +353,14 @@ serve(async (req) => {
     }
   }
 
+  const normalizePayerPhone = (raw: unknown): string => {
+    const digits = String(raw || "").replace(/\D/g, "");
+    if (digits.startsWith("254") && digits.length === 12) return `+${digits}`;
+    if (digits.startsWith("0") && digits.length === 10 && /^0[17]/.test(digits)) return `+254${digits.slice(1)}`;
+    if (/^[17]\d{8}$/.test(digits)) return `+254${digits}`;
+    return "";
+  };
+
   let rangeRevenueKes = 0;
   const rangeRevenueByRegion: Record<string, number> = {};
   const spendByPayer = new Map<string, number>();
@@ -356,7 +371,8 @@ serve(async (req) => {
       const reg = String(tx.region_code || "KE").toUpperCase();
       rangeRevenueKes += amt;
       rangeRevenueByRegion[reg] = (rangeRevenueByRegion[reg] || 0) + amt;
-      const payerKey = String(tx.user_id || tx.phone_e164 || "").trim();
+      const normPhone = normalizePayerPhone(tx.phone_e164);
+      const payerKey = String(tx.user_id || normPhone || tx.mpesa_receipt || "").trim();
       if (payerKey && amt > 0) {
         spendByPayer.set(payerKey, (spendByPayer.get(payerKey) || 0) + amt);
       } else if (amt > 0) {
@@ -367,12 +383,15 @@ serve(async (req) => {
 
   // Deduplicate replays per (payerKey, videoId, dayKey) and apply square-root duration weighting (capped at 90 min)
   const dedupedDayBest = new Map<string, { payerKey: string; vid: string; weight: number }>();
-  if (Array.isArray(rangeEventsRes.data)) {
-    for (const row of rangeEventsRes.data) {
+  const royaltyEvents = Array.isArray(rangeRoyaltyEventsRes.data) ? rangeRoyaltyEventsRes.data : rangeEventsRes.data;
+  if (Array.isArray(royaltyEvents)) {
+    for (const row of royaltyEvents) {
       if (row.event_name !== "qualified_view" && row.event_name !== "playback_complete") continue;
       const props = (row.properties || {}) as Record<string, unknown>;
+      if (props.isPaid === false) continue;
       const vid = typeof props.videoId === "string" ? props.videoId.trim() : "";
-      const payerKey = String(props.userId || props.phone || props.viewerId || "").trim();
+      const normPhone = normalizePayerPhone(props.phone);
+      const payerKey = String(props.userId || normPhone || props.passRef || props.viewerId || "").trim();
       if (!vid || !payerKey || payerKey === "Guest") continue;
       const rawWatch = typeof props.watchSeconds === "number" && props.watchSeconds > 0 ? props.watchSeconds : 30;
       const clampedWatch = Math.max(30, Math.min(5400, rawWatch));

@@ -519,8 +519,10 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           </span>
         </div>
         <span className="text-[11px] text-zinc-400">
-          {userCentricGrossByVideo && Object.keys(userCentricGrossByVideo).length > 0
-            ? 'User-Centric Per-Pass Split (each pass funds only what that viewer watched)'
+          {poolWindow !== 'today' && userCentricGrossByVideo && Object.keys(userCentricGrossByVideo).length > 0
+            ? `User-Centric Per-Pass Split (KSh ${Math.round(
+                Object.values(userCentricGrossByVideo).reduce((a, b) => a + b, 0),
+              ).toLocaleString()} attributed · KSh ${Math.round(unattributedGrossKes).toLocaleString()} global fallback)`
             : 'Only Premium titles share the pool (payout eligible at ≥ KSh 1,000)'}
         </span>
       </div>
