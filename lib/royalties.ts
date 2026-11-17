@@ -138,16 +138,84 @@ export function parseDurationToSeconds(duration: string | number | undefined): n
   return parts[0] || 120;
 }
 
+export interface UserCentricPassInput {
+  viewerKey: string;
+  amountKes: number;
+}
+
+export interface UserCentricPlayInput {
+  viewerKey: string;
+  videoId: string;
+  watchSeconds?: number;
+}
+
+/**
+ * Allocates each subscriber's own gross payment strictly to the Premium videos
+ * that specific subscriber watched (User-Centric Payment System), preventing
+ * heavy binge-watchers from diluting other subscribers' creators.
+ */
+export function computeUserCentricVideoGross(
+  passes: UserCentricPassInput[],
+  plays: UserCentricPlayInput[],
+  eligibleVideoIds: Set<string>,
+): { userCentricGrossByVideo: Record<string, number>; unattributedGrossKes: number } {
+  const spendByViewer = new Map<string, number>();
+  for (const p of passes) {
+    const key = (p.viewerKey || '').trim();
+    const amt = Number(p.amountKes) || 0;
+    if (!key || amt <= 0) continue;
+    spendByViewer.set(key, (spendByViewer.get(key) || 0) + amt);
+  }
+
+  const playsByViewer = new Map<string, Map<string, number>>();
+  for (const ev of plays) {
+    const key = (ev.viewerKey || '').trim();
+    const vid = (ev.videoId || '').trim();
+    if (!key || !vid || !eligibleVideoIds.has(vid)) continue;
+    const weight = Math.max(1, Number(ev.watchSeconds) || 30);
+    let vidMap = playsByViewer.get(key);
+    if (!vidMap) {
+      vidMap = new Map<string, number>();
+      playsByViewer.set(key, vidMap);
+    }
+    vidMap.set(vid, (vidMap.get(vid) || 0) + weight);
+  }
+
+  const userCentricGrossByVideo: Record<string, number> = {};
+  let unattributedGrossKes = 0;
+
+  for (const [viewerKey, totalSpend] of spendByViewer.entries()) {
+    const vidMap = playsByViewer.get(viewerKey);
+    if (!vidMap || vidMap.size === 0) {
+      unattributedGrossKes += totalSpend;
+      continue;
+    }
+    let totalWeight = 0;
+    for (const w of vidMap.values()) totalWeight += w;
+    if (totalWeight <= 0) {
+      unattributedGrossKes += totalSpend;
+      continue;
+    }
+    for (const [vid, w] of vidMap.entries()) {
+      userCentricGrossByVideo[vid] = (userCentricGrossByVideo[vid] || 0) + totalSpend * (w / totalWeight);
+    }
+  }
+
+  return { userCentricGrossByVideo, unattributedGrossKes };
+}
+
 /**
  * Computes the full Share-of-Play distribution for a set of Bunny catalogue items or Videos.
- * Integrates real 30s Qualified Views where available (or derives high-fidelity qualified view
- * metrics from lifetime views and completion factors).
+ * Supports User-Centric Per-Pass Attribution when `userCentricGrossByVideo` is supplied,
+ * falling back to global Share-of-Play for unattributed revenue.
  */
 export function computeShareOfPlayRoyalties(
   items: (BunnyVideoItem | Video)[],
   config: RoyaltyPoolConfig,
   overrides?: {
     measuredQualifiedViews?: Record<string, number>;
+    userCentricGrossByVideo?: Record<string, number>;
+    unattributedGrossKes?: number;
   }
 ): RoyaltyComputationResult {
   const grossRev = Math.max(0, config.grossSubscriptionRevenueKes || 0);
@@ -209,6 +277,22 @@ export function computeShareOfPlayRoyalties(
 
   // Safe fallback if zero views
   const safeTotalQv = Math.max(1, totalQualifiedViews);
+  const useUserCentric = Boolean(overrides?.userCentricGrossByVideo);
+  const netFactor = (1 - feePercent / 100) * (poolPercent / 100);
+  const unattributedGross = Math.max(0, overrides?.unattributedGrossKes ?? 0);
+
+  // Compute per-video creator net earnings (KES)
+  const itemEarningsByGuid = new Map<string, number>();
+  for (const item of contentIntermediates) {
+    if (useUserCentric) {
+      const directGross = overrides?.userCentricGrossByVideo?.[item.rawGuid] || 0;
+      const unattributedShareGross = totalQualifiedViews > 0 ? unattributedGross * (item.qv / safeTotalQv) : 0;
+      itemEarningsByGuid.set(item.rawGuid, (directGross + unattributedShareGross) * netFactor);
+    } else {
+      const share = totalQualifiedViews > 0 ? item.qv / safeTotalQv : 0;
+      itemEarningsByGuid.set(item.rawGuid, netCreatorPool * share);
+    }
+  }
 
   // Group by creator / author
   const creatorMap = new Map<
@@ -219,6 +303,7 @@ export function computeShareOfPlayRoyalties(
       seriesCounts: Record<string, number>;
       qualifiedViews: number;
       watchSeconds: number;
+      netEarningsKes: number;
     }
   >();
 
@@ -230,11 +315,13 @@ export function computeShareOfPlayRoyalties(
       seriesCounts: {},
       qualifiedViews: 0,
       watchSeconds: 0,
+      netEarningsKes: 0,
     };
 
     entry.titlesCount += 1;
     entry.qualifiedViews += item.qv;
     entry.watchSeconds += item.totalContentWatchSec;
+    entry.netEarningsKes += itemEarningsByGuid.get(item.rawGuid) || 0;
 
     const series = item.video.seriesTitle || 'Standalone';
     entry.seriesCounts[series] = (entry.seriesCounts[series] || 0) + 1;
@@ -244,8 +331,10 @@ export function computeShareOfPlayRoyalties(
 
   // Build Creatives Summary list
   const creatorList: CreatorRoyaltySummary[] = Array.from(creatorMap.values()).map((c) => {
-    const shareOfPlay = totalQualifiedViews > 0 ? (c.qualifiedViews / safeTotalQv) * 100 : 0;
-    const grossShare = netCreatorPool * (shareOfPlay / 100);
+    const shareOfPlay = useUserCentric
+      ? (netCreatorPool > 0 ? (c.netEarningsKes / netCreatorPool) * 100 : 0)
+      : (totalQualifiedViews > 0 ? (c.qualifiedViews / safeTotalQv) * 100 : 0);
+    const grossShare = c.netEarningsKes;
     const netEarnings = Math.round(grossShare * 100) / 100;
     const progressPercent = Math.min(100, Math.round((netEarnings / thresholdKes) * 100));
     const isEligible = netEarnings >= thresholdKes;
@@ -279,8 +368,10 @@ export function computeShareOfPlayRoyalties(
 
   // Build Content Performance Rows
   const contentList: ContentPerformanceRow[] = contentIntermediates.map((item) => {
-    const shareOfPlay = totalQualifiedViews > 0 ? (item.qv / safeTotalQv) * 100 : 0;
-    const attributedRev = netCreatorPool * (shareOfPlay / 100);
+    const attributedRev = itemEarningsByGuid.get(item.rawGuid) || 0;
+    const shareOfPlay = useUserCentric
+      ? (netCreatorPool > 0 ? (attributedRev / netCreatorPool) * 100 : 0)
+      : (totalQualifiedViews > 0 ? (item.qv / safeTotalQv) * 100 : 0);
     const completionRate =
       item.durationSec > 0 ? Math.min(100, Math.round((item.avgWatchSec / item.durationSec) * 100)) : 70;
 

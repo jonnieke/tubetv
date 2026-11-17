@@ -225,7 +225,7 @@ serve(async (req) => {
       .limit(1000),
     client
       .from("payment_transactions")
-      .select("amount_kes, region_code, created_at")
+      .select("amount_kes, region_code, created_at, user_id, phone_e164")
       .eq("status", "succeeded")
       .gte("created_at", rangeFromIso)
       .lte("created_at", rangeToIso)
@@ -348,12 +348,56 @@ serve(async (req) => {
 
   let rangeRevenueKes = 0;
   const rangeRevenueByRegion: Record<string, number> = {};
+  const spendByPayer = new Map<string, number>();
+  let rangeUnattributedGrossKes = 0;
   if (Array.isArray(rangeTxRes.data)) {
     for (const tx of rangeTxRes.data) {
       const amt = Number(tx.amount_kes) || 0;
       const reg = String(tx.region_code || "KE").toUpperCase();
       rangeRevenueKes += amt;
       rangeRevenueByRegion[reg] = (rangeRevenueByRegion[reg] || 0) + amt;
+      const payerKey = String(tx.user_id || tx.phone_e164 || "").trim();
+      if (payerKey && amt > 0) {
+        spendByPayer.set(payerKey, (spendByPayer.get(payerKey) || 0) + amt);
+      } else if (amt > 0) {
+        rangeUnattributedGrossKes += amt;
+      }
+    }
+  }
+
+  const playsByPayer = new Map<string, Map<string, number>>();
+  if (Array.isArray(rangeEventsRes.data)) {
+    for (const row of rangeEventsRes.data) {
+      if (row.event_name !== "qualified_view" && row.event_name !== "playback_complete") continue;
+      const props = (row.properties || {}) as Record<string, unknown>;
+      const vid = typeof props.videoId === "string" ? props.videoId.trim() : "";
+      const payerKey = String(props.userId || props.phone || props.viewerId || "").trim();
+      if (!vid || !payerKey || payerKey === "Guest") continue;
+      const weight = typeof props.watchSeconds === "number" && props.watchSeconds > 0 ? props.watchSeconds : 30;
+      let vidMap = playsByPayer.get(payerKey);
+      if (!vidMap) {
+        vidMap = new Map<string, number>();
+        playsByPayer.set(payerKey, vidMap);
+      }
+      vidMap.set(vid, (vidMap.get(vid) || 0) + weight);
+    }
+  }
+
+  const rangeUserCentricGrossByVideo: Record<string, number> = {};
+  for (const [payerKey, spend] of spendByPayer.entries()) {
+    const vidMap = playsByPayer.get(payerKey);
+    if (!vidMap || vidMap.size === 0) {
+      rangeUnattributedGrossKes += spend;
+      continue;
+    }
+    let totalW = 0;
+    for (const w of vidMap.values()) totalW += w;
+    if (totalW <= 0) {
+      rangeUnattributedGrossKes += spend;
+      continue;
+    }
+    for (const [vid, w] of vidMap.entries()) {
+      rangeUserCentricGrossByVideo[vid] = (rangeUserCentricGrossByVideo[vid] || 0) + spend * (w / totalW);
     }
   }
 
@@ -380,6 +424,8 @@ serve(async (req) => {
       rangeRevenueKes,
       rangeRevenueByRegion,
       rangeQualifiedViewsByVideo,
+      rangeUserCentricGrossByVideo,
+      rangeUnattributedGrossKes,
       revenueByRegion,
       revenueByChannel,
       revenueByPlan,

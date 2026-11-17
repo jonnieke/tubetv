@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeShareOfPlayRoyalties,
+  computeUserCentricVideoGross,
   getQualifiedViewThresholdSeconds,
   parseDurationToSeconds,
   MINIMUM_PAYOUT_THRESHOLD_KES,
@@ -175,5 +176,38 @@ describe('Creator Royalties & Share of Play Engine', () => {
     expect(getQualifiedViewThresholdSeconds(15, true)).toBeCloseTo(12, 2);
     expect(getQualifiedViewThresholdSeconds(25, false)).toBe(30);
     expect(getQualifiedViewThresholdSeconds(45, true)).toBe(30);
+  });
+
+  it('allocates user-centric royalties per pass without heavy binge dilution (5 vs 200 plays)', () => {
+    const videos: Video[] = [
+      { id: 'v-a', title: 'Campus Hustle', thumbnail: '', views: 5, duration: '10:00', isPremium: true, author: 'Creator A', category: 'Movies' },
+      { id: 'v-b', title: 'Binge Drama', thumbnail: '', views: 200, duration: '02:00', isPremium: true, author: 'Creator B', category: 'Series' },
+    ];
+    const passes = [
+      { viewerKey: 'user-a', amountKes: 10 },
+      { viewerKey: 'user-b', amountKes: 10 },
+    ];
+    const plays = [
+      ...Array.from({ length: 5 }, () => ({ viewerKey: 'user-a', videoId: 'v-a', watchSeconds: 60 })),
+      ...Array.from({ length: 200 }, () => ({ viewerKey: 'user-b', videoId: 'v-b', watchSeconds: 60 })),
+    ];
+    const { userCentricGrossByVideo, unattributedGrossKes } = computeUserCentricVideoGross(
+      passes,
+      plays,
+      new Set(['v-a', 'v-b']),
+    );
+    expect(unattributedGrossKes).toBe(0);
+    expect(userCentricGrossByVideo['v-a']).toBeCloseTo(10, 2);
+    expect(userCentricGrossByVideo['v-b']).toBeCloseTo(10, 2);
+
+    const result = computeShareOfPlayRoyalties(
+      videos,
+      { periodLabel: 'Today', grossSubscriptionRevenueKes: 20 },
+      { measuredQualifiedViews: { 'v-a': 5, 'v-b': 200 }, userCentricGrossByVideo, unattributedGrossKes },
+    );
+    const creatorA = result.creators.find((c) => c.creator === 'Creator A')!;
+    const creatorB = result.creators.find((c) => c.creator === 'Creator B')!;
+    expect(creatorA.netEarningsKes).toBeCloseTo(5.91, 2);
+    expect(creatorB.netEarningsKes).toBeCloseTo(5.91, 2);
   });
 });

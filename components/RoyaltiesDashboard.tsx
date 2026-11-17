@@ -61,6 +61,8 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
   const [todayRevenueKes, setTodayRevenueKes] = useState<number>(0);
   const [qvs30d, setQvs30d] = useState<Record<string, number>>({});
   const [qvsToday, setQvsToday] = useState<Record<string, number>>({});
+  const [userCentricGrossByVideo, setUserCentricGrossByVideo] = useState<Record<string, number> | undefined>(undefined);
+  const [unattributedGrossKes, setUnattributedGrossKes] = useState<number>(0);
   const [hasSummaryLoaded, setHasSummaryLoaded] = useState<boolean>(false);
   const [isEditingPool, setIsEditingPool] = useState<boolean>(false);
   const [creatorPoolPercent, setCreatorPoolPercent] = useState<number>(DEFAULT_CREATOR_POOL_PERCENT);
@@ -124,6 +126,13 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           setTodayRevenueKes(summaryTodayRev);
           setLiveDbRevenue(rangeRev);
           setGrossRevenueInput(rangeRev);
+          if (summaryData.rangeUserCentricGrossByVideo && typeof summaryData.rangeUserCentricGrossByVideo === 'object') {
+            setUserCentricGrossByVideo(summaryData.rangeUserCentricGrossByVideo as Record<string, number>);
+            setUnattributedGrossKes(Number(summaryData.rangeUnattributedGrossKes) || 0);
+          } else {
+            setUserCentricGrossByVideo(undefined);
+            setUnattributedGrossKes(0);
+          }
         }
 
         // 2. Fallback payment_transactions query scoped to fromDate -> toDate only if analytics-summary did not return revenue
@@ -196,10 +205,15 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
         payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
       },
       hasSummaryLoaded || Object.keys(activeMeasuredQVs).length > 0
-        ? { measuredQualifiedViews: activeMeasuredQVs }
+        ? {
+            measuredQualifiedViews: activeMeasuredQVs,
+            ...(poolWindow !== 'today' && userCentricGrossByVideo && Object.keys(userCentricGrossByVideo).length > 0
+              ? { userCentricGrossByVideo, unattributedGrossKes }
+              : {}),
+          }
         : undefined,
     );
-  }, [videos, selectedPeriod, poolWindow, grossRevenueInput, creatorPoolPercent, activeMeasuredQVs, hasSummaryLoaded]);
+  }, [videos, selectedPeriod, poolWindow, grossRevenueInput, creatorPoolPercent, activeMeasuredQVs, hasSummaryLoaded, userCentricGrossByVideo, unattributedGrossKes]);
 
   // Filtered Creatives
   const filteredCreators = useMemo(() => {
@@ -504,7 +518,11 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
             {' '}÷ <strong className="text-amber-300">{royaltyResult.totalQualifiedViews.toLocaleString()} Premium 30s+ QVs</strong>
           </span>
         </div>
-        <span className="text-[11px] text-zinc-400">Only Premium titles share the pool (payout eligible at ≥ KSh 1,000)</span>
+        <span className="text-[11px] text-zinc-400">
+          {userCentricGrossByVideo && Object.keys(userCentricGrossByVideo).length > 0
+            ? 'User-Centric Per-Pass Split (each pass funds only what that viewer watched)'
+            : 'Only Premium titles share the pool (payout eligible at ≥ KSh 1,000)'}
+        </span>
       </div>
 
       {/* KPI Cards */}
