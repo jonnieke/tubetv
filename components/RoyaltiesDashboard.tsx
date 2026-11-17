@@ -69,6 +69,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeSubTab, setActiveSubTab] = useState<'creatives' | 'content'>('creatives');
   const [expandedCreator, setExpandedCreator] = useState<string | null>(null);
+  const [showRules, setShowRules] = useState<boolean>(false);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ELIGIBLE' | 'CARRIED_FORWARD'>('ALL');
   const [liveDbRevenue, setLiveDbRevenue] = useState<number | null>(null);
   const [measuredQVs, setMeasuredQVs] = useState<Record<string, number>>({});
@@ -661,38 +662,39 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
         </div>
       </div>
 
-      {/* Share of Play Best Practice Explainer Box */}
-      <div className="bg-gradient-to-r from-zinc-900 via-zinc-900/90 to-zinc-950 border border-amber-500/20 rounded-2xl p-5">
-        <div className="flex items-start gap-3.5">
-          <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <Info className="w-5 h-5" />
+      {/* Collapsible Payout Rules Bar */}
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs text-zinc-300">
+            <Info className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong className="text-white">60/40 User-Centric Split</strong> · 30s+ Qualified Views · KSh 1,000 monthly minimum payout
+            </span>
           </div>
-          <div className="flex-1">
-            <h4 className="text-sm font-bold text-white flex items-center gap-2">
-              <span>Standard 30-Second Qualified View & Payout Rules</span>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Rule Policy
-              </span>
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-zinc-400 mt-2.5">
-              <div className="bg-zinc-950/70 p-3 rounded-xl border border-zinc-800">
-                <strong className="text-zinc-200 block mb-1">1. 30s Qualified View (QV)</strong>
-                A view only qualifies for payment once playback exceeds 30 continuous seconds (or 100% completion if under 30s). Bounce clicks do not dilute the pool.
-              </div>
-              <div className="bg-zinc-950/70 p-3 rounded-xl border border-zinc-800">
-                <strong className="text-zinc-200 block mb-1">2. 60/40 Share of Play Formula</strong>
-                <code className="text-amber-300 font-mono text-[11px]">
-                  (Creative QVs ÷ Total QVs) × 60% Net Pool
-                </code>
-                . Revenue share is 60/40 in favor of the creative. Creatives receive an exact pro-rata proportion of 60% subscription pool based on actual qualified engagement.
-              </div>
-              <div className="bg-zinc-950/70 p-3 rounded-xl border border-zinc-800">
-                <strong className="text-zinc-200 block mb-1">3. KSh 1,000 Monthly Settlement</strong>
-                Creatives meeting or exceeding KSh 1,000 are marked <strong>Eligible</strong> for instant M-Pesa B2C payout. Balances below KSh 1,000 roll forward automatically.
-              </div>
+          <button
+            type="button"
+            onClick={() => setShowRules((v) => !v)}
+            className="rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 text-[11px] font-semibold text-zinc-200 transition-colors"
+          >
+            {showRules ? 'Hide Rules' : '? Rules'}
+          </button>
+        </div>
+        {showRules && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
+            <div className="bg-zinc-950/70 p-3 rounded-xl border border-zinc-800">
+              <strong className="text-zinc-200 block mb-1">1. 30s Qualified View (QV)</strong>
+              A view only qualifies for payment once playback exceeds 30 continuous seconds (or 80% completion if under 30s). Bounce clicks do not dilute the pool.
+            </div>
+            <div className="bg-zinc-950/70 p-3 rounded-xl border border-zinc-800">
+              <strong className="text-zinc-200 block mb-1">2. 60/40 User-Centric Formula</strong>
+              Each subscriber&apos;s pass funds only the Premium titles they watched, weighted by <code className="text-amber-300 font-mono text-[11px]">√(minutes)</code> (capped at 90m) with 1-play-per-day anti-farming.
+            </div>
+            <div className="bg-zinc-950/70 p-3 rounded-xl border border-zinc-800">
+              <strong className="text-zinc-200 block mb-1">3. KSh 1,000 Monthly Settlement</strong>
+              Creatives meeting or exceeding KSh 1,000 are marked <strong>Eligible</strong> for instant M-Pesa B2C payout. Balances below KSh 1,000 roll forward automatically.
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Main Tabs & Search Filter Header */}
@@ -779,28 +781,24 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           </div>
         </div>
 
-        {/* Sub-tab 1: Creatives & Studios Table */}
+        {/* Sub-tab 1: Creatives & Studios Table (6 clean columns) */}
         {activeSubTab === 'creatives' && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-zinc-950/80 text-zinc-400 font-semibold border-b border-zinc-800">
                 <tr>
-                  <th className="py-3.5 px-4">#</th>
                   <th className="py-3.5 px-4">Creator / Studio</th>
-                  <th className="py-3.5 px-4">Titles</th>
-                  <th className="py-3.5 px-4">Payout Account & Portal Code</th>
-                  <th className="py-3.5 px-4 text-right">30s+ QVs</th>
-                  <th className="py-3.5 px-4 text-right">Watch Time</th>
-                  <th className="py-3.5 px-4 text-right">Share of Play</th>
-                  <th className="py-3.5 px-4 text-right">Net Royalties</th>
-                  <th className="py-3.5 px-4 text-center">Payout Status (KSh 1,000 Threshold)</th>
+                  <th className="py-3.5 px-4">Contents</th>
+                  <th className="py-3.5 px-4 text-right">Engagement</th>
+                  <th className="py-3.5 px-4 text-right">Earned (Net)</th>
+                  <th className="py-3.5 px-4">Payout &amp; Destination</th>
                   <th className="py-3.5 px-4 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60 font-medium">
                 {filteredCreators.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-zinc-500">
+                    <td colSpan={6} className="py-12 text-center text-zinc-500">
                       No creatives match the current filter or search criteria.
                     </td>
                   </tr>
@@ -818,27 +816,81 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                           onClick={() => setExpandedCreator(isExpanded ? null : creator.creator)}
                           className="hover:bg-zinc-800/30 transition-colors cursor-pointer"
                         >
-                          <td className="py-3.5 px-4 text-zinc-500 font-bold">{creator.rank}</td>
                           <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300">
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-[11px] font-bold text-zinc-500 w-5 shrink-0">#{creator.rank}</span>
+                              <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-200 shrink-0">
                                 {creator.creator.charAt(0).toUpperCase()}
                               </div>
-                              <div>
-                                <span className="font-bold text-white block">{creator.creator}</span>
-                                <span className="text-[10px] text-zinc-400">{creator.topSeries}</span>
+                              <div className="min-w-0">
+                                <span className="font-bold text-white block truncate">{creator.creator}</span>
+                                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-zinc-400" onClick={(e) => e.stopPropagation()}>
+                                  <span className="truncate max-w-[140px]">{creator.topSeries}</span>
+                                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 font-mono text-zinc-300">
+                                    {portalCode}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const url = `${window.location.origin}/?creator_code=${encodeURIComponent(portalCode)}`;
+                                      void navigator.clipboard?.writeText(url);
+                                      setPayoutSuccessMessage(
+                                        `✓ Copied Self-Service Creator Portal link for ${creator.creator} (${portalCode})`
+                                      );
+                                    }}
+                                    className="text-zinc-400 hover:text-white underline"
+                                    title="Copy read-only Creator Self-Service Portal link"
+                                  >
+                                    Copy Link
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="inline-flex items-center gap-1 rounded-md bg-zinc-800/80 border border-zinc-700 px-2 py-0.5 text-[11px] font-semibold text-zinc-200">
-                              {creator.titlesCount} {isExpanded ? '▲' : '▼'}
+                            <span className="inline-flex items-center gap-1 rounded-md bg-zinc-800/80 border border-zinc-700 px-2.5 py-1 text-[11px] font-semibold text-zinc-200">
+                              {creator.titlesCount} {creator.titlesCount === 1 ? 'title' : 'titles'} {isExpanded ? '▲' : '▼'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="font-bold text-white">
+                              {creator.qualifiedViews.toLocaleString()} QVs
+                            </div>
+                            <div className="text-[10px] text-zinc-400 mt-0.5">
+                              {creator.totalWatchHours} hrs · <span className="text-zinc-200 font-semibold">{creator.shareOfPlayPercent.toFixed(2)}%</span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <span className="font-mono font-bold text-sm text-emerald-400 block">
+                              KES {creator.netEarningsKes.toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-zinc-500 font-mono">
+                              Gross KES {creator.grossRevenueShareKes.toLocaleString()}
                             </span>
                           </td>
                           <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                            <div className="space-y-1">
+                            <div className="space-y-1.5 max-w-[200px]">
+                              {creator.isEligibleForPayout ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  <span>Eligible (≥ KSh 1,000)</span>
+                                </span>
+                              ) : (
+                                <div className="space-y-1">
+                                  <div className="flex justify-between items-center text-[10px]">
+                                    <span className="text-amber-400 font-semibold">Carried Forward</span>
+                                    <span className="text-zinc-500 font-mono">KES {creator.netEarningsKes} / 1,000</span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-amber-500 rounded-full"
+                                      style={{ width: `${creator.thresholdProgressPercent}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
                               {savedProfile?.payout_account ? (
-                                <div className="text-[11px] text-emerald-300 font-mono">
+                                <div className="text-[11px] text-emerald-300 font-mono truncate">
                                   {savedProfile.payout_account}{' '}
                                   <span className="text-zinc-500 font-sans">
                                     ({savedProfile.payout_rail.split(' ')[0]}
@@ -851,74 +903,10 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                                 <button
                                   type="button"
                                   onClick={() => openEditProfile(creator.creator)}
-                                  className="text-[11px] text-amber-400 hover:underline font-semibold"
+                                  className="text-[11px] text-amber-400 hover:underline font-semibold block"
                                 >
                                   + Set M-Pesa / Bank Account
                                 </button>
-                              )}
-                              <div className="flex items-center gap-1.5">
-                                <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 font-mono text-[10px] text-zinc-300">
-                                  Portal: {portalCode}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const url = `${window.location.origin}/?creator_code=${encodeURIComponent(portalCode)}`;
-                                    void navigator.clipboard?.writeText(url);
-                                    setPayoutSuccessMessage(
-                                      `✓ Copied Self-Service Creator Portal link for ${creator.creator} (${portalCode})`
-                                    );
-                                  }}
-                                  className="text-[10px] text-zinc-400 hover:text-white underline"
-                                  title="Copy read-only Creator Self-Service Portal link"
-                                >
-                                  Copy Link
-                                </button>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-right font-bold text-white">
-                            {creator.qualifiedViews.toLocaleString()}
-                          </td>
-                          <td className="py-3.5 px-4 text-right text-zinc-400">{creator.totalWatchHours} hrs</td>
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <span className="font-bold text-white">{creator.shareOfPlayPercent.toFixed(2)}%</span>
-                              <div className="w-12 h-1.5 bg-zinc-800 rounded-full overflow-hidden hidden sm:block">
-                                <div
-                                  className="h-full bg-red-600 rounded-full"
-                                  style={{ width: `${Math.min(100, creator.shareOfPlayPercent * 3)}%` }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            <span className="font-mono font-bold text-sm text-emerald-400">
-                              KES {creator.netEarningsKes.toLocaleString()}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="flex flex-col items-center gap-1">
-                              {creator.isEligibleForPayout ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                  <span>Eligible (≥ KSh 1,000)</span>
-                                </span>
-                              ) : (
-                                <div className="w-full max-w-[170px] space-y-1">
-                                  <div className="flex justify-between items-center text-[10px]">
-                                    <span className="text-amber-400 font-semibold">Carried Forward</span>
-                                    <span className="text-zinc-500">
-                                      KES {creator.netEarningsKes} / 1,000
-                                    </span>
-                                  </div>
-                                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                    <div
-                                      className="h-full bg-amber-500 rounded-full"
-                                      style={{ width: `${creator.thresholdProgressPercent}%` }}
-                                    />
-                                  </div>
-                                </div>
                               )}
                             </div>
                           </td>
@@ -930,7 +918,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                                 className="text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
                                 title={`Configure M-Pesa / Bank Payout & Portal Code for ${creator.creator}`}
                               >
-                                Payout Profile
+                                Profile
                               </button>
                               <button
                                 type="button"
@@ -952,7 +940,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                         </tr>
                         {isExpanded && (
                           <tr className="bg-zinc-950/90">
-                            <td colSpan={10} className="p-4 border-b border-zinc-800">
+                            <td colSpan={6} className="p-4 border-b border-zinc-800">
                               <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div>
@@ -1023,26 +1011,22 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
               {filteredCreators.length > 0 && (
                 <tfoot className="bg-zinc-950/90 border-t border-zinc-700 font-bold text-xs">
                   <tr>
-                    <td className="py-3 px-4 text-zinc-400" colSpan={2}>
+                    <td className="py-3 px-4 text-zinc-300">
                       Total ({filteredCreators.length} {filteredCreators.length === 1 ? 'Creative' : 'Creatives'})
                     </td>
                     <td className="py-3 px-4 text-zinc-200">
-                      {filteredCreators.reduce((s, c) => s + c.titlesCount, 0).toLocaleString()}
+                      {filteredCreators.reduce((s, c) => s + c.titlesCount, 0).toLocaleString()} titles
                     </td>
-                    <td className="py-3 px-4 text-zinc-500 text-[11px]">Click any creator row to expand titles</td>
                     <td className="py-3 px-4 text-right font-mono text-white">
-                      {filteredCreators.reduce((s, c) => s + c.qualifiedViews, 0).toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-zinc-300">
-                      {filteredCreators.reduce((s, c) => s + c.totalWatchHours, 0).toFixed(1)} hrs
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-zinc-200">
+                      {filteredCreators.reduce((s, c) => s + c.qualifiedViews, 0).toLocaleString()} QVs ·{' '}
                       {filteredCreators.reduce((s, c) => s + c.shareOfPlayPercent, 0).toFixed(2)}%
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-sm text-emerald-400">
                       KES {filteredCreators.reduce((s, c) => s + c.netEarningsKes, 0).toFixed(2)}
                     </td>
-                    <td className="py-3 px-4" colSpan={2} />
+                    <td className="py-3 px-4 text-zinc-500 text-[11px]" colSpan={2}>
+                      Click any creator row to expand per-content earnings
+                    </td>
                   </tr>
                 </tfoot>
               )}

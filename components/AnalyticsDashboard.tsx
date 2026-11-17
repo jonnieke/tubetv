@@ -140,6 +140,7 @@ export default function AnalyticsDashboard({
   const [dateFrom, setDateFrom] = useState<string>(() => new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
   const [dateTo, setDateTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [interactionSearch, setInteractionSearch] = useState<string>('');
+  const [selectedPayerFilter, setSelectedPayerFilter] = useState<string | null>(null);
   const [showAllInteractions, setShowAllInteractions] = useState<boolean>(false);
 
   useEffect(() => {
@@ -383,20 +384,88 @@ export default function AnalyticsDashboard({
 
       {activeTab === 'overview' && (
         <section aria-label="Measured catalogue totals" className="space-y-6">
-          {/* Top 4 KPI Cards */}
+          {/* Unified Global Date Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 mr-1">Date Window</span>
+              {[
+                {
+                  label: 'Today',
+                  apply: () => {
+                    const d = new Date().toISOString().slice(0, 10);
+                    setDateFrom(d);
+                    setDateTo(d);
+                  },
+                },
+                {
+                  label: 'Yesterday',
+                  apply: () => {
+                    const d = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+                    setDateFrom(d);
+                    setDateTo(d);
+                  },
+                },
+                {
+                  label: '7D',
+                  apply: () => {
+                    setDateFrom(new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
+                    setDateTo(new Date().toISOString().slice(0, 10));
+                  },
+                },
+                {
+                  label: '30D',
+                  apply: () => {
+                    setDateFrom(new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
+                    setDateTo(new Date().toISOString().slice(0, 10));
+                  },
+                },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPayerFilter(null);
+                    preset.apply();
+                  }}
+                  className="rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 text-xs font-semibold text-zinc-200 transition-colors"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                aria-label="From date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-xs text-white"
+              />
+              <span className="text-xs text-zinc-500">to</span>
+              <input
+                type="date"
+                aria-label="To date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-xs text-white"
+              />
+            </div>
+          </div>
+
+          {/* Top 4 KPI Cards synced to selected Date Window */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg">
               <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                <span>30-Day Gross Revenue</span>
+                <span>Range Gross Revenue</span>
                 <Wallet className="h-4 w-4 text-emerald-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
                 <strong className="text-2xl md:text-3xl font-bold text-white">
-                  {formatKes(grossRevenueKes30d)}
+                  {formatKes(typeof funnel?.rangeRevenueKes === 'number' ? funnel.rangeRevenueKes : grossRevenueKes30d)}
                 </strong>
               </div>
               <p className="mt-2 text-[11px] text-zinc-400">
-                M-Pesa {channelSplit.mpesaPct}% · Card {channelSplit.cardPct}%
+                30d total: {formatKes(grossRevenueKes30d)} · M-Pesa {channelSplit.mpesaPct}% · Card {channelSplit.cardPct}%
               </p>
             </div>
 
@@ -599,123 +668,27 @@ export default function AnalyticsDashboard({
             </div>
           </div>
 
-          {/* Today's Revenue vs. Premium Content Interacted Today */}
-          <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-zinc-900/90 to-zinc-900 p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div>
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300 mb-1">
-                  Today&apos;s Live Attribution
-                </div>
-                <h2 className="text-base font-bold text-white">
-                  Today&apos;s Revenue vs. Premium Content Interacted Today
-                </h2>
-                <p className="text-xs text-zinc-400">
-                  Subscription revenue collected today ({formatKes(todayRevenueKes)}) attributed strictly to Premium titles watched today (60% Creator Pool: {formatKes(todayRoyaltySnapshot.netCreatorPoolKes)})
-                </p>
-              </div>
-              <div className="flex items-center gap-4 text-right">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-zinc-400">Today Revenue</div>
-                  <div className="text-lg font-black text-emerald-300">{formatKes(todayRevenueKes)}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-zinc-400">Today Creator Pool</div>
-                  <div className="text-lg font-black text-amber-300">{formatKes(todayRoyaltySnapshot.netCreatorPoolKes)}</div>
-                </div>
-              </div>
-            </div>
-
-            {todayRoyaltySnapshot.content.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-zinc-400 uppercase tracking-wider text-[10px]">
-                      <th className="py-2 pr-4">Premium Title</th>
-                      <th className="py-2 pr-4">Studio / Creator</th>
-                      <th className="py-2 pr-4 text-right">Today&apos;s Qualified Views</th>
-                      <th className="py-2 pr-4 text-right">Today Share %</th>
-                      <th className="py-2 text-right">Today Creator Earnings</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/70">
-                    {todayRoyaltySnapshot.content.map((row) => (
-                      <tr key={row.videoId} className="hover:bg-zinc-800/30 transition-colors">
-                        <td className="py-2.5 pr-4 font-semibold text-white max-w-[240px] truncate">{row.title}</td>
-                        <td className="py-2.5 pr-4 text-zinc-300">{row.creator}</td>
-                        <td className="py-2.5 pr-4 text-right font-mono text-zinc-200">{row.qualifiedViews.toLocaleString('en-KE')}</td>
-                        <td className="py-2.5 pr-4 text-right font-mono text-zinc-300">{row.shareOfPoolPercent.toFixed(1)}%</td>
-                        <td className="py-2.5 text-right font-mono font-bold text-emerald-300">{formatKes(row.attributedRevenueKes)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-xs text-zinc-400">
-                No qualified interactions on Premium titles recorded yet today. As viewers watch Premium shows today, today&apos;s pass revenue will attribute here in real time.
-              </div>
-            )}
-          </div>
-
           {/* Detailed Date A -> Date B Audience Interactions & Watch Duration */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-bold text-white">
-                  Audience Interactions &amp; Watch Duration (Date A &rarr; Date B)
+                  Paid Passes &amp; Audience Interactions ({dateFrom} &rarr; {dateTo})
                 </h2>
                 <p className="text-xs text-zinc-400">
-                  See who interacted with each title, from where, and for how long across any date range
+                  Click any Paid Pass pill below to isolate what that subscriber watched
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="date"
-                  aria-label="From date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-white"
-                />
-                <span className="text-xs text-zinc-500">to</span>
-                <input
-                  type="date"
-                  aria-label="To date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-white"
-                />
+              {selectedPayerFilter && (
                 <button
                   type="button"
-                  onClick={() => {
-                    const today = new Date().toISOString().slice(0, 10);
-                    setDateFrom(today);
-                    setDateTo(today);
-                  }}
-                  className="rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-zinc-200"
+                  onClick={() => setSelectedPayerFilter(null)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25"
                 >
-                  Today
+                  <span>Filtering: {selectedPayerFilter}</span>
+                  <span className="text-white">✕</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDateFrom(new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
-                    setDateTo(new Date().toISOString().slice(0, 10));
-                  }}
-                  className="rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-zinc-200"
-                >
-                  7D
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDateFrom(new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
-                    setDateTo(new Date().toISOString().slice(0, 10));
-                  }}
-                  className="rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-zinc-200"
-                >
-                  30D
-                </button>
-              </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -762,20 +735,29 @@ export default function AnalyticsDashboard({
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {funnel!.rangeTransactions!.slice(0, 12).map((tx, i) => (
-                    <div
-                      key={`${tx.createdAt}-${i}`}
-                      className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/80 px-2.5 py-1.5 text-[11px]"
-                    >
-                      <span className="font-bold text-emerald-300">{formatKes(tx.amountKes)}</span>
-                      <span className="font-mono text-white">{tx.payerLabel}</span>
-                      <span className="text-zinc-400 capitalize">{tx.planCode}</span>
-                      <span className="text-zinc-500">· {tx.channel}</span>
-                      <span className="text-zinc-500">
-                        · {tx.createdAt ? new Date(tx.createdAt).toLocaleString('en-KE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                      </span>
-                    </div>
-                  ))}
+                  {funnel!.rangeTransactions!.slice(0, 12).map((tx, i) => {
+                    const isSelected = selectedPayerFilter === tx.payerLabel;
+                    return (
+                      <button
+                        key={`${tx.createdAt}-${i}`}
+                        type="button"
+                        onClick={() => setSelectedPayerFilter(isSelected ? null : tx.payerLabel)}
+                        className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'border-emerald-400 bg-emerald-500/20 text-white'
+                            : 'border-zinc-800 bg-zinc-950/80 hover:border-emerald-500/50'
+                        }`}
+                      >
+                        <span className="font-bold text-emerald-300">{formatKes(tx.amountKes)}</span>
+                        <span className="font-mono text-white">{tx.payerLabel}</span>
+                        <span className="text-zinc-400 capitalize">{tx.planCode}</span>
+                        <span className="text-zinc-500">· {tx.channel}</span>
+                        <span className="text-zinc-500">
+                          · {tx.createdAt ? new Date(tx.createdAt).toLocaleString('en-KE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -791,6 +773,7 @@ export default function AnalyticsDashboard({
                 }),
               );
               const rows = (funnel?.rangeInteractions || []).filter((r) => {
+                if (selectedPayerFilter && r.payerLabel !== selectedPayerFilter) return false;
                 if (!interactionSearch.trim()) return true;
                 const q = interactionSearch.toLowerCase();
                 const meta = videoMetaById.get(r.videoId);
