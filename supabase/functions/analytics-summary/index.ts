@@ -225,10 +225,11 @@ serve(async (req) => {
       .limit(1000),
     client
       .from("payment_transactions")
-      .select("amount_kes, region_code, created_at, user_id, phone_e164, mpesa_receipt")
+      .select("amount_kes, region_code, plan_code, channel, created_at, user_id, phone_e164, mpesa_receipt")
       .eq("status", "succeeded")
       .gte("created_at", rangeFromIso)
       .lte("created_at", rangeToIso)
+      .order("created_at", { ascending: false })
       .limit(5000),
     client
       .from("analytics_events")
@@ -304,11 +305,75 @@ serve(async (req) => {
   const viewerSet = new Set<string>();
   const byLocation: Record<string, { interactions: number; watchSeconds: number }> = {};
   let rangeTotalWatchSeconds = 0;
+  const normalizePayerPhone = (raw: unknown): string => {
+    const digits = String(raw || "").replace(/\D/g, "");
+    if (digits.startsWith("254") && digits.length === 12) return `+${digits}`;
+    if (digits.startsWith("0") && digits.length === 10 && /^0[17]/.test(digits)) return `+254${digits.slice(1)}`;
+    if (/^[17]\d{8}$/.test(digits)) return `+254${digits}`;
+    return "";
+  };
+
+  const maskPayerLabel = (rawPhone: string, fallbackRef: string): string => {
+    if (rawPhone) {
+      const local = rawPhone.startsWith("+254") ? `0${rawPhone.slice(4)}` : rawPhone;
+      return local.length >= 9 ? `${local.slice(0, 4)}***${local.slice(-3)}` : local;
+    }
+    if (fallbackRef) {
+      return fallbackRef.length > 10 ? `${fallbackRef.slice(0, 6)}…${fallbackRef.slice(-3)}` : fallbackRef;
+    }
+    return "Pass Holder";
+  };
+
+  let rangeRevenueKes = 0;
+  const rangeRevenueByRegion: Record<string, number> = {};
+  const spendByPayer = new Map<string, number>();
+  const labelByPayer = new Map<string, string>();
+  const rangeTransactions: Array<{
+    createdAt: string;
+    amountKes: number;
+    planCode: string;
+    channel: string;
+    regionCode: string;
+    payerLabel: string;
+    payerKey: string;
+  }> = [];
+  let rangeUnattributedGrossKes = 0;
+  if (Array.isArray(rangeTxRes.data)) {
+    for (const tx of rangeTxRes.data) {
+      const amt = Number(tx.amount_kes) || 0;
+      const reg = String(tx.region_code || "KE").toUpperCase();
+      rangeRevenueKes += amt;
+      rangeRevenueByRegion[reg] = (rangeRevenueByRegion[reg] || 0) + amt;
+      const normPhone = normalizePayerPhone(tx.phone_e164);
+      const payerKey = String(tx.user_id || normPhone || tx.mpesa_receipt || "").trim();
+      const payerLabel = maskPayerLabel(normPhone, String(tx.mpesa_receipt || tx.user_id || ""));
+      if (payerKey && amt > 0) {
+        spendByPayer.set(payerKey, (spendByPayer.get(payerKey) || 0) + amt);
+        if (!labelByPayer.has(payerKey)) labelByPayer.set(payerKey, payerLabel);
+      } else if (amt > 0) {
+        rangeUnattributedGrossKes += amt;
+      }
+      if (rangeTransactions.length < 200) {
+        rangeTransactions.push({
+          createdAt: String(tx.created_at || ""),
+          amountKes: amt,
+          planCode: String(tx.plan_code || "daily"),
+          channel: String(tx.channel || "mpesa"),
+          regionCode: reg,
+          payerLabel,
+          payerKey,
+        });
+      }
+    }
+  }
+
   const rangeInteractions: Array<{
     occurredAt: string;
     date: string;
     videoId: string;
     viewerId: string;
+    payerLabel: string;
+    paidKes: number;
     location: string;
     device: string;
     event: string;
@@ -325,6 +390,12 @@ serve(async (req) => {
         rangeQualifiedViewsByVideo[videoId] = (rangeQualifiedViewsByVideo[videoId] || 0) + 1;
       }
       const viewerId = typeof props.viewerId === "string" && props.viewerId ? props.viewerId : "Guest";
+      const normPhone = normalizePayerPhone(props.phone);
+      const rowPayerKey = String(props.userId || normPhone || props.passRef || "").trim();
+      const paidKes = rowPayerKey ? spendByPayer.get(rowPayerKey) || 0 : 0;
+      const payerLabel = rowPayerKey
+        ? labelByPayer.get(rowPayerKey) || maskPayerLabel(normPhone, String(props.passRef || ""))
+        : "Guest";
       const city = typeof props.city === "string" ? props.city : "";
       const country = typeof props.country === "string" ? props.country : "KE";
       const location = city ? `${city}, ${country}` : country;
@@ -344,39 +415,13 @@ serve(async (req) => {
           date: occurredAt.slice(0, 10),
           videoId,
           viewerId,
+          payerLabel,
+          paidKes,
           location,
           device,
           event: String(row.event_name || "playback_start"),
           watchSeconds,
         });
-      }
-    }
-  }
-
-  const normalizePayerPhone = (raw: unknown): string => {
-    const digits = String(raw || "").replace(/\D/g, "");
-    if (digits.startsWith("254") && digits.length === 12) return `+${digits}`;
-    if (digits.startsWith("0") && digits.length === 10 && /^0[17]/.test(digits)) return `+254${digits.slice(1)}`;
-    if (/^[17]\d{8}$/.test(digits)) return `+254${digits}`;
-    return "";
-  };
-
-  let rangeRevenueKes = 0;
-  const rangeRevenueByRegion: Record<string, number> = {};
-  const spendByPayer = new Map<string, number>();
-  let rangeUnattributedGrossKes = 0;
-  if (Array.isArray(rangeTxRes.data)) {
-    for (const tx of rangeTxRes.data) {
-      const amt = Number(tx.amount_kes) || 0;
-      const reg = String(tx.region_code || "KE").toUpperCase();
-      rangeRevenueKes += amt;
-      rangeRevenueByRegion[reg] = (rangeRevenueByRegion[reg] || 0) + amt;
-      const normPhone = normalizePayerPhone(tx.phone_e164);
-      const payerKey = String(tx.user_id || normPhone || tx.mpesa_receipt || "").trim();
-      if (payerKey && amt > 0) {
-        spendByPayer.set(payerKey, (spendByPayer.get(payerKey) || 0) + amt);
-      } else if (amt > 0) {
-        rangeUnattributedGrossKes += amt;
       }
     }
   }
@@ -454,6 +499,7 @@ serve(async (req) => {
       grossRevenueKes30d,
       todayRevenueKes,
       rangeRevenueKes,
+      rangeTransactions,
       rangeRevenueByRegion,
       rangeQualifiedViewsByVideo,
       rangeUserCentricGrossByVideo,

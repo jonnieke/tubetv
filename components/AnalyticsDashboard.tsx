@@ -43,6 +43,19 @@ interface AnalyticsSummaryPayload {
   todayQualifiedViewsByVideo?: Record<string, number>;
   grossRevenueKes30d?: number;
   todayRevenueKes?: number;
+  rangeRevenueKes?: number;
+  rangeQualifiedViewsByVideo?: Record<string, number>;
+  rangeUserCentricGrossByVideo?: Record<string, number>;
+  rangeUnattributedGrossKes?: number;
+  rangeTransactions?: Array<{
+    createdAt: string;
+    amountKes: number;
+    planCode: string;
+    channel: string;
+    regionCode: string;
+    payerLabel: string;
+    payerKey: string;
+  }>;
   revenueByRegion?: Record<string, number>;
   revenueByChannel?: Record<string, number>;
   revenueByPlan?: Record<string, number>;
@@ -61,6 +74,8 @@ interface AnalyticsSummaryPayload {
     date: string;
     videoId: string;
     viewerId: string;
+    payerLabel?: string;
+    paidKes?: number;
     location: string;
     device: string;
     event: string;
@@ -208,19 +223,34 @@ export default function AnalyticsDashboard({
 
   const royaltySnapshot = useMemo(() => {
     const periodLabel = new Date().toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
+    const hasRange = typeof funnel?.rangeRevenueKes === 'number';
     return computeShareOfPlayRoyalties(
       effectiveVideos,
       {
         periodLabel,
-        grossSubscriptionRevenueKes: grossRevenueKes30d,
+        grossSubscriptionRevenueKes: hasRange ? funnel!.rangeRevenueKes! : grossRevenueKes30d,
         payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
         premiumOnly: true,
       },
       {
-        measuredQualifiedViews: funnel?.qualifiedViewsByVideo,
+        measuredQualifiedViews: hasRange ? funnel?.rangeQualifiedViewsByVideo : funnel?.qualifiedViewsByVideo,
+        ...(hasRange && funnel?.rangeUserCentricGrossByVideo
+          ? {
+              userCentricGrossByVideo: funnel.rangeUserCentricGrossByVideo,
+              unattributedGrossKes: funnel.rangeUnattributedGrossKes ?? 0,
+            }
+          : {}),
       },
     );
-  }, [effectiveVideos, grossRevenueKes30d, funnel?.qualifiedViewsByVideo]);
+  }, [
+    effectiveVideos,
+    grossRevenueKes30d,
+    funnel?.qualifiedViewsByVideo,
+    funnel?.rangeRevenueKes,
+    funnel?.rangeQualifiedViewsByVideo,
+    funnel?.rangeUserCentricGrossByVideo,
+    funnel?.rangeUnattributedGrossKes,
+  ]);
 
   const todayRoyaltySnapshot = useMemo(() => {
     const todayMap = funnel?.todayQualifiedViewsByVideo || {};
@@ -680,7 +710,7 @@ export default function AnalyticsDashboard({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
                 <div className="text-[10px] uppercase tracking-wider text-zinc-400">Interactions</div>
                 <div className="text-lg font-black text-white mt-0.5">
@@ -705,16 +735,64 @@ export default function AnalyticsDashboard({
                   {formatWatchDuration(funnel?.rangeSummary?.avgWatchSeconds ?? 0)}
                 </div>
               </div>
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/25 p-3 col-span-2 sm:col-span-1">
+                <div className="text-[10px] uppercase tracking-wider text-emerald-300/80">Range Revenue</div>
+                <div className="text-lg font-black text-emerald-300 mt-0.5">
+                  {formatKes(funnel?.rangeRevenueKes ?? 0)}
+                </div>
+              </div>
             </div>
 
+            {(funnel?.rangeTransactions?.length ?? 0) > 0 && (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/15 p-3 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold uppercase tracking-wider text-emerald-300">
+                    Paid Passes in Range ({funnel!.rangeTransactions!.length})
+                  </span>
+                  <span className="text-zinc-400">
+                    Total collected: <strong className="text-emerald-300">{formatKes(funnel?.rangeRevenueKes ?? 0)}</strong>
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {funnel!.rangeTransactions!.slice(0, 12).map((tx, i) => (
+                    <div
+                      key={`${tx.createdAt}-${i}`}
+                      className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/80 px-2.5 py-1.5 text-[11px]"
+                    >
+                      <span className="font-bold text-emerald-300">{formatKes(tx.amountKes)}</span>
+                      <span className="font-mono text-white">{tx.payerLabel}</span>
+                      <span className="text-zinc-400 capitalize">{tx.planCode}</span>
+                      <span className="text-zinc-500">· {tx.channel}</span>
+                      <span className="text-zinc-500">
+                        · {tx.createdAt ? new Date(tx.createdAt).toLocaleString('en-KE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {(() => {
-              const titleById = new Map(effectiveVideos.map((v) => [v.guid, v.title]));
+              const videoMetaById = new Map(
+                effectiveVideos.map((v) => {
+                  const mapped = bunnyVideoToVideo(v);
+                  const seriesLabel = mapped.seriesTitle
+                    ? `${mapped.seriesTitle}${mapped.episode ? ` · Ep ${mapped.episode}` : ''}`
+                    : '';
+                  return [v.guid, { title: mapped.title || v.title, seriesLabel, accessTier: mapped.accessTier }];
+                }),
+              );
               const rows = (funnel?.rangeInteractions || []).filter((r) => {
                 if (!interactionSearch.trim()) return true;
                 const q = interactionSearch.toLowerCase();
-                const title = (titleById.get(r.videoId) || r.videoId).toLowerCase();
+                const meta = videoMetaById.get(r.videoId);
+                const title = (meta?.title || r.videoId).toLowerCase();
+                const series = (meta?.seriesLabel || '').toLowerCase();
+                const payer = (r.payerLabel || '').toLowerCase();
                 return (
                   title.includes(q) ||
+                  series.includes(q) ||
+                  payer.includes(q) ||
                   r.location.toLowerCase().includes(q) ||
                   r.viewerId.toLowerCase().includes(q) ||
                   r.device.toLowerCase().includes(q)
@@ -722,16 +800,22 @@ export default function AnalyticsDashboard({
               });
 
               const exportRangeCsv = () => {
-                const header = ['OccurredAt', 'Title', 'Viewer', 'Device', 'Location', 'Event', 'WatchSeconds'];
-                const csvRows = rows.map((r) => [
-                  r.occurredAt,
-                  `"${(titleById.get(r.videoId) || r.videoId).replace(/"/g, '""')}"`,
-                  r.viewerId,
-                  r.device,
-                  `"${r.location.replace(/"/g, '""')}"`,
-                  r.event,
-                  String(r.watchSeconds),
-                ]);
+                const header = ['OccurredAt', 'Series', 'Title', 'Payer', 'PaidKES', 'ViewerID', 'Device', 'Location', 'Event', 'WatchSeconds'];
+                const csvRows = rows.map((r) => {
+                  const meta = videoMetaById.get(r.videoId);
+                  return [
+                    r.occurredAt,
+                    `"${(meta?.seriesLabel || '').replace(/"/g, '""')}"`,
+                    `"${(meta?.title || r.videoId).replace(/"/g, '""')}"`,
+                    `"${(r.payerLabel || 'Guest').replace(/"/g, '""')}"`,
+                    String(r.paidKes || 0),
+                    r.viewerId,
+                    r.device,
+                    `"${r.location.replace(/"/g, '""')}"`,
+                    r.event,
+                    String(r.watchSeconds),
+                  ];
+                });
                 const blob = new Blob([[header.join(','), ...csvRows.map((c) => c.join(','))].join('\n')], {
                   type: 'text/csv;charset=utf-8;',
                 });
@@ -779,28 +863,51 @@ export default function AnalyticsDashboard({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-zinc-800/70">
-                            {(showAllInteractions ? rows : rows.slice(0, 25)).map((r, idx) => (
-                              <tr key={`${r.occurredAt}-${r.videoId}-${idx}`} className="hover:bg-zinc-800/30">
-                                <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
-                                  {r.occurredAt ? new Date(r.occurredAt).toLocaleString('en-KE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : r.date}
-                                </td>
-                                <td className="py-2 pr-4 font-medium text-white max-w-[200px] truncate">
-                                  {titleById.get(r.videoId) || r.videoId}
-                                </td>
-                                <td className="py-2 pr-4 text-zinc-300 font-mono text-[11px]">
-                                  {r.viewerId} <span className="text-zinc-500 font-sans">({r.device})</span>
-                                </td>
-                                <td className="py-2 pr-4 text-zinc-300">{r.location}</td>
-                                <td className="py-2 pr-4">
-                                  <span className="rounded bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300">
-                                    {r.event.replace('_', ' ')}
-                                  </span>
-                                </td>
-                                <td className="py-2 text-right font-mono font-bold text-emerald-300">
-                                  {formatWatchDuration(r.watchSeconds)}
-                                </td>
-                              </tr>
-                            ))}
+                            {(showAllInteractions ? rows : rows.slice(0, 25)).map((r, idx) => {
+                              const meta = videoMetaById.get(r.videoId);
+                              const hasPaid = (r.paidKes ?? 0) > 0;
+                              return (
+                                <tr key={`${r.occurredAt}-${r.videoId}-${idx}`} className="hover:bg-zinc-800/30">
+                                  <td className="py-2.5 pr-4 text-zinc-400 whitespace-nowrap align-top">
+                                    {r.occurredAt ? new Date(r.occurredAt).toLocaleString('en-KE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : r.date}
+                                  </td>
+                                  <td className="py-2.5 pr-4 max-w-[230px] align-top">
+                                    <div className="font-semibold text-white truncate">{meta?.title || r.videoId}</div>
+                                    {meta?.seriesLabel && (
+                                      <div className="text-[10px] text-zinc-400 truncate mt-0.5">{meta.seriesLabel}</div>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 pr-4 align-top">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {hasPaid ? (
+                                        <span className="inline-flex items-center rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
+                                          Paid {formatKes(r.paidKes!)}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center rounded-md bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+                                          Guest
+                                        </span>
+                                      )}
+                                      {r.payerLabel && r.payerLabel !== 'Guest' && (
+                                        <span className="font-mono text-[11px] font-semibold text-white">{r.payerLabel}</span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-zinc-500 mt-0.5 font-mono">
+                                      {r.device} · {r.viewerId}
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 pr-4 text-zinc-300 align-top whitespace-nowrap">{r.location}</td>
+                                  <td className="py-2.5 pr-4 align-top">
+                                    <span className="rounded bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300 whitespace-nowrap">
+                                      {r.event.replace('_', ' ')}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 text-right font-mono font-bold text-emerald-300 align-top whitespace-nowrap">
+                                    {formatWatchDuration(r.watchSeconds)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -833,9 +940,9 @@ export default function AnalyticsDashboard({
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
-                <h2 className="text-base font-bold text-white">Title-by-Title Revenue &amp; Share-of-Play</h2>
+                <h2 className="text-base font-bold text-white">Title-by-Title Revenue &amp; Share-of-Play ({dateFrom} → {dateTo})</h2>
                 <p className="text-xs text-zinc-400">
-                  Attributed from verified 30s (or 80% &lt;30s) Qualified Views across {royaltySnapshot.content.length} titles
+                  Attributed from verified 30s (or 80% &lt;30s) Qualified Views across {royaltySnapshot.content.length} premium titles ({formatKes(royaltySnapshot.netCreatorPoolKes)} creator pool)
                 </p>
               </div>
               <button
