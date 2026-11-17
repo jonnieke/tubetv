@@ -93,4 +93,31 @@ describe('discovery filtering', () => {
     expect(trending[0].id).toBe('rising');
     expect(trending.some(v => v.id === 'top1')).toBe(false);
   });
+  it('uses main series thumbnail (seriesPosterUrl or Ep 1) and deduplicates shows in Latest and Trending', () => {
+    const items = [
+      video('ep1', 'Lekuta Ep 1', 'Micro Dramas', {
+        seriesTitle: 'Lekuta',
+        season: 1,
+        episode: 1,
+        thumbnail: 'https://cdn.example.com/ep1.jpg',
+        seriesPosterUrl: 'https://cdn.example.com/lekuta-main.jpg',
+        uploadDate: '2026-11-10T08:00:00Z',
+      }),
+      video('ep2', 'Lekuta Ep 2', 'Micro Dramas', {
+        seriesTitle: 'Lekuta',
+        season: 1,
+        episode: 2,
+        thumbnail: 'https://cdn.example.com/ep2.jpg',
+        uploadDate: '2026-11-17T08:00:00Z',
+      }),
+    ];
+    const latest = getLatestWithMoviesFirst(items);
+    expect(latest).toHaveLength(1);
+    expect(latest[0].id).toBe('ep2');
+    expect(latest[0].thumbnail).toBe('https://cdn.example.com/lekuta-main.jpg');
+
+    const trending = getTrendingVideos(items);
+    expect(trending).toHaveLength(1);
+    expect(trending[0].thumbnail).toBe('https://cdn.example.com/lekuta-main.jpg');
+  });
 });

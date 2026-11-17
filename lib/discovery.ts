@@ -1,7 +1,8 @@
 import type { Video, ViewStateOrString } from '../types';
 import { ViewState } from '../types';
 import { canWatchContent, normalizeContentRating } from './contentRating';
-import { isMicroDrama } from './series';
+import { publicMediaUrl } from './mediaUrl';
+import { compareEpisodes, isMicroDrama, seriesKey } from './series';
 
 const categoryForView: Partial<Record<ViewState, string>> = {
   [ViewState.MICRO_DRAMAS]: 'Micro Dramas',
@@ -199,9 +200,42 @@ export function isStandaloneMovie(video: Video): boolean {
   return ['Movies', 'Originals'].includes(video.category);
 }
 
+/** Maps Series & Micro Drama items to their main series thumbnail (seriesPosterUrl or Episode 1 thumbnail) and deduplicates per show. */
+function applySeriesMainThumbnailsAndDedupe(ordered: Video[], allVideos: Video[], limit: number): Video[] {
+  const mainThumbBySeries = new Map<string, string>();
+  const bySeries = new Map<string, Video[]>();
+  for (const v of allVideos) {
+    const key = seriesKey(v);
+    if (!key) continue;
+    bySeries.set(key, [...(bySeries.get(key) || []), v]);
+  }
+  for (const [key, eps] of bySeries.entries()) {
+    const sorted = [...eps].sort(compareEpisodes);
+    const poster = sorted.map((ep) => publicMediaUrl(ep.seriesPosterUrl)).find(Boolean);
+    const mainThumb = poster || sorted[0]?.thumbnail || '';
+    if (mainThumb) mainThumbBySeries.set(key, mainThumb);
+  }
+
+  const seenSeries = new Set<string>();
+  const result: Video[] = [];
+  for (const v of ordered) {
+    const key = seriesKey(v);
+    if (key) {
+      if (seenSeries.has(key)) continue;
+      seenSeries.add(key);
+      const mainThumb = mainThumbBySeries.get(key);
+      result.push(mainThumb ? { ...v, thumbnail: mainThumb } : v);
+    } else {
+      result.push(v);
+    }
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
 /** Builds the homepage Latest carousel ordered by platform ingest day descending (movies first within the same day). */
 export function getLatestWithMoviesFirst(videos: Video[], limit = 24): Video[] {
-  return videos
+  const sorted = videos
     .filter((v) => v.category !== 'Shorts' && !v.isShort)
     .sort((a, b) => {
       const dayDiff = getIngestDayTimestamp(b) - getIngestDayTimestamp(a);
@@ -209,8 +243,8 @@ export function getLatestWithMoviesFirst(videos: Video[], limit = 24): Video[] {
       const movieDiff = (isStandaloneMovie(b) ? 1 : 0) - (isStandaloneMovie(a) ? 1 : 0);
       if (movieDiff !== 0) return movieDiff;
       return getVideoTimestamp(b) - getVideoTimestamp(a) || (b.views || 0) - (a.views || 0);
-    })
-    .slice(0, limit);
+    });
+  return applySeriesMainThumbnailsAndDedupe(sorted, videos, limit);
 }
 
 /** Builds Trending Now by ranking recent momentum (recency + views) while excluding the Top 10 chart when enough titles exist. */
@@ -233,9 +267,8 @@ export function getTrendingVideos(videos: Video[], limit = 20, now = Date.now())
     return recencyBoost + viewScore;
   };
 
-  return [...pool]
-    .sort((a, b) => momentumScore(b) - momentumScore(a) || (b.views || 0) - (a.views || 0))
-    .slice(0, limit);
+  const sorted = [...pool].sort((a, b) => momentumScore(b) - momentumScore(a) || (b.views || 0) - (a.views || 0));
+  return applySeriesMainThumbnailsAndDedupe(sorted, videos, limit);
 }
 
 function extractGenresFromVideo(video: Video): string[] {
