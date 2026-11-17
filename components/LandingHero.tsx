@@ -7,6 +7,7 @@ import { loadHls } from '../lib/hlsLoader';
 import { LONG_FORMAT_PREVIEW_SECONDS } from '../lib/monetization';
 import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
 import { isMicroDrama } from '../lib/series';
+import { publicMediaUrl } from '../lib/mediaUrl';
 import CatalogueArtwork from './CatalogueArtwork';
 
 /** Skip the first 60 seconds (1 minute) of hero movies/episodes to avoid opening studio logos and credits. */

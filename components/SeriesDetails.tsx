@@ -155,14 +155,17 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
                   {language === 'sw' ? `Anza msimu wa ${season}` : `Start season ${season} (Ep 1)`}
                 </button>
                 {trailer && (
-                  <button
-                    type="button"
+                  <a
                     className="cinema-secondary"
-                    onClick={() => setShowTrailer(true)}
+                    href={trailer}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowTrailer(true);
+                    }}
                     aria-label={`Watch trailer for ${first.seriesTitle || first.title}`}
                   >
                     <Play size={15} /> Watch trailer
-                  </button>
+                  </a>
                 )}
                 <button
                   type="button"
