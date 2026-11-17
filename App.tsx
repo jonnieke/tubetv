@@ -99,6 +99,7 @@ import type { SettingsTabId } from './components/SettingsSection';
 import { TranslationKey } from './translations';
 import { SectionErrorBoundary } from './components/ErrorBoundary';
 import { MicroDramaPlayerLayout } from './components/MicroDramaPlayerLayout';
+import { TrailerModal } from './components/TrailerModal';
 import { isDynamicChunkLoadError, triggerChunkRecoveryReload } from './lib/chunkRecovery';
 
 function lazyWithRetry<T extends React.ComponentType<any>>(
@@ -1014,6 +1015,7 @@ const App: React.FC = () => {
 
   const [sectionSort, setSectionSort] = useState<CatalogSortMode>('latest');
   const [sectionGenre, setSectionGenre] = useState<string>('All');
+  const [activeTrailer, setActiveTrailer] = useState<{ url: string; title: string; video?: Video } | null>(null);
   const latestVideos = useMemo(
     () => getLatestWithMoviesFirst(ratingFilteredVideos, 24),
     [ratingFilteredVideos],
@@ -1439,6 +1441,9 @@ const App: React.FC = () => {
                       dataSaver={shouldSaveData(preferences.dataSaver)}
                       onPlay={() => openVideo(hero, { autoPlay: true })}
                       onMoreInfo={() => openVideo(hero, { autoPlay: false })}
+                      onWatchTrailer={(url, v) =>
+                        setActiveTrailer({ url, title: v.seriesTitle || v.title, video: v })
+                      }
                       onSave={() => toggleWatchLater(hero.id)}
                       onRequireUnlock={(v) => openPaywallForVideo(v)}
                       count={featuredVideos.length}
@@ -1984,7 +1989,9 @@ const App: React.FC = () => {
                   onStartPlayback={() => setModalAutoPlay(true)}
                   onToggleWatchLater={toggleWatchLater}
                   onShare={handleWhatsAppShareCurrentVideo}
-                  onOpenTrailer={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
+                  onOpenTrailer={(url) =>
+                    setActiveTrailer({ url, title: activeHeroVideo.seriesTitle || activeHeroVideo.title })
+                  }
                   onClose={closeVideo}
                   playerSlot={<Suspense fallback={<LoadingPanel label={t('common.loading')} />}>{playerNode}</Suspense>}
                 />
@@ -2089,16 +2096,33 @@ const App: React.FC = () => {
                       {activeHeroVideo.episodeSynopsis || activeHeroVideo.description}
                     </p>
                   )}
-                  {!modalAutoPlay && (
-                    <button
-                      type="button"
-                      className="cinema-primary mt-4 w-full sm:w-auto px-6 py-2.5 font-bold flex items-center justify-center gap-2 cursor-pointer"
-                      onClick={() => setModalAutoPlay(true)}
-                    >
-                      <Play size={16} fill="currentColor" />
-                      <span>{seriesKey(activeHeroVideo) ? t('home.watchEpisode') : t('home.watchMovie')}</span>
-                    </button>
-                  )}
+                  <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                    {!modalAutoPlay && (
+                      <button
+                        type="button"
+                        className="cinema-primary w-full sm:w-auto px-6 py-2.5 font-bold flex items-center justify-center gap-2 cursor-pointer"
+                        onClick={() => setModalAutoPlay(true)}
+                      >
+                        <Play size={16} fill="currentColor" />
+                        <span>{seriesKey(activeHeroVideo) ? t('home.watchEpisode') : t('home.watchMovie')}</span>
+                      </button>
+                    )}
+                    {(activeHeroVideo.seriesTrailerUrl || activeHeroVideo.trailerUrl) && (
+                      <button
+                        type="button"
+                        className="cinema-secondary w-full sm:w-auto px-5 py-2.5 font-bold flex items-center justify-center gap-2 cursor-pointer"
+                        onClick={() =>
+                          setActiveTrailer({
+                            url: (activeHeroVideo.seriesTrailerUrl || activeHeroVideo.trailerUrl)!,
+                            title: activeHeroVideo.seriesTitle || activeHeroVideo.title,
+                          })
+                        }
+                      >
+                        <Play size={15} />
+                        <span>{language === 'sw' ? 'Tazama Trela' : 'Watch Trailer'}</span>
+                      </button>
+                    )}
+                  </div>
                   {nextEpisode(ratingFilteredVideos, activeHeroVideo.id) && (
                     <button
                       type="button"
@@ -2306,6 +2330,23 @@ const App: React.FC = () => {
             </div>
           );
         })()}
+
+        {activeTrailer && (
+          <TrailerModal
+            url={activeTrailer.url}
+            title={activeTrailer.title}
+            onClose={() => setActiveTrailer(null)}
+            onWatchFull={
+              activeTrailer.video
+                ? () => {
+                    const target = activeTrailer.video!;
+                    setActiveTrailer(null);
+                    openVideo(target, { autoPlay: true });
+                  }
+                : undefined
+            }
+          />
+        )}
 
         <div
           className={`cinema-shell flex-1 flex flex-col h-screen overflow-hidden relative ${

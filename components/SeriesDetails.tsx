@@ -8,6 +8,7 @@ import { publicMediaUrl } from '../lib/mediaUrl';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import CatalogueArtwork from './CatalogueArtwork';
+import { TrailerModal } from './TrailerModal';
 
 interface Props {
   episodes: Video[];
@@ -28,6 +29,7 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
   const seasons = [...new Set(episodes.map((episode) => episode.season || 1))].sort((a, b) => a - b);
   const [season, setSeason] = useState(first.season || 1);
   const [seriesCopied, setSeriesCopied] = useState(false);
+  const [showTrailer, setShowTrailer] = useState(false);
   const [episodeRangeStart, setEpisodeRangeStart] = useState(0);
   const { entryEpisode, newEpisodes, hasNewBatch } = getSeriesEntryEpisode(episodes);
   const hasSeparateNewBatch = hasNewBatch && entryEpisode.id !== first.id;
@@ -153,15 +155,14 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
                   {language === 'sw' ? `Anza msimu wa ${season}` : `Start season ${season} (Ep 1)`}
                 </button>
                 {trailer && (
-                  <a
+                  <button
+                    type="button"
                     className="cinema-secondary"
-                    href={trailer}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`Watch trailer for ${first.seriesTitle || first.title} (opens in new tab)`}
+                    onClick={() => setShowTrailer(true)}
+                    aria-label={`Watch trailer for ${first.seriesTitle || first.title}`}
                   >
                     <Play size={15} /> Watch trailer
-                  </a>
+                  </button>
                 )}
                 <button
                   type="button"
@@ -310,6 +311,15 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
           )}
         </div>
       </div>
+      {showTrailer && trailer && (
+        <TrailerModal
+          url={trailer}
+          title={first.seriesTitle || first.title}
+          onClose={() => setShowTrailer(false)}
+          onWatchFull={() => onPlay(entryEpisode)}
+          watchLabel={`Watch Ep ${entryEpisode.episode || 1}`}
+        />
+      )}
     </div>
   );
   return typeof document === 'undefined' ? content : createPortal(content, document.body);

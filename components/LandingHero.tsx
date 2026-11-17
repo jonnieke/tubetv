@@ -21,6 +21,7 @@ interface Props {
   dataSaver?: boolean;
   onPlay: () => void;
   onMoreInfo?: () => void;
+  onWatchTrailer?: (url: string, video: Video) => void;
   onSave: () => void;
   onRequireUnlock?: (video: Video) => void;
   count: number;
@@ -37,6 +38,7 @@ export default function LandingHero({
   dataSaver = false,
   onPlay,
   onMoreInfo,
+  onWatchTrailer,
   onSave,
   count,
   index,
@@ -347,6 +349,20 @@ export default function LandingHero({
             <Info size={16} />
             {language === 'sw' ? 'Maelezo & Vipindi' : 'Episodes & Info'}
           </button>
+          {(() => {
+            const trailerLink = publicMediaUrl(video.seriesTrailerUrl || video.trailerUrl);
+            if (!trailerLink || !onWatchTrailer) return null;
+            return (
+              <button
+                type="button"
+                className="cinema-secondary"
+                onClick={() => onWatchTrailer(trailerLink, video)}
+              >
+                <Play size={16} />
+                {language === 'sw' ? 'Tazama Trela' : 'Trailer'}
+              </button>
+            );
+          })()}
           <button type="button" className="cinema-secondary" onClick={onSave}>
             {saved ? <Check size={16} /> : <Plus size={16} />}
             {saved ? (language === 'sw' ? 'Imehifadhiwa' : 'In Watch List') : t('hero.watchLater')}
