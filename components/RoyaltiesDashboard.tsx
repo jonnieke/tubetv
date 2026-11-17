@@ -68,6 +68,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
   const [creatorPoolPercent, setCreatorPoolPercent] = useState<number>(DEFAULT_CREATOR_POOL_PERCENT);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeSubTab, setActiveSubTab] = useState<'creatives' | 'content'>('creatives');
+  const [expandedCreator, setExpandedCreator] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ELIGIBLE' | 'CARRIED_FORWARD'>('ALL');
   const [liveDbRevenue, setLiveDbRevenue] = useState<number | null>(null);
   const [measuredQVs, setMeasuredQVs] = useState<Record<string, number>>({});
@@ -807,140 +808,244 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                   filteredCreators.map((creator) => {
                     const savedProfile = creatorProfiles[creator.creator];
                     const portalCode = savedProfile?.portal_access_code || generateDefaultPortalCode(creator.creator);
+                    const isExpanded = expandedCreator === creator.creator;
+                    const creatorContents = isExpanded
+                      ? royaltyResult.content.filter((c) => c.creator === creator.creator)
+                      : [];
                     return (
-                      <tr key={creator.creator} className="hover:bg-zinc-800/30 transition-colors">
-                        <td className="py-3.5 px-4 text-zinc-500 font-bold">{creator.rank}</td>
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300">
-                              {creator.creator.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <span className="font-bold text-white block">{creator.creator}</span>
-                              <span className="text-[10px] text-zinc-400">{creator.topSeries}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-zinc-400">{creator.titlesCount}</td>
-                        <td className="py-3.5 px-4">
-                          <div className="space-y-1">
-                            {savedProfile?.payout_account ? (
-                              <div className="text-[11px] text-emerald-300 font-mono">
-                                {savedProfile.payout_account}{' '}
-                                <span className="text-zinc-500 font-sans">
-                                  ({savedProfile.payout_rail.split(' ')[0]}
-                                  {savedProfile.withholding_tax_percent
-                                    ? ` · ${savedProfile.withholding_tax_percent}% WHT`
-                                    : ''})
-                                </span>
+                      <React.Fragment key={creator.creator}>
+                        <tr
+                          onClick={() => setExpandedCreator(isExpanded ? null : creator.creator)}
+                          className="hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                        >
+                          <td className="py-3.5 px-4 text-zinc-500 font-bold">{creator.rank}</td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300">
+                                {creator.creator.charAt(0).toUpperCase()}
                               </div>
-                            ) : (
+                              <div>
+                                <span className="font-bold text-white block">{creator.creator}</span>
+                                <span className="text-[10px] text-zinc-400">{creator.topSeries}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-zinc-800/80 border border-zinc-700 px-2 py-0.5 text-[11px] font-semibold text-zinc-200">
+                              {creator.titlesCount} {isExpanded ? '▲' : '▼'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
+                            <div className="space-y-1">
+                              {savedProfile?.payout_account ? (
+                                <div className="text-[11px] text-emerald-300 font-mono">
+                                  {savedProfile.payout_account}{' '}
+                                  <span className="text-zinc-500 font-sans">
+                                    ({savedProfile.payout_rail.split(' ')[0]}
+                                    {savedProfile.withholding_tax_percent
+                                      ? ` · ${savedProfile.withholding_tax_percent}% WHT`
+                                      : ''})
+                                  </span>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditProfile(creator.creator)}
+                                  className="text-[11px] text-amber-400 hover:underline font-semibold"
+                                >
+                                  + Set M-Pesa / Bank Account
+                                </button>
+                              )}
+                              <div className="flex items-center gap-1.5">
+                                <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 font-mono text-[10px] text-zinc-300">
+                                  Portal: {portalCode}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const url = `${window.location.origin}/?creator_code=${encodeURIComponent(portalCode)}`;
+                                    void navigator.clipboard?.writeText(url);
+                                    setPayoutSuccessMessage(
+                                      `✓ Copied Self-Service Creator Portal link for ${creator.creator} (${portalCode})`
+                                    );
+                                  }}
+                                  className="text-[10px] text-zinc-400 hover:text-white underline"
+                                  title="Copy read-only Creator Self-Service Portal link"
+                                >
+                                  Copy Link
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-bold text-white">
+                            {creator.qualifiedViews.toLocaleString()}
+                          </td>
+                          <td className="py-3.5 px-4 text-right text-zinc-400">{creator.totalWatchHours} hrs</td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <span className="font-bold text-white">{creator.shareOfPlayPercent.toFixed(2)}%</span>
+                              <div className="w-12 h-1.5 bg-zinc-800 rounded-full overflow-hidden hidden sm:block">
+                                <div
+                                  className="h-full bg-red-600 rounded-full"
+                                  style={{ width: `${Math.min(100, creator.shareOfPlayPercent * 3)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <span className="font-mono font-bold text-sm text-emerald-400">
+                              KES {creator.netEarningsKes.toLocaleString()}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-col items-center gap-1">
+                              {creator.isEligibleForPayout ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Eligible (≥ KSh 1,000)</span>
+                                </span>
+                              ) : (
+                                <div className="w-full max-w-[170px] space-y-1">
+                                  <div className="flex justify-between items-center text-[10px]">
+                                    <span className="text-amber-400 font-semibold">Carried Forward</span>
+                                    <span className="text-zinc-500">
+                                      KES {creator.netEarningsKes} / 1,000
+                                    </span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-amber-500 rounded-full"
+                                      style={{ width: `${creator.thresholdProgressPercent}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => openEditProfile(creator.creator)}
-                                className="text-[11px] text-amber-400 hover:underline font-semibold"
+                                className="text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+                                title={`Configure M-Pesa / Bank Payout & Portal Code for ${creator.creator}`}
                               >
-                                + Set M-Pesa / Bank Account
+                                Payout Profile
                               </button>
-                            )}
-                            <div className="flex items-center gap-1.5">
-                              <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 font-mono text-[10px] text-zinc-300">
-                                Portal: {portalCode}
-                              </span>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const url = `${window.location.origin}/?creator_code=${encodeURIComponent(portalCode)}`;
-                                  void navigator.clipboard?.writeText(url);
-                                  setPayoutSuccessMessage(
-                                    `✓ Copied Self-Service Creator Portal link for ${creator.creator} (${portalCode})`
-                                  );
+                                  exportCreativesCsv([creator], {
+                                    periodLabel: `${selectedPeriod} - ${creator.creator}`,
+                                    grossRevenueKes: royaltyResult.grossRevenueKes,
+                                    netCreatorPoolKes: royaltyResult.netCreatorPoolKes,
+                                    totalQualifiedViews: royaltyResult.totalQualifiedViews,
+                                  });
                                 }}
-                                className="text-[10px] text-zinc-400 hover:text-white underline"
-                                title="Copy read-only Creator Self-Service Portal link"
+                                className="text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 p-1.5 rounded-lg transition-colors"
+                                title={`Download CSV statement for ${creator.creator}`}
                               >
-                                Copy Link
+                                <Download className="w-3.5 h-3.5" />
                               </button>
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-bold text-white">
-                          {creator.qualifiedViews.toLocaleString()}
-                        </td>
-                        <td className="py-3.5 px-4 text-right text-zinc-400">{creator.totalWatchHours} hrs</td>
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <span className="font-bold text-white">{creator.shareOfPlayPercent.toFixed(2)}%</span>
-                            <div className="w-12 h-1.5 bg-zinc-800 rounded-full overflow-hidden hidden sm:block">
-                              <div
-                                className="h-full bg-red-600 rounded-full"
-                                style={{ width: `${Math.min(100, creator.shareOfPlayPercent * 3)}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <span className="font-mono font-bold text-sm text-emerald-400">
-                            KES {creator.netEarningsKes.toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="flex flex-col items-center gap-1">
-                            {creator.isEligibleForPayout ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Eligible (≥ KSh 1,000)</span>
-                              </span>
-                            ) : (
-                              <div className="w-full max-w-[170px] space-y-1">
-                                <div className="flex justify-between items-center text-[10px]">
-                                  <span className="text-amber-400 font-semibold">Carried Forward</span>
-                                  <span className="text-zinc-500">
-                                    KES {creator.netEarningsKes} / 1,000
-                                  </span>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="bg-zinc-950/90">
+                            <td colSpan={10} className="p-4 border-b border-zinc-800">
+                              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div>
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-white">
+                                      {creator.creator} — Earnings by Content ({creatorContents.length} titles)
+                                    </h4>
+                                    <p className="text-[11px] text-zinc-400">
+                                      Per-title breakdown summing to {creator.creator}&apos;s total net royalties for {royaltyResult.periodLabel}
+                                    </p>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-[10px] uppercase tracking-wider text-zinc-400 block">Creator Total</span>
+                                    <strong className="font-mono text-base font-black text-emerald-400">
+                                      KES {creator.netEarningsKes.toLocaleString()}
+                                    </strong>
+                                  </div>
                                 </div>
-                                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-amber-500 rounded-full"
-                                    style={{ width: `${creator.thresholdProgressPercent}%` }}
-                                  />
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-[11px]">
+                                    <thead>
+                                      <tr className="border-b border-zinc-800 text-zinc-400 uppercase tracking-wider text-[10px]">
+                                        <th className="py-2 pr-3">Title &amp; Series</th>
+                                        <th className="py-2 pr-3">Category</th>
+                                        <th className="py-2 pr-3 text-right">30s+ QVs</th>
+                                        <th className="py-2 pr-3 text-right">Watch Time</th>
+                                        <th className="py-2 pr-3 text-right">Pool Share</th>
+                                        <th className="py-2 text-right">Earned</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-800/60">
+                                      {creatorContents.map((item) => (
+                                        <tr key={item.videoId} className="hover:bg-zinc-800/30">
+                                          <td className="py-2 pr-3">
+                                            <span className="font-semibold text-white">{item.title}</span>
+                                            {item.seriesTitle && (
+                                              <span className="ml-1.5 text-zinc-400">
+                                                ({item.seriesTitle}{item.episode !== '-' ? ` · Ep ${item.episode}` : ''})
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="py-2 pr-3 text-zinc-400">{item.category}</td>
+                                          <td className="py-2 pr-3 text-right font-mono text-zinc-200">
+                                            {item.qualifiedViews.toLocaleString()}
+                                          </td>
+                                          <td className="py-2 pr-3 text-right font-mono text-zinc-400">
+                                            {item.totalWatchHours} hrs
+                                          </td>
+                                          <td className="py-2 pr-3 text-right font-mono text-zinc-300">
+                                            {item.shareOfPoolPercent.toFixed(2)}%
+                                          </td>
+                                          <td className="py-2 text-right font-mono font-bold text-emerald-300">
+                                            KES {item.attributedRevenueKes.toLocaleString()}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openEditProfile(creator.creator)}
-                              className="text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
-                              title={`Configure M-Pesa / Bank Payout & Portal Code for ${creator.creator}`}
-                            >
-                              Payout Profile
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                exportCreativesCsv([creator], {
-                                  periodLabel: `${selectedPeriod} - ${creator.creator}`,
-                                  grossRevenueKes: royaltyResult.grossRevenueKes,
-                                  netCreatorPoolKes: royaltyResult.netCreatorPoolKes,
-                                  totalQualifiedViews: royaltyResult.totalQualifiedViews,
-                                });
-                              }}
-                              className="text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 p-1.5 rounded-lg transition-colors"
-                              title={`Download CSV statement for ${creator.creator}`}
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })
                 )}
               </tbody>
+              {filteredCreators.length > 0 && (
+                <tfoot className="bg-zinc-950/90 border-t border-zinc-700 font-bold text-xs">
+                  <tr>
+                    <td className="py-3 px-4 text-zinc-400" colSpan={2}>
+                      Total ({filteredCreators.length} {filteredCreators.length === 1 ? 'Creative' : 'Creatives'})
+                    </td>
+                    <td className="py-3 px-4 text-zinc-200">
+                      {filteredCreators.reduce((s, c) => s + c.titlesCount, 0).toLocaleString()}
+                    </td>
+                    <td className="py-3 px-4 text-zinc-500 text-[11px]">Click any creator row to expand titles</td>
+                    <td className="py-3 px-4 text-right font-mono text-white">
+                      {filteredCreators.reduce((s, c) => s + c.qualifiedViews, 0).toLocaleString()}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-zinc-300">
+                      {filteredCreators.reduce((s, c) => s + c.totalWatchHours, 0).toFixed(1)} hrs
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-zinc-200">
+                      {filteredCreators.reduce((s, c) => s + c.shareOfPlayPercent, 0).toFixed(2)}%
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-sm text-emerald-400">
+                      KES {filteredCreators.reduce((s, c) => s + c.netEarningsKes, 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4" colSpan={2} />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         )}
