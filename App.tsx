@@ -696,23 +696,47 @@ const App: React.FC = () => {
   }, [activeHeroVideo?.id, paywallVideo]);
 
   const openVideo = useCallback(
-    (video: Video, options?: { autoPlay?: boolean }) => {
-      try {
-        sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
-        localStorage.setItem('tubetv_last_watched_video_id', video.id);
-      } catch {}
-
-      if (isVideoLocked(video, hasActivePass)) {
-        openPaywallForVideo(video);
-        return;
+    (video: Video, options?: { autoPlay?: boolean; strictEpisode?: boolean }) => {
+      let targetVideo = video;
+      if (isVideoLocked(targetVideo, hasActivePass)) {
+        if (!options?.strictEpisode && isMicroDrama(targetVideo)) {
+          const key = seriesKey(targetVideo);
+          const freeOpener = key
+            ? ratingFilteredVideos
+                .filter((v) => seriesKey(v) === key)
+                .sort(compareEpisodes)
+                .find((v) => !isVideoLocked(v, hasActivePass))
+            : undefined;
+          if (freeOpener && freeOpener.id !== targetVideo.id) {
+            targetVideo = freeOpener;
+          } else {
+            try {
+              sessionStorage.setItem('tubetv_paywall_target_video_id', targetVideo.id);
+              localStorage.setItem('tubetv_last_watched_video_id', targetVideo.id);
+            } catch {}
+            openPaywallForVideo(targetVideo);
+            return;
+          }
+        } else {
+          try {
+            sessionStorage.setItem('tubetv_paywall_target_video_id', targetVideo.id);
+            localStorage.setItem('tubetv_last_watched_video_id', targetVideo.id);
+          } catch {}
+          openPaywallForVideo(targetVideo);
+          return;
+        }
       }
+      try {
+        sessionStorage.setItem('tubetv_paywall_target_video_id', targetVideo.id);
+        localStorage.setItem('tubetv_last_watched_video_id', targetVideo.id);
+      } catch {}
       setIsVideoFinished(false);
       setModalAutoPlay(options?.autoPlay ?? true);
       setEpisodeRangeStart(0);
-      window.history.pushState({}, '', videoPath(video.id));
-      setActiveHeroVideo(video);
+      window.history.pushState({}, '', videoPath(targetVideo.id));
+      setActiveHeroVideo(targetVideo);
     },
-    [hasActivePass, openPaywallForVideo],
+    [hasActivePass, openPaywallForVideo, ratingFilteredVideos],
   );
 
   const closeVideo = useCallback(() => {
