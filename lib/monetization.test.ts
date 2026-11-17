@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isContentFree, isVideoLocked } from './monetization';
+import { bunnyVideoToVideo, type BunnyVideoItem } from '../services/bunnyService';
 import type { Video } from '../types';
 
 const baseVideo: Video = {
@@ -57,6 +58,47 @@ describe('monetization rules', () => {
         freeEpisodes: 999,
       };
       expect(isVideoLocked(freeDrama, false)).toBe(false);
+    });
+
+    it('maps Micro Drama episodes 1-2 as explicitly free and 3+ as premium in bunnyVideoToVideo', () => {
+      const makeMicroItem = (ep: number, tierTag: string): BunnyVideoItem => ({
+        guid: `ep-${ep}`,
+        title: `Campus Hustle Ep ${ep}`,
+        length: 55,
+        views: 10,
+        status: 4,
+        encodeProgress: 100,
+        thumbnailFileName: 'thumb.jpg',
+        dateUploaded: '2026-11-16T00:00:00Z',
+        storageSize: 1000,
+        metaTags: [
+          { property: 'category', value: 'Micro Dramas' },
+          { property: 'seriesFormat', value: 'micro-drama' },
+          { property: 'episode', value: String(ep) },
+          { property: 'accessTier', value: tierTag },
+        ],
+      });
+
+      const ep1 = bunnyVideoToVideo(makeMicroItem(1, 'premium'));
+      const ep2 = bunnyVideoToVideo(makeMicroItem(2, 'premium'));
+      const ep3 = bunnyVideoToVideo(makeMicroItem(3, 'free'));
+      const ep5 = bunnyVideoToVideo(makeMicroItem(5, 'free'));
+
+      expect(ep1.isPremium).toBe(false);
+      expect(ep1.accessTier).toBe('free');
+      expect(isVideoLocked(ep1, false)).toBe(false);
+
+      expect(ep2.isPremium).toBe(false);
+      expect(ep2.accessTier).toBe('free');
+      expect(isVideoLocked(ep2, false)).toBe(false);
+
+      expect(ep3.isPremium).toBe(true);
+      expect(ep3.accessTier).toBe('premium');
+      expect(isVideoLocked(ep3, false)).toBe(true);
+
+      expect(ep5.isPremium).toBe(true);
+      expect(ep5.accessTier).toBe('premium');
+      expect(isVideoLocked(ep5, false)).toBe(true);
     });
   });
 

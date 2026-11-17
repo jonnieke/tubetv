@@ -474,18 +474,6 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   const isShort = category === 'Shorts' || activeItem.isShort === true;
 
   const isMicroDramaCat = seriesFormat === 'micro-drama' || category === 'Micro Dramas';
-  let isPremium: boolean;
-  if (isShort) {
-    isPremium = false;
-  } else if (!isMicroDramaCat) {
-    // Except Shorts and Micro Dramas, everything else is Premium.
-    isPremium = true;
-  } else if (rawTier === 'free' || rawIsPremium === 'false') {
-    isPremium = false;
-  } else {
-    isPremium = true;
-  }
-  const accessTier = isPremium ? ('premium' as const) : ('free' as const);
   const rawFreeEpisodes = getMeta(activeItem.metaTags, 'freeEpisodes');
   const parsedFreeEpisodes = rawFreeEpisodes ? parseInt(rawFreeEpisodes, 10) : NaN;
   const freeEpisodes = Number.isFinite(parsedFreeEpisodes) && parsedFreeEpisodes >= 0
@@ -493,6 +481,20 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     : isMicroDramaCat
       ? 2
       : 0;
+
+  let isPremium: boolean;
+  if (isShort) {
+    isPremium = false;
+  } else if (isMicroDramaCat) {
+    // Micro Dramas: episodes 1 and 2 are explicitly free; the rest are premium by default.
+    isPremium = parsedEpisode !== undefined
+      ? parsedEpisode > freeEpisodes
+      : rawTier !== 'free' && rawIsPremium !== 'false';
+  } else {
+    // Except Shorts and Micro Dramas, everything else is Premium by default unless explicitly free.
+    isPremium = rawTier === 'free' || rawIsPremium === 'false' ? false : true;
+  }
+  const accessTier = isPremium ? ('premium' as const) : ('free' as const);
 
 
   return {
