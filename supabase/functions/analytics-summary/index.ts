@@ -142,7 +142,7 @@ serve(async (req) => {
       vEntry.viewers.add(viewerId);
       byVideoMap.set(videoId, vEntry);
 
-      if (rangeInteractions.length < 250) {
+      if (rangeInteractions.length < 1000) {
         rangeInteractions.push({
           occurredAt,
           date: occurredAt.slice(0, 10),
@@ -338,7 +338,7 @@ serve(async (req) => {
       byLocation[location].interactions += 1;
       byLocation[location].watchSeconds += watchSeconds;
 
-      if (rangeInteractions.length < 250) {
+      if (rangeInteractions.length < 1000) {
         rangeInteractions.push({
           occurredAt,
           date: occurredAt.slice(0, 10),

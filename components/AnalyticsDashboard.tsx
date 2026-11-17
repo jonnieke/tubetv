@@ -125,6 +125,7 @@ export default function AnalyticsDashboard({
   const [dateFrom, setDateFrom] = useState<string>(() => new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
   const [dateTo, setDateTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [interactionSearch, setInteractionSearch] = useState<string>('');
+  const [showAllInteractions, setShowAllInteractions] = useState<boolean>(false);
 
   useEffect(() => {
     if (videos !== undefined) return;
@@ -764,43 +765,59 @@ export default function AnalyticsDashboard({
                   </div>
 
                   {rows.length > 0 ? (
-                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="sticky top-0 bg-zinc-900">
-                          <tr className="border-b border-zinc-800 text-zinc-400 uppercase tracking-wider text-[10px]">
-                            <th className="py-2 pr-4">Date &amp; Time</th>
-                            <th className="py-2 pr-4">Content</th>
-                            <th className="py-2 pr-4">Who (Viewer / Device)</th>
-                            <th className="py-2 pr-4">From Where</th>
-                            <th className="py-2 pr-4">Action</th>
-                            <th className="py-2 text-right">Duration</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800/70">
-                          {rows.slice(0, 100).map((r, idx) => (
-                            <tr key={`${r.occurredAt}-${r.videoId}-${idx}`} className="hover:bg-zinc-800/30">
-                              <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
-                                {r.occurredAt ? new Date(r.occurredAt).toLocaleString('en-KE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : r.date}
-                              </td>
-                              <td className="py-2 pr-4 font-medium text-white max-w-[200px] truncate">
-                                {titleById.get(r.videoId) || r.videoId}
-                              </td>
-                              <td className="py-2 pr-4 text-zinc-300 font-mono text-[11px]">
-                                {r.viewerId} <span className="text-zinc-500 font-sans">({r.device})</span>
-                              </td>
-                              <td className="py-2 pr-4 text-zinc-300">{r.location}</td>
-                              <td className="py-2 pr-4">
-                                <span className="rounded bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300">
-                                  {r.event.replace('_', ' ')}
-                                </span>
-                              </td>
-                              <td className="py-2 text-right font-mono font-bold text-emerald-300">
-                                {formatWatchDuration(r.watchSeconds)}
-                              </td>
+                    <div className="space-y-3">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-zinc-900">
+                            <tr className="border-b border-zinc-800 text-zinc-400 uppercase tracking-wider text-[10px]">
+                              <th className="py-2 pr-4">Date &amp; Time</th>
+                              <th className="py-2 pr-4">Content</th>
+                              <th className="py-2 pr-4">Who (Viewer / Device)</th>
+                              <th className="py-2 pr-4">From Where</th>
+                              <th className="py-2 pr-4">Action</th>
+                              <th className="py-2 text-right">Duration</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-800/70">
+                            {(showAllInteractions ? rows : rows.slice(0, 25)).map((r, idx) => (
+                              <tr key={`${r.occurredAt}-${r.videoId}-${idx}`} className="hover:bg-zinc-800/30">
+                                <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
+                                  {r.occurredAt ? new Date(r.occurredAt).toLocaleString('en-KE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : r.date}
+                                </td>
+                                <td className="py-2 pr-4 font-medium text-white max-w-[200px] truncate">
+                                  {titleById.get(r.videoId) || r.videoId}
+                                </td>
+                                <td className="py-2 pr-4 text-zinc-300 font-mono text-[11px]">
+                                  {r.viewerId} <span className="text-zinc-500 font-sans">({r.device})</span>
+                                </td>
+                                <td className="py-2 pr-4 text-zinc-300">{r.location}</td>
+                                <td className="py-2 pr-4">
+                                  <span className="rounded bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300">
+                                    {r.event.replace('_', ' ')}
+                                  </span>
+                                </td>
+                                <td className="py-2 text-right font-mono font-bold text-emerald-300">
+                                  {formatWatchDuration(r.watchSeconds)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {rows.length > 25 && (
+                        <div className="flex items-center justify-between text-xs text-zinc-400 pt-1">
+                          <span>
+                            Showing {showAllInteractions ? rows.length : Math.min(25, rows.length)} of {rows.length} interactions
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowAllInteractions((v) => !v)}
+                            className="rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-white"
+                          >
+                            {showAllInteractions ? 'Show first 25' : `Show all (${rows.length})`}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-xs text-zinc-400">

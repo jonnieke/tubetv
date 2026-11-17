@@ -1186,7 +1186,7 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                             <div className="px-3 py-2 border-b border-zinc-800 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                               Performance by Title / Episode ({creatorFromDate} → {creatorToDate})
                             </div>
-                            <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                            <div className="overflow-x-auto">
                               <table className="w-full text-left text-xs">
                                 <thead className="bg-zinc-950 text-zinc-500 border-b border-zinc-800">
                                   <tr>
