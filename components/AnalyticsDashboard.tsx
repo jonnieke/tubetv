@@ -188,17 +188,23 @@ export default function AnalyticsDashboard({
 
   const { myVideos, totalViews, categoryData } = useMemo(() => {
     let views = 0;
-    const categoryCounts = new Map<string, { titles: number; lifetimeViews: number }>();
+    const qvMap = funnel?.qualifiedViewsByVideo || {};
+    const rangeQvMap = funnel?.rangeQualifiedViewsByVideo || {};
+    const categoryCounts = new Map<string, { titles: number; lifetimeViews: number; rangeViews: number }>();
     const rows = effectiveVideos
       .map((item) => {
         const video = bunnyVideoToVideo(item);
-        const count = Number(item.views) || 0;
+        const bunnyViews = Number(item.views) || 0;
+        const measuredViews = qvMap[item.guid] ?? 0;
+        const rangeViews = rangeQvMap[item.guid] ?? 0;
+        const count = Math.max(bunnyViews, measuredViews);
         views += count;
         const category = video.category || 'Other';
-        const previous = categoryCounts.get(category) || { titles: 0, lifetimeViews: 0 };
+        const previous = categoryCounts.get(category) || { titles: 0, lifetimeViews: 0, rangeViews: 0 };
         categoryCounts.set(category, {
           titles: previous.titles + 1,
           lifetimeViews: previous.lifetimeViews + count,
+          rangeViews: previous.rangeViews + rangeViews,
         });
         return {
           id: item.guid,
@@ -214,9 +220,11 @@ export default function AnalyticsDashboard({
     return {
       myVideos: rows,
       totalViews: views,
-      categoryData: [...categoryCounts].map(([category, totals]) => ({ category, ...totals })),
+      categoryData: [...categoryCounts]
+        .map(([category, totals]) => ({ category, ...totals }))
+        .sort((a, b) => b.lifetimeViews - a.lifetimeViews || b.titles - a.titles),
     };
-  }, [effectiveVideos]);
+  }, [effectiveVideos, funnel?.qualifiedViewsByVideo, funnel?.rangeQualifiedViewsByVideo]);
 
   const grossRevenueKes30d = funnel?.grossRevenueKes30d ?? 0;
   const todayRevenueKes = funnel?.todayRevenueKes ?? 0;
@@ -935,6 +943,38 @@ export default function AnalyticsDashboard({
               );
             })()}
           </div>
+
+          {/* Category Breakdown (Titles & Measured Views) */}
+          {categoryData.length > 0 && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <div>
+                  <h2 className="text-base font-bold text-white">Category Breakdown (Measured Views)</h2>
+                  <p className="text-xs text-zinc-400">
+                    Combines Bunny lifetime plays and Supabase 30-day Qualified Views across {totalViews.toLocaleString('en-KE')} total views
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {categoryData.map((cat) => (
+                  <div key={cat.category} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-white truncate">{cat.category}</span>
+                      <span className="text-[10px] text-zinc-500">{cat.titles} titles</span>
+                    </div>
+                    <div className="mt-1.5 flex items-baseline justify-between gap-2">
+                      <strong className="text-base font-black text-emerald-300">
+                        {cat.lifetimeViews.toLocaleString('en-KE')}
+                      </strong>
+                      <span className="text-[10px] text-zinc-400">
+                        {cat.rangeViews > 0 ? `${cat.rangeViews.toLocaleString('en-KE')} in range` : 'views'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Bottom Table: Title-by-Title Revenue & Share-of-Play */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
