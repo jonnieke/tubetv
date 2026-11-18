@@ -532,7 +532,9 @@ const App: React.FC = () => {
         if (cancelled) return;
         if (bunnyItems.length > 0) {
           const mapped = bunnyItems.map(bunnyVideoToVideo) as Video[];
-          const publicItems = mapped.filter((video) => !video.muted);
+          const publicItems = mapped.filter((video) => !video.muted).filter(
+            (video) => Boolean(video.category && video.category.trim() && video.category.trim().toLowerCase() !== 'uncategorized'),
+          );
           const visible = CONTENT_RATING_ENFORCED
             ? publicItems.filter((video) => PUBLIC_CONTENT_RATINGS.includes(normalizeContentRating(video.contentRating)))
             : publicItems.filter((video) => normalizeContentRating(video.contentRating) !== '18');
@@ -909,7 +911,8 @@ const App: React.FC = () => {
         const item = await fetchBunnyVideoById(id);
         if (active && item) {
           const directVideo = bunnyVideoToVideo(item) as Video;
-          if (directVideo.muted || normalizeContentRating(directVideo.contentRating) === '18') return;
+          const isUncategorized = !directVideo.category || directVideo.category.trim().toLowerCase() === 'uncategorized';
+          if (directVideo.muted || isUncategorized || normalizeContentRating(directVideo.contentRating) === '18') return;
           if (isVideoLocked(directVideo, hasActivePass)) {
             openPaywallForVideo(directVideo);
           } else {

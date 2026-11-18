@@ -50,4 +50,14 @@ describe('public catalogue projection', () => {
     expect(projected?.guid).toBe('12345678-1234-1234-1234-123456789abc');
     expect(projected?.title).toBe('Single Episode');
   });
+
+  it('excludes uncategorized items from public catalogue', () => {
+    expect(publicItem(item({ metaTags: [{ property: 'contentRating', value: 'PG' }] }))).toBeNull();
+    expect(
+      publicItem(item({ metaTags: [{ property: 'category', value: 'Uncategorized' }, { property: 'contentRating', value: 'PG' }] })),
+    ).toBeNull();
+    expect(
+      publicItem(item({ metaTags: [{ property: 'category', value: '  ' }, { property: 'contentRating', value: 'PG' }] })),
+    ).toBeNull();
+  });
 });

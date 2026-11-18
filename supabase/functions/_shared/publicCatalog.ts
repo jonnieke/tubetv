@@ -5,10 +5,12 @@ function tagValue(tags: {property?: string; value?: string}[], name: string) {
 export function publicItem(item: Record<string, unknown>, enforceRating = false) {
   if (item.status !== 4) return null;
   const tags = Array.isArray(item.metaTags) ? item.metaTags as {property?: string; value?: string}[] : [];
+  const category = tagValue(tags, 'category').toLowerCase();
   const rating = tagValue(tags, 'contentrating').toUpperCase();
   const published = tagValue(tags, 'published').toLowerCase();
   const releaseValue = tagValue(tags, 'releaseat');
   const releaseAt = Date.parse(releaseValue);
+  if (!category || category === 'uncategorized') return null;
   if (tagValue(tags, 'muted').toLowerCase() === 'true' || published === 'false' || published === 'draft' || rating === '18') return null;
   if (enforceRating && !['GE','PG','16'].includes(rating)) return null;
   if (releaseValue && (!Number.isFinite(releaseAt) || releaseAt > Date.now())) return null;
