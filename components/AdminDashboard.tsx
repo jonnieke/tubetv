@@ -1073,6 +1073,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onAddCategory={onAddCategory} 
             onRemoveCategory={onRemoveCategory} 
             videos={items}
+            embedded
+            onOpenRoyalties={() => setActiveTab('royalties')}
           />
         </div>
       )}

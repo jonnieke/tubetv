@@ -123,6 +123,9 @@ interface AnalyticsDashboardProps {
   onAddCategory?: (name: string, iconName: string) => void;
   onRemoveCategory?: (id: string) => void;
   videos?: BunnyVideoItem[];
+  /** When mounted inside AdminDashboard, Royalties & Payouts is its own sidebar tab, so the inner copy is hidden. */
+  embedded?: boolean;
+  onOpenRoyalties?: () => void;
 }
 
 export default function AnalyticsDashboard({
@@ -130,6 +133,8 @@ export default function AnalyticsDashboard({
   onAddCategory = () => { },
   onRemoveCategory = () => { },
   videos,
+  embedded = false,
+  onOpenRoyalties,
 }: AnalyticsDashboardProps) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'overview' | 'menu' | 'royalties'>('overview');
@@ -368,16 +373,18 @@ export default function AnalyticsDashboard({
             >
               {t('studio.menu')}
             </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('royalties')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                activeTab === 'royalties' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              <Coins className="w-4 h-4 text-amber-400" />
-              <span>Performance & Royalties</span>
-            </button>
+            {!embedded && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('royalties')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                  activeTab === 'royalties' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Coins className="w-4 h-4 text-amber-400" />
+                <span>Performance &amp; Royalties</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -970,7 +977,7 @@ export default function AnalyticsDashboard({
               </div>
               <button
                 type="button"
-                onClick={() => setActiveTab('royalties')}
+                onClick={() => (embedded && onOpenRoyalties ? onOpenRoyalties() : setActiveTab('royalties'))}
                 className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 cursor-pointer"
               >
                 Full Creator Royalties
