@@ -77,6 +77,8 @@ export interface CreatorRoyaltySummary {
   shareOfPlayPercent: number;
   grossRevenueShareKes: number;
   netEarningsKes: number;
+  carriedForwardKes: number;
+  totalAccruedKes: number;
   thresholdKes: number;
   thresholdProgressPercent: number;
   isEligibleForPayout: boolean;
@@ -85,6 +87,54 @@ export interface CreatorRoyaltySummary {
   payoutRail?: string;
   withholdingTaxPercent?: number;
   portalAccessCode?: string;
+}
+
+export interface SettlementHistoryRow {
+  creator_name: string;
+  period_label: string;
+  net_payout_kes: number;
+  carried_forward_kes?: number | null;
+  total_accrued_kes?: number | null;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Extracts each creator's latest unpaid carried-forward balance from prior
+ * settlement snapshots, excluding the active period to prevent double counting.
+ */
+export function extractCarriedForwardByCreator(
+  rows: SettlementHistoryRow[],
+  currentPeriodLabel: string,
+): Record<string, number> {
+  const byCreator = new Map<string, SettlementHistoryRow[]>();
+  for (const row of rows) {
+    const name = (row.creator_name || '').trim();
+    if (!name || row.period_label === currentPeriodLabel) continue;
+    const list = byCreator.get(name) || [];
+    list.push(row);
+    byCreator.set(name, list);
+  }
+
+  const result: Record<string, number> = {};
+  for (const [creator, list] of byCreator.entries()) {
+    list.sort((a, b) => {
+      const timeA = a.updated_at || a.created_at || a.period_label || '';
+      const timeB = b.updated_at || b.created_at || b.period_label || '';
+      return timeB.localeCompare(timeA);
+    });
+    const latest = list[0];
+    if (latest && latest.status === 'carried_forward') {
+      const accrued = Number(latest.total_accrued_kes);
+      const net = Number(latest.net_payout_kes);
+      const balance = Number.isFinite(accrued) && accrued > 0 ? accrued : Number.isFinite(net) && net > 0 ? net : 0;
+      if (balance > 0) {
+        result[creator] = Math.round(balance * 100) / 100;
+      }
+    }
+  }
+  return result;
 }
 
 export interface ContentPerformanceRow {
@@ -249,6 +299,7 @@ export function computeShareOfPlayRoyalties(
     measuredQualifiedViews?: Record<string, number>;
     userCentricGrossByVideo?: Record<string, number>;
     unattributedGrossKes?: number;
+    carriedForwardByCreator?: Record<string, number>;
   }
 ): RoyaltyComputationResult {
   const grossRev = Math.max(0, config.grossSubscriptionRevenueKes || 0);
@@ -369,8 +420,13 @@ export function computeShareOfPlayRoyalties(
       : (totalQualifiedViews > 0 ? (c.qualifiedViews / safeTotalQv) * 100 : 0);
     const grossShare = c.netEarningsKes;
     const netEarnings = Math.round(grossShare * 100) / 100;
-    const progressPercent = Math.min(100, Math.round((netEarnings / thresholdKes) * 100));
-    const isEligible = netEarnings >= thresholdKes;
+    const carriedForward = Math.max(
+      0,
+      Math.round((overrides?.carriedForwardByCreator?.[c.creator] || 0) * 100) / 100,
+    );
+    const totalAccrued = Math.round((netEarnings + carriedForward) * 100) / 100;
+    const progressPercent = Math.min(100, Math.round((totalAccrued / thresholdKes) * 100));
+    const isEligible = totalAccrued >= thresholdKes;
 
     // Determine top series
     const topSeries =
@@ -386,6 +442,8 @@ export function computeShareOfPlayRoyalties(
       shareOfPlayPercent: Math.round(shareOfPlay * 1000) / 1000,
       grossRevenueShareKes: Math.round(grossShare),
       netEarningsKes: netEarnings,
+      carriedForwardKes: carriedForward,
+      totalAccruedKes: totalAccrued,
       thresholdKes,
       thresholdProgressPercent: progressPercent,
       isEligibleForPayout: isEligible,
@@ -393,8 +451,8 @@ export function computeShareOfPlayRoyalties(
     };
   });
 
-  // Sort creators by net earnings descending and assign rank
-  creatorList.sort((a, b) => b.netEarningsKes - a.netEarningsKes);
+  // Sort creators by total accrued descending (then current period net earnings) and assign rank
+  creatorList.sort((a, b) => (b.totalAccruedKes - a.totalAccruedKes) || (b.netEarningsKes - a.netEarningsKes));
   creatorList.forEach((c, idx) => {
     c.rank = idx + 1;
   });
@@ -437,7 +495,7 @@ export function computeShareOfPlayRoyalties(
   const carriedForwardCount = creatorList.length - eligibleCount;
   const totalEligiblePayout = creatorList
     .filter((c) => c.isEligibleForPayout)
-    .reduce((sum, c) => sum + c.netEarningsKes, 0);
+    .reduce((sum, c) => sum + c.totalAccruedKes, 0);
 
   return {
     periodLabel: config.periodLabel,

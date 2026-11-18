@@ -21,6 +21,7 @@ import CreatorPayoutDisbursement from './CreatorPayoutDisbursement';
 import { supabase } from '../lib/supabase';
 import {
   computeShareOfPlayRoyalties,
+  extractCarriedForwardByCreator,
   exportCreativesCsv,
   exportPayoutBatchCsv,
   exportContentCsv,
@@ -63,6 +64,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
   const [qvsToday, setQvsToday] = useState<Record<string, number>>({});
   const [userCentricGrossByVideo, setUserCentricGrossByVideo] = useState<Record<string, number> | undefined>(undefined);
   const [unattributedGrossKes, setUnattributedGrossKes] = useState<number>(0);
+  const [carriedForwardByCreator, setCarriedForwardByCreator] = useState<Record<string, number>>({});
   const [hasSummaryLoaded, setHasSummaryLoaded] = useState<boolean>(false);
   const [isEditingPool, setIsEditingPool] = useState<boolean>(false);
   const [creatorPoolPercent, setCreatorPoolPercent] = useState<number>(DEFAULT_CREATOR_POOL_PERCENT);
@@ -181,6 +183,17 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
             window.localStorage.setItem(CREATOR_PROFILES_STORAGE_KEY, JSON.stringify(merged));
           } catch {}
         }
+
+        // 4. Load historical carried-forward balances from creator_payout_settlements
+        const { data: settlementRows, error: settlementErr } = await supabase
+          .from('creator_payout_settlements')
+          .select('creator_name, period_label, net_payout_kes, carried_forward_kes, total_accrued_kes, status, created_at, updated_at')
+          .order('updated_at', { ascending: false })
+          .limit(500);
+
+        if (!settlementErr && Array.isArray(settlementRows) && active) {
+          setCarriedForwardByCreator(extractCarriedForwardByCreator(settlementRows, selectedPeriod));
+        }
       } catch (err) {
         console.warn('Could not load live payment transactions:', err);
       } finally {
@@ -206,16 +219,17 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
         gatewayFeePercent: PAYMENT_GATEWAY_FEE_PERCENT,
         payoutThresholdKes: MINIMUM_PAYOUT_THRESHOLD_KES,
       },
-      hasSummaryLoaded || Object.keys(activeMeasuredQVs).length > 0
+      hasSummaryLoaded || Object.keys(activeMeasuredQVs).length > 0 || Object.keys(carriedForwardByCreator).length > 0
         ? {
             measuredQualifiedViews: activeMeasuredQVs,
+            carriedForwardByCreator,
             ...(poolWindow !== 'today' && userCentricGrossByVideo && Object.keys(userCentricGrossByVideo).length > 0
               ? { userCentricGrossByVideo, unattributedGrossKes }
               : {}),
           }
         : undefined,
     );
-  }, [videos, selectedPeriod, poolWindow, grossRevenueInput, creatorPoolPercent, activeMeasuredQVs, hasSummaryLoaded, userCentricGrossByVideo, unattributedGrossKes]);
+  }, [videos, selectedPeriod, poolWindow, grossRevenueInput, creatorPoolPercent, activeMeasuredQVs, hasSummaryLoaded, userCentricGrossByVideo, unattributedGrossKes, carriedForwardByCreator]);
 
   // Filtered Creatives
   const filteredCreators = useMemo(() => {
@@ -312,8 +326,11 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
         share_of_play_percent: c.shareOfPlayPercent,
         gross_pool_kes: royaltyResult.grossRevenueKes,
         net_payout_kes: c.netEarningsKes,
+        carried_forward_kes: c.carriedForwardKes,
+        total_accrued_kes: c.totalAccruedKes,
         threshold_kes: MINIMUM_PAYOUT_THRESHOLD_KES,
         status: c.isEligibleForPayout ? 'eligible' : 'carried_forward',
+        updated_at: new Date().toISOString(),
       }));
 
       const { error } = await supabase
@@ -862,10 +879,12 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                           </td>
                           <td className="py-3.5 px-4 text-right">
                             <span className="font-mono font-bold text-sm text-emerald-400 block">
-                              KES {creator.netEarningsKes.toLocaleString()}
+                              KES {(creator.carriedForwardKes > 0 ? creator.totalAccruedKes : creator.netEarningsKes).toLocaleString()}
                             </span>
                             <span className="text-[10px] text-zinc-500 font-mono">
-                              Gross KES {creator.grossRevenueShareKes.toLocaleString()}
+                              {creator.carriedForwardKes > 0
+                                ? `Period KES ${creator.netEarningsKes.toLocaleString()} + KES ${creator.carriedForwardKes.toLocaleString()} rolled`
+                                : `Gross KES ${creator.grossRevenueShareKes.toLocaleString()}`}
                             </span>
                           </td>
                           <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
@@ -879,7 +898,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                                 <div className="space-y-1">
                                   <div className="flex justify-between items-center text-[10px]">
                                     <span className="text-amber-400 font-semibold">Carried Forward</span>
-                                    <span className="text-zinc-500 font-mono">KES {creator.netEarningsKes} / 1,000</span>
+                                    <span className="text-zinc-500 font-mono">KES {creator.totalAccruedKes} / 1,000</span>
                                   </div>
                                   <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                                     <div
@@ -1022,7 +1041,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                       {filteredCreators.reduce((s, c) => s + c.shareOfPlayPercent, 0).toFixed(2)}%
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-sm text-emerald-400">
-                      KES {filteredCreators.reduce((s, c) => s + c.netEarningsKes, 0).toFixed(2)}
+                      KES {filteredCreators.reduce((s, c) => s + c.totalAccruedKes, 0).toFixed(2)}
                     </td>
                     <td className="py-3 px-4 text-zinc-500 text-[11px]" colSpan={2}>
                       Click any creator row to expand per-content earnings

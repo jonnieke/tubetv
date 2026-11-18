@@ -3,6 +3,7 @@ import {
   computeBalancedWatchWeight,
   computeShareOfPlayRoyalties,
   computeUserCentricVideoGross,
+  extractCarriedForwardByCreator,
   getQualifiedViewThresholdSeconds,
   parseDurationToSeconds,
   MINIMUM_PAYOUT_THRESHOLD_KES,
@@ -238,5 +239,54 @@ describe('Creator Royalties & Share of Play Engine', () => {
     // Movie gets sqrt(90)/(sqrt(90)+sqrt(2)) ≈ 87% of KES 10, Micro gets ~13% (not 97.8% vs 2.2% and not 10x looped)
     expect(userCentricGrossByVideo['movie-1']).toBeCloseTo(10 * (movieWeight / (movieWeight + microWeight)), 2);
     expect(userCentricGrossByVideo['micro-1']).toBeCloseTo(10 * (microWeight / (movieWeight + microWeight)), 2);
+  });
+
+  it('extracts latest unpaid carried-forward balance without double counting across months', () => {
+    const history = [
+      // Creator A had 400 in Sep, 350 in Oct -> Oct total_accrued_kes is 750
+      { creator_name: 'Studio A', period_label: '2026-09', net_payout_kes: 400, total_accrued_kes: 400, status: 'carried_forward', updated_at: '2026-09-30T23:59:00Z' },
+      { creator_name: 'Studio A', period_label: '2026-10', net_payout_kes: 350, carried_forward_kes: 400, total_accrued_kes: 750, status: 'carried_forward', updated_at: '2026-10-31T23:59:00Z' },
+      // Active period row should be ignored
+      { creator_name: 'Studio A', period_label: 'Last 30 Days', net_payout_kes: 300, total_accrued_kes: 1050, status: 'eligible', updated_at: '2026-11-18T12:00:00Z' },
+      // Studio B was already paid in Oct -> 0 rollover
+      { creator_name: 'Studio B', period_label: '2026-09', net_payout_kes: 500, total_accrued_kes: 500, status: 'carried_forward', updated_at: '2026-09-30T23:59:00Z' },
+      { creator_name: 'Studio B', period_label: '2026-10', net_payout_kes: 700, carried_forward_kes: 500, total_accrued_kes: 1200, status: 'paid', updated_at: '2026-10-31T23:59:00Z' },
+    ];
+
+    const carried = extractCarriedForwardByCreator(history, 'Last 30 Days');
+    expect(carried['Studio A']).toBe(750);
+    expect(carried['Studio B']).toBeUndefined();
+  });
+
+  it('combines carried-forward balance with current earnings to cross the KSh 1,000 eligibility threshold', () => {
+    const videos: Video[] = [
+      { id: 'v1', title: 'Ep 3', thumbnail: '', views: 100, duration: '02:00', isPremium: true, author: 'Studio A', category: 'Series' },
+      { id: 'v2', title: 'Ep 4', thumbnail: '', views: 100, duration: '02:00', isPremium: true, author: 'Studio B', category: 'Series' },
+    ];
+    // Total creator pool = 1,000 * 60% = 600 -> 300 each this period
+    const result = computeShareOfPlayRoyalties(
+      videos,
+      { periodLabel: 'Last 30 Days', grossSubscriptionRevenueKes: 1000, gatewayFeePercent: 0, creatorPoolPercent: 60 },
+      { carriedForwardByCreator: { 'Studio A': 750 } },
+    );
+
+    const studioA = result.creators.find((c) => c.creator === 'Studio A')!;
+    const studioB = result.creators.find((c) => c.creator === 'Studio B')!;
+
+    expect(studioA.netEarningsKes).toBe(300);
+    expect(studioA.carriedForwardKes).toBe(750);
+    expect(studioA.totalAccruedKes).toBe(1050);
+    expect(studioA.isEligibleForPayout).toBe(true);
+    expect(studioA.payoutStatus).toBe('ELIGIBLE');
+    expect(studioA.thresholdProgressPercent).toBe(100);
+
+    expect(studioB.netEarningsKes).toBe(300);
+    expect(studioB.carriedForwardKes).toBe(0);
+    expect(studioB.totalAccruedKes).toBe(300);
+    expect(studioB.isEligibleForPayout).toBe(false);
+    expect(studioB.payoutStatus).toBe('CARRIED_FORWARD');
+
+    expect(result.eligibleCreatorsCount).toBe(1);
+    expect(result.totalEligiblePayoutKes).toBe(1050);
   });
 });
