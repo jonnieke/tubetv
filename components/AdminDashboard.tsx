@@ -567,18 +567,57 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [visibilitySavingIds, setVisibilitySavingIds] = useState<Set<string>>(new Set());
   const [tierSavingIds, setTierSavingIds] = useState<Set<string>>(new Set());
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    const onScroll = () => {
-      setShowBackToTop(window.scrollY > 400);
+    const getScrollOffset = () => {
+      if (scrollContainerRef.current) {
+        return Math.max(window.scrollY, scrollContainerRef.current.scrollTop);
+      }
+      let el = rootRef.current?.parentElement || null;
+      while (el) {
+        if (el.scrollTop > 0) {
+          scrollContainerRef.current = el;
+          return el.scrollTop;
+        }
+        el = el.parentElement;
+      }
+      return window.scrollY;
     };
+
+    const onScroll = (e?: Event) => {
+      const target = e?.target;
+      if (target instanceof HTMLElement && rootRef.current && target.contains(rootRef.current)) {
+        scrollContainerRef.current = target;
+        setShowBackToTop(target.scrollTop > 300 || window.scrollY > 300);
+        return;
+      }
+      setShowBackToTop(getScrollOffset() > 300);
+    };
+
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      document.removeEventListener('scroll', onScroll, { capture: true });
+      window.removeEventListener('scroll', onScroll);
+    };
   }, []);
 
   const scrollToTop = useCallback(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    let el = rootRef.current?.parentElement || null;
+    while (el) {
+      if (el.scrollTop > 0) {
+        el.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      el = el.parentElement;
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
   const handleEditFormChange: React.Dispatch<React.SetStateAction<EditForm>> = useCallback((updater) => {
@@ -917,7 +956,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const currentSection = navItems.find((n) => n.id === activeTab) || navItems[0];
 
   return (
-    <div className="min-h-screen bg-[#070709] text-white flex flex-col lg:flex-row">
+    <div ref={rootRef} className="min-h-screen bg-[#070709] text-white flex flex-col lg:flex-row">
       {/* Desktop Studio Sidebar */}
       <aside className="hidden lg:flex flex-col w-64 shrink-0 border-r border-zinc-800/80 bg-[#0b0b0f] sticky top-0 h-screen p-5 justify-between">
         <div>
@@ -1005,6 +1044,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <p className="text-zinc-400 text-xs sm:text-sm mt-0.5">{currentSection.subtitle}</p>
             </div>
             <div className="flex items-center gap-2.5">
+              {showBackToTop && (
+                <button
+                  type="button"
+                  onClick={scrollToTop}
+                  className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-3 py-2 rounded-xl text-xs font-semibold text-zinc-200 transition-colors cursor-pointer"
+                  title="Scroll back to top"
+                >
+                  <ChevronUp size={13} />
+                  Top
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void load()}
