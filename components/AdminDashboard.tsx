@@ -566,6 +566,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [visibilitySavingIds, setVisibilitySavingIds] = useState<Set<string>>(new Set());
   const [tierSavingIds, setTierSavingIds] = useState<Set<string>>(new Set());
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => {
+      setShowBackToTop(window.scrollY > 400);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleEditFormChange: React.Dispatch<React.SetStateAction<EditForm>> = useCallback((updater) => {
     hasEditedRef.current = true;
@@ -1332,8 +1346,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <p className="text-sm">No videos match your search.</p>
             </div>
           )}
-          <div className="px-4 py-3 border-t border-zinc-800 text-zinc-500 text-xs">
-            Showing {filtered.length} of {items.length} videos
+          <div className="px-4 py-3 border-t border-zinc-800 text-zinc-500 text-xs flex items-center justify-between gap-4">
+            <span>Showing {filtered.length} of {items.length} videos</span>
+            {filtered.length > 10 && (
+              <button
+                type="button"
+                onClick={scrollToTop}
+                className="inline-flex items-center gap-1.5 text-zinc-300 hover:text-white font-semibold bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-3 py-1 rounded-lg transition-colors"
+              >
+                <ChevronUp size={13} />
+                Back to top
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1360,6 +1384,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
         </main>
       </div>
+      {showBackToTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          aria-label="Back to top"
+          title="Back to top"
+          className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-1.5 rounded-full bg-red-600 hover:bg-red-500 text-white px-4 py-2.5 text-xs font-bold shadow-lg shadow-black/50 border border-red-400/40 transition-all hover:-translate-y-0.5 cursor-pointer"
+        >
+          <ChevronUp size={15} />
+          <span>Top</span>
+        </button>
+      )}
     </div>
   );
 };
