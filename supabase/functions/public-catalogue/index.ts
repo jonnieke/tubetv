@@ -147,7 +147,7 @@ serve(async (req) => {
     }
     const data = await upstream.json();
     const rawItems = Array.isArray(data.items)
-      ? data.items.map((item: Record<string, unknown>) => publicItem(item, enforceRating)).filter(Boolean)
+      ? data.items.map((item: Record<string, unknown>) => publicItem(item, enforceRating, true)).filter(Boolean)
       : [];
     const items = await Promise.all(rawItems.map((item) => attachSignedArtwork(item)));
     const payload = { items, totalItems: Number(data.totalItems) || 0, currentPage: page, itemsPerPage };

@@ -60,4 +60,23 @@ describe('public catalogue projection', () => {
       publicItem(item({ metaTags: [{ property: 'category', value: '  ' }, { property: 'contentRating', value: 'PG' }] })),
     ).toBeNull();
   });
+
+  it('trims transcripts and long synopses in compact list mode', () => {
+    const longText = 'A'.repeat(400);
+    const projected = publicItem(
+      item({
+        metaTags: [
+          { property: 'category', value: 'Movies' },
+          { property: 'contentRating', value: 'PG' },
+          { property: 'description', value: longText },
+          { property: 'transcript', value: 'Huge transcript text' },
+        ],
+      }),
+      false,
+      true,
+    );
+    expect(projected?.metaTags.find((t) => t.property === 'transcript')).toBeUndefined();
+    const desc = projected?.metaTags.find((t) => t.property === 'description')?.value as string;
+    expect(desc.length).toBeLessThanOrEqual(240);
+  });
 });

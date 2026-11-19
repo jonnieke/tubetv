@@ -351,10 +351,30 @@ export const fetchBunnyVideos = async (admin = false, fresh = false): Promise<Bu
           Authorization: `Bearer ${ANON_KEY}`,
         };
     const bypassCache = admin || fresh;
+    const useEdgeCatalogueProxy =
+      !admin &&
+      !fresh &&
+      typeof window !== 'undefined' &&
+      !['localhost', '127.0.0.1'].includes(window.location.hostname);
+
     const fetchPage = async (page: number): Promise<BunnyVideoListResponse> => {
       const freshParam = !admin && fresh ? '&fresh=1' : '';
+      const query = `?page=${page}&itemsPerPage=100&orderBy=date${freshParam}`;
+      if (useEdgeCatalogueProxy) {
+        try {
+          const edgeRes = await fetch(`/api/catalogue${query}`, {
+            headers: { Accept: 'application/json' },
+            cache: 'default',
+          });
+          if (edgeRes.ok) {
+            return await edgeRes.json();
+          }
+        } catch {
+          // Fall through to Supabase Edge Function directly
+        }
+      }
       const res = await fetch(
-        `${admin ? BASE_URL : PUBLIC_URL}?page=${page}&itemsPerPage=100&orderBy=date${freshParam}`,
+        `${admin ? BASE_URL : PUBLIC_URL}${query}`,
         { headers, cache: bypassCache ? 'no-store' : 'default' }
       );
       if (!res.ok) throw new Error(`Catalogue request failed: ${res.status}`);

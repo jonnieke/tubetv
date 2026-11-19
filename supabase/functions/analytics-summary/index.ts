@@ -202,7 +202,19 @@ serve(async (req) => {
   // Also aggregate 30-day verified Qualified Views per videoId and succeeded payment_transactions revenue,
   // plus detailed Date A -> Date B interaction, revenue & QV logs.
   const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
-  const [qvRes, txRes, rangeEventsRes, rangeTxRes, rangeRoyaltyEventsRes] = await Promise.all([
+  const since30dDate = since30d.slice(0, 10);
+  const rangeFromDate = rangeFromIso.slice(0, 10);
+  const rangeToDate = rangeToIso.slice(0, 10);
+
+  const [
+    qvRes,
+    txRes,
+    rangeEventsRes,
+    rangeTxRes,
+    rangeRoyaltyEventsRes,
+    dailyVideoStatsRes,
+    dailyPayerPlaysRes,
+  ] = await Promise.all([
     client
       .from("analytics_events")
       .select("properties, occurred_at")
@@ -238,6 +250,17 @@ serve(async (req) => {
       .gte("occurred_at", rangeFromIso)
       .lte("occurred_at", rangeToIso)
       .limit(5000),
+    client
+      .from("analytics_daily_video_stats")
+      .select("stat_date, video_id, qualified_views")
+      .gte("stat_date", since30dDate < rangeFromDate ? since30dDate : rangeFromDate)
+      .limit(10000),
+    client
+      .from("analytics_daily_payer_plays")
+      .select("stat_date, payer_key, video_id, max_watch_seconds")
+      .gte("stat_date", rangeFromDate)
+      .lte("stat_date", rangeToDate)
+      .limit(10000),
   ]);
 
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -249,7 +272,25 @@ serve(async (req) => {
     dailyMap.set(dayKey, { revenueKes: 0, qualifiedViews: 0 });
   }
 
-  if (Array.isArray(qvRes.data)) {
+  const useDailyVideoRollup =
+    !dailyVideoStatsRes.error && Array.isArray(dailyVideoStatsRes.data) && dailyVideoStatsRes.data.length > 0;
+
+  if (useDailyVideoRollup) {
+    for (const row of dailyVideoStatsRes.data) {
+      const vid = typeof row.video_id === "string" ? row.video_id.trim() : "";
+      const dayKey = typeof row.stat_date === "string" ? row.stat_date.slice(0, 10) : "";
+      const qvCount = Number(row.qualified_views) || 0;
+      if (qvCount <= 0) continue;
+      if (vid && dayKey >= since30dDate) {
+        qualifiedViewsByVideo[vid] = (qualifiedViewsByVideo[vid] || 0) + qvCount;
+        if (dayKey === todayKey) {
+          todayQualifiedViewsByVideo[vid] = (todayQualifiedViewsByVideo[vid] || 0) + qvCount;
+        }
+      }
+      const bucket = dayKey ? dailyMap.get(dayKey) : undefined;
+      if (bucket) bucket.qualifiedViews += qvCount;
+    }
+  } else if (Array.isArray(qvRes.data)) {
     for (const row of qvRes.data) {
       const props = (row.properties || {}) as Record<string, unknown>;
       const vid = typeof props.videoId === "string" ? props.videoId.trim() : "";
@@ -426,26 +467,59 @@ serve(async (req) => {
     }
   }
 
+  // If daily video rollup table is populated, use exact aggregated QVs for the date range (no 1,000-row cap)
+  if (useDailyVideoRollup && Array.isArray(dailyVideoStatsRes.data)) {
+    for (const k of Object.keys(rangeQualifiedViewsByVideo)) delete rangeQualifiedViewsByVideo[k];
+    for (const row of dailyVideoStatsRes.data) {
+      const vid = typeof row.video_id === "string" ? row.video_id.trim() : "";
+      const dayKey = typeof row.stat_date === "string" ? row.stat_date.slice(0, 10) : "";
+      const qvCount = Number(row.qualified_views) || 0;
+      if (vid && qvCount > 0 && dayKey >= rangeFromDate && dayKey <= rangeToDate) {
+        rangeQualifiedViewsByVideo[vid] = (rangeQualifiedViewsByVideo[vid] || 0) + qvCount;
+      }
+    }
+  }
+
   // Deduplicate replays per (payerKey, videoId, dayKey) and apply square-root duration weighting (capped at 90 min)
   const dedupedDayBest = new Map<string, { payerKey: string; vid: string; weight: number }>();
-  const royaltyEvents = Array.isArray(rangeRoyaltyEventsRes.data) ? rangeRoyaltyEventsRes.data : rangeEventsRes.data;
-  if (Array.isArray(royaltyEvents)) {
-    for (const row of royaltyEvents) {
-      if (row.event_name !== "qualified_view" && row.event_name !== "playback_complete") continue;
-      const props = (row.properties || {}) as Record<string, unknown>;
-      if (props.isPaid === false) continue;
-      const vid = typeof props.videoId === "string" ? props.videoId.trim() : "";
-      const normPhone = normalizePayerPhone(props.phone);
-      const payerKey = String(props.userId || normPhone || props.passRef || props.viewerId || "").trim();
+  const useDailyPayerRollup =
+    !dailyPayerPlaysRes.error && Array.isArray(dailyPayerPlaysRes.data) && dailyPayerPlaysRes.data.length > 0;
+
+  if (useDailyPayerRollup) {
+    for (const row of dailyPayerPlaysRes.data) {
+      const payerKey = typeof row.payer_key === "string" ? row.payer_key.trim() : "";
+      const vid = typeof row.video_id === "string" ? row.video_id.trim() : "";
+      const dayKey = typeof row.stat_date === "string" ? row.stat_date.slice(0, 10) : "unknown";
       if (!vid || !payerKey || payerKey === "Guest") continue;
-      const rawWatch = typeof props.watchSeconds === "number" && props.watchSeconds > 0 ? props.watchSeconds : 30;
+      const rawWatch = Number(row.max_watch_seconds) || 30;
       const clampedWatch = Math.max(30, Math.min(5400, rawWatch));
       const weight = Math.sqrt(clampedWatch / 60);
-      const dayKey = typeof row.occurred_at === "string" ? row.occurred_at.slice(0, 10) : "unknown";
       const dedupeKey = `${payerKey}::${vid}::${dayKey}`;
       const existing = dedupedDayBest.get(dedupeKey);
       if (!existing || weight > existing.weight) {
         dedupedDayBest.set(dedupeKey, { payerKey, vid, weight });
+      }
+    }
+  } else {
+    const royaltyEvents = Array.isArray(rangeRoyaltyEventsRes.data) ? rangeRoyaltyEventsRes.data : rangeEventsRes.data;
+    if (Array.isArray(royaltyEvents)) {
+      for (const row of royaltyEvents) {
+        if (row.event_name !== "qualified_view" && row.event_name !== "playback_complete") continue;
+        const props = (row.properties || {}) as Record<string, unknown>;
+        if (props.isPaid === false) continue;
+        const vid = typeof props.videoId === "string" ? props.videoId.trim() : "";
+        const normPhone = normalizePayerPhone(props.phone);
+        const payerKey = String(props.userId || normPhone || props.passRef || props.viewerId || "").trim();
+        if (!vid || !payerKey || payerKey === "Guest") continue;
+        const rawWatch = typeof props.watchSeconds === "number" && props.watchSeconds > 0 ? props.watchSeconds : 30;
+        const clampedWatch = Math.max(30, Math.min(5400, rawWatch));
+        const weight = Math.sqrt(clampedWatch / 60);
+        const dayKey = typeof row.occurred_at === "string" ? row.occurred_at.slice(0, 10) : "unknown";
+        const dedupeKey = `${payerKey}::${vid}::${dayKey}`;
+        const existing = dedupedDayBest.get(dedupeKey);
+        if (!existing || weight > existing.weight) {
+          dedupedDayBest.set(dedupeKey, { payerKey, vid, weight });
+        }
       }
     }
   }

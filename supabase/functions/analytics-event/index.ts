@@ -24,23 +24,32 @@ const EVENTS = new Set([
 ]);
 
 const METHODS = "POST, OPTIONS";
-const ipCounts = new Map<string, { count: number; resetAt: number }>();
-const MAX_EVENTS_PER_MINUTE = 90;
+const rateCounts = new Map<string, { count: number; resetAt: number }>();
+const MAX_EVENTS_PER_VIEWER_MINUTE = 60;
+const MAX_EVENTS_PER_IP_MINUTE = 1500; // Allows shared school/campus/office Wi-Fi NATs without false 429s
 
-function isRateLimited(ip: string): boolean {
+function incrementBucket(bucketKey: string, limit: number): boolean {
   const now = Date.now();
-  if (ipCounts.size > 5000) {
-    for (const [key, value] of ipCounts.entries()) {
-      if (now > value.resetAt) ipCounts.delete(key);
+  if (rateCounts.size > 10000) {
+    for (const [key, value] of rateCounts.entries()) {
+      if (now > value.resetAt) rateCounts.delete(key);
     }
   }
-  const record = ipCounts.get(ip);
+  const record = rateCounts.get(bucketKey);
   if (!record || now > record.resetAt) {
-    ipCounts.set(ip, { count: 1, resetAt: now + 60000 });
+    rateCounts.set(bucketKey, { count: 1, resetAt: now + 60000 });
     return false;
   }
   record.count += 1;
-  return record.count > MAX_EVENTS_PER_MINUTE;
+  return record.count > limit;
+}
+
+function isRateLimited(ip: string, viewerKey?: string): boolean {
+  if (incrementBucket(`ip:${ip}`, MAX_EVENTS_PER_IP_MINUTE)) return true;
+  if (viewerKey) {
+    return incrementBucket(`viewer:${ip}:${viewerKey}`, MAX_EVENTS_PER_VIEWER_MINUTE);
+  }
+  return false;
 }
 
 serve(async (req) => {
@@ -60,13 +69,6 @@ serve(async (req) => {
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     "anonymous";
 
-  if (isRateLimited(clientIp)) {
-    return new Response(JSON.stringify({ error: "Too many events. Please try again later." }), {
-      status: 429,
-      headers: { ...corsHeaders(req, METHODS), "Content-Type": "application/json" },
-    });
-  }
-
   if (Number(req.headers.get("Content-Length") || 0) > 4096) {
     return new Response(null, { status: 413, headers: corsHeaders(req, METHODS) });
   }
@@ -83,6 +85,15 @@ serve(async (req) => {
   })();
   if (!body || !EVENTS.has(body.name) || typeof body.path !== "string" || body.path.length > 200) {
     return new Response(null, { status: 400, headers: corsHeaders(req, METHODS) });
+  }
+
+  const props = body.properties && typeof body.properties === "object" ? body.properties : {};
+  const viewerKey = String(props.viewerId || props.userId || props.passRef || "").slice(0, 64).trim();
+  if (isRateLimited(clientIp, viewerKey || undefined)) {
+    return new Response(JSON.stringify({ error: "Too many events. Please try again later." }), {
+      status: 429,
+      headers: { ...corsHeaders(req, METHODS), "Content-Type": "application/json" },
+    });
   }
 
   const country =
