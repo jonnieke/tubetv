@@ -743,7 +743,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       seriesFormat: editForm.category === 'Micro Dramas' ? 'micro-drama' : 'standard',
       accessTier: editForm.accessTier,
       isPremium: String(isPremium),
-      freeEpisodes: editForm.category === 'Micro Dramas' ? (editForm.freeEpisodes || '2') : '',
+      freeEpisodes: !isPremium
+        ? '999'
+        : editForm.category === 'Micro Dramas'
+          ? (editForm.freeEpisodes || '2')
+          : '0',
     };
     setEditForm(normalizedForm);
     persistEditDraft(editingItem.guid, normalizedForm);
@@ -842,11 +846,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const effectiveFree = isContentFree(mapped);
     const newTier = effectiveFree ? 'premium' : 'free';
     const isPremium = newTier === 'premium';
-    // Setting freeEpisodes='0' ensures Episode 1-2 micro-dramas are actually locked when marked Premium.
-    const newFreeEpisodes = isPremium ? '0' : '2';
+    // Setting freeEpisodes='999' unlocks Episode 3+ episodic content when marked Free;
+    // setting '0' locks Episode 1-2 micro-dramas when marked Premium.
+    const newFreeEpisodes = isPremium ? '0' : '999';
     setTierSavingIds((current) => new Set(current).add(item.guid));
 
-    const keys = ['accesstier', 'ispremium', 'freeepisodes'];
+    const keys = ['accesstier', 'ispremium', 'freeepisodes', 'editorialupdatedat'];
     const filtered = (item.metaTags || []).filter(t => !keys.includes(t.property.toLowerCase()));
     const newMetaTags = [
       ...filtered,
@@ -856,6 +861,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       { property: 'editorialUpdatedAt', value: new Date().toISOString() },
     ];
 
+    clearEditDraft(item.guid);
     setItems((current) => current.map((video) => (
       video.guid === item.guid ? { ...video, metaTags: newMetaTags } : video
     )));
@@ -894,7 +900,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ...item,
       title: o.title || item.title,
       metaTags: [
-        ...(item.metaTags || []).filter(t => !['category','author','genre','description','thumbnailUrl','trailerUrl','productionYear','isPremium','accessTier','freeEpisodes','tags'].includes(t.property.toLowerCase())),
+        ...(item.metaTags || []).filter(t => !['category','author','genre','description','thumbnailurl','trailerurl','productionyear','ispremium','accesstier','freeepisodes','tags'].includes(t.property.toLowerCase())),
         ...(Object.entries(o).map(([k, v]) => ({ property: k, value: String(v) }))),
       ],
     } as BunnyVideoItem;
