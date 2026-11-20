@@ -90,6 +90,8 @@ import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRat
 import { shouldSaveData } from './lib/network';
 import { isLongFormatVideo, isVideoLocked } from './lib/monetization';
 import { getRewardUnlockedVideoIds } from './lib/unlockRewards';
+import { prebufferHlsStream } from './lib/hlsPrebuffer';
+import { captureSessionAttribution } from './lib/attribution';
 import {
   clearStoredPass,
   fetchActiveSubscription,
@@ -306,6 +308,7 @@ const App: React.FC = () => {
   const [rewardUnlockedIds, setRewardUnlockedIds] = useState<string[]>(() => getRewardUnlockedVideoIds());
 
   useEffect(() => {
+    captureSessionAttribution();
     const syncUnlocks = () => setRewardUnlockedIds(getRewardUnlockedVideoIds());
     window.addEventListener('tubetv:unlocks-updated', syncUnlocks);
     return () => window.removeEventListener('tubetv:unlocks-updated', syncUnlocks);
@@ -866,7 +869,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Preload the next unlocked episode's artwork & signed playback URL for instant binge transitions.
+  // Preload the next unlocked episode's artwork, signed URL, and first HLS segment for <300ms binge transitions.
   useEffect(() => {
     if (!activeHeroVideo || shouldSaveData(preferences.dataSaver)) return;
     const upcoming = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
@@ -876,7 +879,19 @@ const App: React.FC = () => {
       img.decoding = 'async';
       img.src = upcoming.thumbnail;
     }
-    void resolveAuthorizedPlaybackUrl(upcoming.id, upcoming.url, false).catch(() => {});
+    const controller = new AbortController();
+    void resolveAuthorizedPlaybackUrl(upcoming.id, upcoming.url, false)
+      .then((resolved) => {
+        if (controller.signal.aborted) return;
+        const nextStream = resolved.url || upcoming.url;
+        if (nextStream) {
+          void prebufferHlsStream(nextStream, controller.signal);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      controller.abort();
+    };
   }, [activeHeroVideo, ratingFilteredVideos, isItemLocked, preferences.dataSaver]);
 
   const playerRecommendations = useMemo(() => {

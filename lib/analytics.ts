@@ -1,3 +1,5 @@
+import { getSessionAttribution } from './attribution';
+
 export type AnalyticsEventName =
   | 'catalogue_view'
   | 'playback_start'
@@ -6,6 +8,13 @@ export type AnalyticsEventName =
   | 'playback_complete'
   | 'playback_buffer'
   | 'episode_next'
+  | 'microdrama_swipe_next'
+  | 'episode_comment_posted'
+  | 'ad_unlock_started'
+  | 'ad_unlock_completed'
+  | 'share_unlock_completed'
+  | 'foryou_impression'
+  | 'foryou_watch_series'
   | 'paywall_view'
   | 'paywall_initiated'
   | 'paywall_completed'
@@ -39,7 +48,16 @@ function normalizeAnalyticsPhone(raw: string): string | undefined {
   return undefined;
 }
 
-function getAnonViewerMeta(): { viewerId?: string; device?: string; city?: string; phone?: string; passRef?: string } {
+function getAnonViewerMeta(): {
+  viewerId?: string;
+  device?: string;
+  trafficSource?: string;
+  campaign?: string;
+  referrerCode?: string;
+  city?: string;
+  phone?: string;
+  passRef?: string;
+} {
   if (typeof window === 'undefined') return {};
   let viewerId: string | undefined;
   let phone: string | undefined;
@@ -77,9 +95,13 @@ function getAnonViewerMeta(): { viewerId?: string; device?: string; city?: strin
   }
   const w = window.innerWidth || 1024;
   const device = w < 640 ? 'Mobile' : w < 1024 ? 'Tablet' : 'Desktop';
+  const attribution = getSessionAttribution();
   return {
     viewerId,
     device,
+    ...(attribution?.trafficSource ? { trafficSource: attribution.trafficSource } : {}),
+    ...(attribution?.campaign ? { campaign: attribution.campaign } : {}),
+    ...(attribution?.referrerCode ? { referrerCode: attribution.referrerCode } : {}),
     ...(city ? { city } : {}),
     ...(phone ? { phone } : {}),
     ...(passRef ? { passRef } : {}),
