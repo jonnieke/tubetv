@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Baby, CheckCircle2, ChevronDown, Globe, Search, Smartphone, Ticket, UserRound, X } from 'lucide-react';
+import { Baby, CheckCircle2, ChevronDown, Flame, Globe, Search, Smartphone, Ticket, UserRound, X } from 'lucide-react';
 import { NavItem, ViewState, ViewStateOrString } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getStoredPass, type StoredPass } from '../lib/subscriptions';
@@ -54,7 +54,9 @@ export default function CinemaNavigation(props: Props) {
 
   return (
     <header
-      className={`cinema-nav ${props.view === ViewState.SHORTS ? 'shorts-hidden-mobile' : ''}`}
+      className={`cinema-nav ${
+        props.view === ViewState.SHORTS || props.view === ViewState.FOR_YOU ? 'hidden md:block shorts-hidden-mobile' : ''
+      }`}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           setMore(false);
@@ -73,6 +75,15 @@ export default function CinemaNavigation(props: Props) {
             onClick={() => navigate(ViewState.HOME)}
           >
             {t('nav.discover')}
+          </button>
+          <button
+            type="button"
+            aria-current={props.view === ViewState.FOR_YOU ? 'page' : undefined}
+            onClick={() => navigate(ViewState.FOR_YOU)}
+            className="flex items-center gap-1 font-bold text-rose-400 hover:text-rose-300 transition-colors"
+          >
+            <Flame size={14} className="text-rose-500" />
+            <span>{language === 'sw' ? 'Kwako' : 'For You'}</span>
           </button>
           <button
             type="button"
@@ -110,25 +121,6 @@ export default function CinemaNavigation(props: Props) {
           >
             <Baby size={14} className="text-sky-300" />
             <span>{t('nav.kids')}</span>
-          </button>
-          <button
-            type="button"
-            aria-current={props.view === ViewState.SETTINGS && props.subcategory === 'pass' ? 'page' : undefined}
-            onClick={() => {
-              if (!activePass && props.onOpenBuyPass) {
-                props.onOpenBuyPass();
-              } else {
-                navigate(ViewState.SETTINGS, 'pass');
-              }
-            }}
-            title="TubeTV Pass — From KSh 10"
-            className="flex items-center gap-1.5 font-bold text-amber-400 hover:text-amber-300 transition-colors"
-          >
-            <Ticket size={14} className="text-amber-400" />
-            <span>{language === 'sw' ? 'Pasi' : 'Pass'}</span>
-            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold">
-              {activePass ? 'Active' : 'KSh 10'}
-            </span>
           </button>
           <button
             type="button"

@@ -525,25 +525,40 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
         </div>
       )}
 
-      {/* Live Revenue Calculation Formula Breakdown */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 text-xs text-zinc-300 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <span className="font-bold text-white uppercase tracking-wider mr-2">How Royalties Work ({fromDate} → {toDate}):</span>
-          <span>
-            Gross <strong className="text-white">KES {royaltyResult.grossRevenueKes.toLocaleString()}</strong>
-            {' '}− 1.5% Gateway Fee (<strong className="text-zinc-200">KES {royaltyResult.gatewayFeesKes.toLocaleString()}</strong>)
-            {' '}= Net Pool <strong className="text-white">KES {royaltyResult.netSubscriptionPoolKes.toLocaleString()}</strong>
-            {' '}× {creatorPoolPercent}% = Creator Pool <strong className="text-emerald-400">KES {royaltyResult.netCreatorPoolKes.toLocaleString()}</strong>
-            {' '}÷ <strong className="text-amber-300">{royaltyResult.totalQualifiedViews.toLocaleString()} Premium 30s+ QVs</strong>
+      {/* Visual 4-Step Money Flow Breakdown */}
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-bold text-white uppercase tracking-wider">
+            Where the Money Goes ({fromDate} → {toDate})
+          </span>
+          <span className="text-[11px] text-zinc-400">
+            {poolWindow !== 'today' && userCentricGrossByVideo && Object.keys(userCentricGrossByVideo).length > 0
+              ? `User-Centric Per-Pass Split (KSh ${Math.round(
+                  Object.values(userCentricGrossByVideo).reduce((a, b) => a + b, 0),
+                ).toLocaleString()} direct to watched titles · KSh ${Math.round(unattributedGrossKes).toLocaleString()} shared pro-rata)`
+              : 'Pro-Rata Share-of-Play across Premium titles (payouts start at KSh 1,000)'}
           </span>
         </div>
-        <span className="text-[11px] text-zinc-400">
-          {poolWindow !== 'today' && userCentricGrossByVideo && Object.keys(userCentricGrossByVideo).length > 0
-            ? `User-Centric Per-Pass Split (KSh ${Math.round(
-                Object.values(userCentricGrossByVideo).reduce((a, b) => a + b, 0),
-              ).toLocaleString()} attributed · KSh ${Math.round(unattributedGrossKes).toLocaleString()} global fallback)`
-            : 'Only Premium titles share the pool (payout eligible at ≥ KSh 1,000)'}
-        </span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+          <div className="rounded-xl bg-zinc-950/80 border border-zinc-800 px-3 py-2">
+            <span className="text-[10px] text-zinc-400 block">1. Money Collected</span>
+            <strong className="text-sm font-black text-white">KES {royaltyResult.grossRevenueKes.toLocaleString()}</strong>
+          </div>
+          <div className="rounded-xl bg-zinc-950/80 border border-zinc-800 px-3 py-2">
+            <span className="text-[10px] text-zinc-400 block">2. Minus Fees (1.5% Gateway + 5% Platform)</span>
+            <strong className="text-sm font-bold text-zinc-300">
+              − KES {(royaltyResult.gatewayFeesKes + royaltyResult.platformFeesKes).toLocaleString()}
+            </strong>
+          </div>
+          <div className="rounded-xl bg-emerald-950/40 border border-emerald-500/30 px-3 py-2">
+            <span className="text-[10px] text-emerald-300 block">3. Creator Pool ({creatorPoolPercent}%)</span>
+            <strong className="text-sm font-black text-emerald-400">KES {royaltyResult.netCreatorPoolKes.toLocaleString()}</strong>
+          </div>
+          <div className="rounded-xl bg-zinc-950/80 border border-zinc-800 px-3 py-2">
+            <span className="text-[10px] text-zinc-400 block">4. Tube TV Share ({100 - creatorPoolPercent}%)</span>
+            <strong className="text-sm font-bold text-zinc-200">KES {royaltyResult.platformShareKes.toLocaleString()}</strong>
+          </div>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -551,7 +566,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
         {/* Gross Revenue Pool */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 relative overflow-hidden group">
           <div className="flex justify-between items-start mb-3">
-            <p className="text-xs uppercase tracking-wider text-zinc-400 font-bold">Gross Subscriptions</p>
+            <p className="text-xs uppercase tracking-wider text-zinc-400 font-bold">Money Collected</p>
             <button
               onClick={() => setIsEditingPool(!isEditingPool)}
               className="text-zinc-500 hover:text-amber-400 text-xs flex items-center gap-1 transition-colors"
@@ -563,7 +578,10 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           </div>
           <p className="text-3xl font-black text-white">KES {royaltyResult.grossRevenueKes.toLocaleString()}</p>
           <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1">
-            <span>Paystack fee (1.5%): -KES {royaltyResult.gatewayFeesKes.toLocaleString()}</span>
+            <span>
+              Gateway (1.5%): −KES {royaltyResult.gatewayFeesKes.toLocaleString()} · Platform (5%): −KES{' '}
+              {royaltyResult.platformFeesKes.toLocaleString()}
+            </span>
           </p>
           <div className="mt-3 inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 text-[11px] font-bold">
             <button
@@ -640,41 +658,41 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
         {/* Net Creator Pool */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 relative overflow-hidden">
           <div className="flex justify-between items-start mb-3">
-            <p className="text-xs uppercase tracking-wider text-emerald-400 font-bold">Net Creator Pool ({creatorPoolPercent}%)</p>
+            <p className="text-xs uppercase tracking-wider text-emerald-400 font-bold">Creator Payout Pool ({creatorPoolPercent}%)</p>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              For Creatives
+              For Creators
             </span>
           </div>
           <p className="text-3xl font-black text-emerald-400">KES {royaltyResult.netCreatorPoolKes.toLocaleString()}</p>
           <p className="text-xs text-zinc-400 mt-1">
-            Platform share ({100 - creatorPoolPercent}%): KES {royaltyResult.platformShareKes.toLocaleString()}
+            Tube TV share ({100 - creatorPoolPercent}%): KES {royaltyResult.platformShareKes.toLocaleString()}
           </p>
         </div>
 
         {/* 30s Qualified Views */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
           <div className="flex justify-between items-start mb-3">
-            <p className="text-xs uppercase tracking-wider text-zinc-400 font-bold">30s Qualified Views (QVs)</p>
-            <span className="text-[10px] text-zinc-500 font-medium">≥ 30 sec plays</span>
+            <p className="text-xs uppercase tracking-wider text-zinc-400 font-bold">Verified Plays</p>
+            <span className="text-[10px] text-zinc-500 font-medium">Watched ≥ 30s</span>
           </div>
           <p className="text-3xl font-black text-white">{royaltyResult.totalQualifiedViews.toLocaleString()}</p>
           <p className="text-xs text-zinc-400 mt-1">
-            {royaltyResult.totalWatchHours.toLocaleString()} Total Watch Hours
+            {royaltyResult.totalWatchHours.toLocaleString()} total watch hours
           </p>
         </div>
 
         {/* Payout Threshold Status */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
           <div className="flex justify-between items-start mb-3">
-            <p className="text-xs uppercase tracking-wider text-amber-400 font-bold">Payouts ≥ KSh 1,000</p>
+            <p className="text-xs uppercase tracking-wider text-amber-400 font-bold">Ready to Pay (≥ KSh 1,000)</p>
             <span className="text-[10px] text-amber-300/80 font-semibold">Monthly min</span>
           </div>
           <p className="text-3xl font-black text-white">
             {royaltyResult.eligibleCreatorsCount}{' '}
-            <span className="text-sm font-normal text-zinc-400">/ {royaltyResult.creators.length} Creatives</span>
+            <span className="text-sm font-normal text-zinc-400">/ {royaltyResult.creators.length} Creators</span>
           </p>
           <p className="text-xs text-amber-400/90 mt-1 font-medium">
-            KES {royaltyResult.totalEligiblePayoutKes.toLocaleString()} eligible now
+            KES {royaltyResult.totalEligiblePayoutKes.toLocaleString()} ready for M-Pesa
           </p>
         </div>
       </div>
@@ -763,8 +781,8 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                     {filter === 'ALL'
                       ? 'All'
                       : filter === 'ELIGIBLE'
-                      ? 'Eligible (≥ 1,000)'
-                      : 'Carried Forward'}
+                      ? 'Ready to Pay (≥ 1,000)'
+                      : 'Saving Up (< 1,000)'}
                   </button>
                 ))}
               </div>
@@ -871,7 +889,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                           </td>
                           <td className="py-3.5 px-4 text-right">
                             <div className="font-bold text-white">
-                              {creator.qualifiedViews.toLocaleString()} QVs
+                              {creator.qualifiedViews.toLocaleString()} plays
                             </div>
                             <div className="text-[10px] text-zinc-400 mt-0.5">
                               {creator.totalWatchHours} hrs · <span className="text-zinc-200 font-semibold">{creator.shareOfPlayPercent.toFixed(2)}%</span>
@@ -892,7 +910,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                               {creator.isEligibleForPayout ? (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                  <span>Eligible (≥ KSh 1,000)</span>
+                                  <span>Ready to Pay (≥ KSh 1,000)</span>
                                 </span>
                               ) : (
                                 <div className="space-y-1">
@@ -922,9 +940,10 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
                                 <button
                                   type="button"
                                   onClick={() => openEditProfile(creator.creator)}
-                                  className="text-[11px] text-amber-400 hover:underline font-semibold block"
+                                  className="inline-flex items-center gap-1 text-[11px] text-rose-400 hover:text-rose-300 hover:underline font-semibold"
                                 >
-                                  + Set M-Pesa / Bank Account
+                                  <AlertCircle className="w-3 h-3" />
+                                  <span>Add M-Pesa / Bank Number</span>
                                 </button>
                               )}
                             </div>

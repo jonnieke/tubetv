@@ -4,6 +4,7 @@ import { LucideIcon } from 'lucide-react';
 import type { ContentRating } from './lib/contentRating';
 export enum ViewState {
   HOME = 'HOME',
+  FOR_YOU = 'FOR_YOU',
   ORIGINALS = 'ORIGINALS',
   MICRO_DRAMAS = 'MICRO_DRAMAS',
   GENRES = 'GENRES',

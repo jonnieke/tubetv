@@ -6,15 +6,15 @@
 :root { color-scheme: dark; --cinema-bg: #080c0d; --cinema-cream: #f4ecdd; --cinema-red: #e50923; }
 .cinema-shell, .cinema-shell main { background: var(--cinema-bg); }
 .cinema-nav { position: relative; z-index: 60; flex-shrink: 0; background: #0a0d0f; }
-.cinema-nav-row { height: 84px; padding: 0 3.3%; display: flex; align-items: center; gap: clamp(16px, 2.2vw, 34px); }
+.cinema-nav-row { height: 84px; padding: 0 3.3%; display: flex; align-items: center; gap: clamp(12px, 1.5vw, 24px); }
 .cinema-logo { font-size: 31px; font-weight: 800; letter-spacing: -1.4px; white-space: nowrap; color: #f1efea; flex-shrink: 0; }
 .cinema-logo span { color: var(--cinema-red); }
-.cinema-nav-links { display: flex; align-items: center; gap: clamp(14px, 1.8vw, 28px); height: 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.cinema-nav-links { display: flex; align-items: center; gap: clamp(10px, 1.25vw, 22px); height: 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .cinema-nav-links::-webkit-scrollbar { display: none; }
-.cinema-nav-links > button { position: relative; display: flex; align-items: center; gap: 7px; height: 100%; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+.cinema-nav-links > button { position: relative; display: flex; align-items: center; gap: 6px; height: 100%; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
 .cinema-nav-links > button[aria-current=page]::after { content: ''; position: absolute; bottom: 20px; left: 0; right: 0; height: 2px; background: var(--cinema-red); }
 .cinema-nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.cinema-search { width: clamp(145px, 15vw, 205px); display: flex; align-items: center; gap: 9px; border: 1px solid #4b4e4f; padding: 7px 10px; border-radius: 7px; }
+.cinema-search { width: clamp(120px, 12vw, 185px); display: flex; align-items: center; gap: 8px; border: 1px solid #4b4e4f; padding: 7px 10px; border-radius: 7px; }
 .cinema-search input { background: transparent; min-width: 0; width: 100%; font-size: 12px; outline: none; }
 .cinema-account { border-radius: 50%; background: #40352b; border: 1px solid #b8a793; padding: 5px; }
 .cinema-mobile-search { display: none; }

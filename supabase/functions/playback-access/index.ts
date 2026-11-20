@@ -23,7 +23,10 @@ function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; val
 
   const freeStr = getTag(tags, "freeepisodes");
   const rawFree = freeStr !== "" ? Number(freeStr) : NaN;
-  const freeCount = Number.isFinite(rawFree) && rawFree >= 0 ? rawFree : 2;
+  const totalSeriesEpsStr = getTag(tags, "totalseriesepisodes") || getTag(tags, "seriesepisodecount");
+  const totalSeriesEps = totalSeriesEpsStr !== "" ? Number(totalSeriesEpsStr) : NaN;
+  const defaultFreeCount = Number.isFinite(totalSeriesEps) && totalSeriesEps >= 30 ? 5 : 2;
+  const freeCount = Number.isFinite(rawFree) && rawFree >= 0 ? rawFree : defaultFreeCount;
 
   const epStr = getTag(tags, "episode");
   const rawEpisode = epStr !== "" ? Number(epStr) : NaN;

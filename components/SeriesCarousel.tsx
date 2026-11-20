@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Bookmark, ChevronLeft, ChevronRight, ListVideo, Play } from 'lucide-react';
 import type { Video } from '../types';
 import { compareEpisodes, getSeriesEntryEpisode, isMicroDrama, seriesKey } from '../lib/series';
+import { getFreeEpisodeCount } from '../lib/monetization';
 import { publicMediaUrl } from '../lib/mediaUrl';
 import { useLanguage } from '../contexts/LanguageContext';
 import CatalogueArtwork from './CatalogueArtwork';
@@ -79,6 +80,16 @@ const SeriesCard: React.FC<{
               Hot
             </span>
           ) : null}
+
+          {(() => {
+            const freeCount = getFreeEpisodeCount(first, episodes.length);
+            if (freeCount <= 0) return null;
+            return (
+              <span className="absolute top-2.5 right-2.5 z-10 rounded-md bg-black/75 backdrop-blur-sm border border-emerald-400/40 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-emerald-300 shadow">
+                {language === 'sw' ? `1–${freeCount} Bure` : `Ep 1–${freeCount} Free`}
+              </span>
+            );
+          })()}
 
           <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-[11px] font-bold text-white/95">
             <span className="rounded bg-black/60 backdrop-blur-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-zinc-200">

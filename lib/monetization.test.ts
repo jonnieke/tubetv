@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isContentFree, isVideoLocked } from './monetization';
+import { getFreeEpisodeCount, isContentFree, isVideoLocked } from './monetization';
 import { bunnyVideoToVideo, type BunnyVideoItem } from '../services/bunnyService';
 import type { Video } from '../types';
 
@@ -48,6 +48,30 @@ describe('monetization rules', () => {
       // 3 free teaser episodes
       expect(isVideoLocked(microDrama(3, true, 3), false)).toBe(false);
       expect(isVideoLocked(microDrama(4, true, 3), false)).toBe(true);
+    });
+
+    it('keeps 2 free episodes when series has fewer than 30 episodes and expands to 5 free at 30+ episodes', () => {
+      const makeAutoMicro = (ep: number): Video => ({
+        ...baseVideo,
+        id: `auto-ep-${ep}`,
+        category: 'Micro Dramas',
+        seriesFormat: 'micro-drama',
+        seriesTitle: 'Nairobi Noir',
+        episode: ep,
+        isPremium: true,
+      });
+
+      // Under 30 episodes -> 2 free episodes
+      expect(getFreeEpisodeCount(makeAutoMicro(1), 12)).toBe(2);
+      expect(isVideoLocked(makeAutoMicro(2), false, [], 12)).toBe(false);
+      expect(isVideoLocked(makeAutoMicro(3), false, [], 12)).toBe(true);
+      expect(isVideoLocked(makeAutoMicro(3), false, [], 29)).toBe(true);
+
+      // At 30+ episodes -> automatically expands to 5 free episodes
+      expect(getFreeEpisodeCount(makeAutoMicro(1), 30)).toBe(5);
+      expect(isVideoLocked(makeAutoMicro(3), false, [], 30)).toBe(false);
+      expect(isVideoLocked(makeAutoMicro(5), false, [], 30)).toBe(false);
+      expect(isVideoLocked(makeAutoMicro(6), false, [], 30)).toBe(true);
     });
 
     it('keeps entire micro drama free if marked free with sufficient freeEpisodes', () => {

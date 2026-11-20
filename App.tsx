@@ -29,6 +29,9 @@ import {
   Globe,
   PlayCircle,
   Home,
+  Flame,
+  Bookmark,
+  Ticket,
   Clapperboard,
   Smartphone,
   Clock,
@@ -86,6 +89,7 @@ import { recommendVideos, getRelatedVideos } from './lib/recommendations';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
 import { shouldSaveData } from './lib/network';
 import { isLongFormatVideo, isVideoLocked } from './lib/monetization';
+import { getRewardUnlockedVideoIds } from './lib/unlockRewards';
 import {
   clearStoredPass,
   fetchActiveSubscription,
@@ -121,6 +125,7 @@ const VideoCard = lazyWithRetry(() => import('./components/VideoCard'));
 const VideoCarousel = lazyWithRetry(() => import('./components/VideoCarousel'));
 const SeriesCarousel = lazyWithRetry(() => import('./components/SeriesCarousel'));
 const ShortsPlayer = lazyWithRetry(() => import('./components/ShortsPlayer'));
+const ForYouFeed = lazyWithRetry(() => import('./components/ForYouFeed'));
 const AnalyticsDashboard = lazyWithRetry(() => import('./components/AnalyticsDashboard'));
 const AdminDashboard = lazyWithRetry(() => import('./components/AdminDashboard'));
 const UploadSection = lazyWithRetry(() => import('./components/UploadSection'));
@@ -140,6 +145,9 @@ const DEMO_VIDEOS = MOCK_VIDEOS.map((video) => ({
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Home,
+  Flame,
+  Bookmark,
+  Ticket,
   Clapperboard,
   Smartphone,
   GraduationCap,
@@ -295,6 +303,13 @@ const App: React.FC = () => {
   const [preferences, setPreferences] = useState<PlaybackPreferences>(DEFAULT_PLAYBACK_PREFERENCES);
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
   const [hasActivePass, setHasActivePass] = useState<boolean>(() => Boolean(getStoredPass()));
+  const [rewardUnlockedIds, setRewardUnlockedIds] = useState<string[]>(() => getRewardUnlockedVideoIds());
+
+  useEffect(() => {
+    const syncUnlocks = () => setRewardUnlockedIds(getRewardUnlockedVideoIds());
+    window.addEventListener('tubetv:unlocks-updated', syncUnlocks);
+    return () => window.removeEventListener('tubetv:unlocks-updated', syncUnlocks);
+  }, []);
   const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
   const [pendingResumeVideoId, setPendingResumeVideoId] = useState<string | null>(null);
   const [episodeRangeStart, setEpisodeRangeStart] = useState<number>(0);
@@ -697,17 +712,42 @@ const App: React.FC = () => {
     };
   }, [activeHeroVideo?.id, paywallVideo]);
 
+  const seriesEpisodeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const v of ratingFilteredVideos) {
+      const key = seriesKey(v);
+      if (key) {
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [ratingFilteredVideos]);
+
+  const getSeriesEpisodeCount = useCallback(
+    (video: Video): number | undefined => {
+      const key = seriesKey(video);
+      return key ? seriesEpisodeCounts.get(key) : undefined;
+    },
+    [seriesEpisodeCounts],
+  );
+
+  const isItemLocked = useCallback(
+    (video: Video): boolean =>
+      isVideoLocked(video, hasActivePass, rewardUnlockedIds, getSeriesEpisodeCount(video)),
+    [hasActivePass, rewardUnlockedIds, getSeriesEpisodeCount],
+  );
+
   const openVideo = useCallback(
     (video: Video, options?: { autoPlay?: boolean; strictEpisode?: boolean }) => {
       let targetVideo = video;
-      if (isVideoLocked(targetVideo, hasActivePass)) {
+      if (isItemLocked(targetVideo)) {
         if (!options?.strictEpisode && isMicroDrama(targetVideo)) {
           const key = seriesKey(targetVideo);
           const freeOpener = key
             ? ratingFilteredVideos
                 .filter((v) => seriesKey(v) === key)
                 .sort(compareEpisodes)
-                .find((v) => !isVideoLocked(v, hasActivePass))
+                .find((v) => !isItemLocked(v))
             : undefined;
           if (freeOpener && freeOpener.id !== targetVideo.id) {
             targetVideo = freeOpener;
@@ -738,7 +778,7 @@ const App: React.FC = () => {
       window.history.pushState({}, '', videoPath(targetVideo.id));
       setActiveHeroVideo(targetVideo);
     },
-    [hasActivePass, openPaywallForVideo, ratingFilteredVideos],
+    [isItemLocked, openPaywallForVideo, ratingFilteredVideos],
   );
 
   const closeVideo = useCallback(() => {
@@ -817,7 +857,7 @@ const App: React.FC = () => {
     if (!preferences.autoplay || shouldSaveData(preferences.dataSaver)) return;
     const nextVideo = nextEpisode(ratingFilteredVideos, videoId);
     if (nextVideo) {
-      if (isVideoLocked(nextVideo, hasActivePass)) {
+      if (isItemLocked(nextVideo)) {
         openPaywallForVideo(nextVideo);
       } else {
         trackEvent('episode_next', { fromVideoId: videoId, toVideoId: nextVideo.id, automatic: true });
@@ -830,18 +870,41 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!activeHeroVideo || shouldSaveData(preferences.dataSaver)) return;
     const upcoming = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
-    if (!upcoming || isVideoLocked(upcoming, hasActivePass)) return;
+    if (!upcoming || isItemLocked(upcoming)) return;
     if (upcoming.thumbnail && typeof Image !== 'undefined') {
       const img = new Image();
       img.decoding = 'async';
       img.src = upcoming.thumbnail;
     }
     void resolveAuthorizedPlaybackUrl(upcoming.id, upcoming.url, false).catch(() => {});
-  }, [activeHeroVideo, ratingFilteredVideos, hasActivePass, preferences.dataSaver]);
+  }, [activeHeroVideo, ratingFilteredVideos, isItemLocked, preferences.dataSaver]);
 
   const playerRecommendations = useMemo(() => {
     if (!activeHeroVideo) return [];
     return getRelatedVideos(activeHeroVideo, ratingFilteredVideos, 8);
+  }, [activeHeroVideo, ratingFilteredVideos]);
+
+  const microEndedRecommendations = useMemo(() => {
+    if (!activeHeroVideo) return [];
+    const activeSeriesKey = seriesKey(activeHeroVideo);
+    const seenSeries = new Set<string>(activeSeriesKey ? [activeSeriesKey] : []);
+    const candidates = [
+      ...ratingFilteredVideos.filter((v) => isMicroDrama(v)),
+      ...getRelatedVideos(activeHeroVideo, ratingFilteredVideos, 20),
+      ...ratingFilteredVideos,
+    ];
+    const picked: Video[] = [];
+    const seenIds = new Set<string>([activeHeroVideo.id]);
+    for (const item of candidates) {
+      if (picked.length >= 6) break;
+      if (seenIds.has(item.id)) continue;
+      const sKey = seriesKey(item);
+      if (sKey && seenSeries.has(sKey)) continue;
+      seenIds.add(item.id);
+      if (sKey) seenSeries.add(sKey);
+      picked.push(item);
+    }
+    return picked;
   }, [activeHeroVideo, ratingFilteredVideos]);
 
   useEffect(() => {
@@ -853,6 +916,8 @@ const App: React.FC = () => {
       if (viewParam === ViewState.SHORTS) {
         setCurrentView(ViewState.SHORTS);
         setSelectedShortId(shortParam || undefined);
+      } else if (viewParam === ViewState.FOR_YOU) {
+        setCurrentView(ViewState.FOR_YOU);
       }
 
       if (window.location.pathname === '/admin') {
@@ -994,6 +1059,8 @@ const App: React.FC = () => {
         return ['All', 'Series', 'Movies', 'Micro Dramas', 'Drama', 'Comedy', 'Action', 'Romance', 'Animation', 'Swahili'];
       case ViewState.GENRES:
         return ['All', ...availableGenres];
+      case ViewState.FOR_YOU:
+        return ['All'];
       case ViewState.LIVE:
         return ['All', 'Sports', 'News', 'Events'];
       case ViewState.HOME:
@@ -1009,6 +1076,19 @@ const App: React.FC = () => {
 
   const handleUploadComplete = (newVideo: Video) => {
     setVideos((prev) => [newVideo, ...prev.filter((video) => video.id !== newVideo.id)]);
+    const mainTitle = (newVideo.seriesTitle || newVideo.title || '').trim();
+    if (mainTitle && isSupabaseConfigured) {
+      void supabase.functions
+        .invoke('send-push', {
+          body: {
+            action: 'queue_title',
+            videoId: newVideo.id,
+            mainTitle,
+            isSeries: Boolean(newVideo.seriesTitle),
+          },
+        })
+        .catch(() => {});
+    }
   };
 
   const handleAddCategory = (name: string, iconName: string) => {
@@ -1287,6 +1367,18 @@ const App: React.FC = () => {
             }}
           />
         );
+      case ViewState.FOR_YOU:
+        return (
+          <ForYouFeed
+            videos={ratingFilteredVideos}
+            watchLaterIds={watchLater}
+            hasActivePass={hasActivePass}
+            onWatchSeries={(video) => openVideo(video, { autoPlay: true })}
+            onToggleWatchLater={toggleWatchLater}
+            onShare={handleWhatsAppShareCurrentVideo}
+            onOpenDiscover={() => handleNavigate(ViewState.HOME)}
+          />
+        );
       case ViewState.LIVE:
         return <LiveSection videos={isRealContent ? ratingFilteredVideos : []} />;
       case ViewState.SETTINGS:
@@ -1462,6 +1554,7 @@ const App: React.FC = () => {
                     <LandingHero
                       video={hero}
                       featuredVideos={featuredVideos}
+                      seriesEpisodeCount={getSeriesEpisodeCount(hero)}
                       real={isRealContent}
                       saved={watchLater.includes(hero.id)}
                       hasActivePass={hasActivePass}
@@ -1851,7 +1944,7 @@ const App: React.FC = () => {
         onEnded: handleVideoEnded,
         onProgress: handleWatchProgress,
         hasActivePass,
-        isLocked: (video) => isVideoLocked(video, hasActivePass),
+        isLocked: (video) => isItemLocked(video),
         onRequireUnlock: (video) => openPaywallForVideo(video),
         onSelectVideo: openVideo,
         onOpenSettings: () => {
@@ -1920,7 +2013,12 @@ const App: React.FC = () => {
                   const target = paywallVideo || (returnId ? videos.find((v) => v.id === returnId) : null);
                   setPaywallVideo(null);
                   setShowBuyPassModal(false);
-                  setHasActivePass(true);
+                  const latestUnlockedIds = getRewardUnlockedVideoIds();
+                  setRewardUnlockedIds(latestUnlockedIds);
+                  const hasPassNow = Boolean(getStoredPass());
+                  if (hasPassNow) {
+                    setHasActivePass(true);
+                  }
                   if (target) {
                     setIsVideoFinished(false);
                     setModalAutoPlay(true);
@@ -1933,7 +2031,10 @@ const App: React.FC = () => {
                     setPendingResumeVideoId(returnId);
                   }
                   void refreshAccessState().then(() => {
-                    setHasActivePass(true);
+                    setRewardUnlockedIds(getRewardUnlockedVideoIds());
+                    if (getStoredPass()) {
+                      setHasActivePass(true);
+                    }
                     if (target) {
                       setIsVideoFinished(false);
                       setModalAutoPlay(true);
@@ -1968,12 +2069,13 @@ const App: React.FC = () => {
               autoPlay={modalAutoPlay}
               playerOnly
               onPlay={() => setModalAutoPlay(true)}
-              isLocked={(v) => isVideoLocked(v, hasActivePass)}
+              onEnded={handleVideoEnded}
+              isLocked={(v) => isItemLocked(v)}
               nextEpisode={nextEpisode(ratingFilteredVideos, activeHeroVideo.id)}
               onNextEpisode={() => {
                 const next = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
                 if (next) {
-                  if (isVideoLocked(next, hasActivePass)) {
+                  if (isItemLocked(next)) {
                     openPaywallForVideo(next);
                   } else {
                     trackEvent('episode_next', {
@@ -1994,7 +2096,9 @@ const App: React.FC = () => {
               role="dialog"
               aria-modal="true"
               aria-label={`Playing ${activeHeroVideo.title}`}
-              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-2 sm:p-4 md:p-8"
+              className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/95 ${
+                microMode ? 'p-0 lg:p-8' : 'p-2 sm:p-4 md:p-8'
+              }`}
               onClick={closeVideo}
             >
               {microMode ? (
@@ -2005,9 +2109,9 @@ const App: React.FC = () => {
                   isWatchLater={watchLater.includes(activeHeroVideo.id)}
                   modalAutoPlay={modalAutoPlay}
                   language={language}
-                  isLocked={(v) => isVideoLocked(v, hasActivePass)}
+                  isLocked={(v) => isItemLocked(v)}
                   onSelectEpisode={(ep) => {
-                    if (isVideoLocked(ep, hasActivePass)) {
+                    if (isItemLocked(ep)) {
                       openPaywallForVideo(ep);
                     } else {
                       openVideo(ep);
@@ -2020,6 +2124,14 @@ const App: React.FC = () => {
                     setActiveTrailer({ url, title: activeHeroVideo.seriesTitle || activeHeroVideo.title })
                   }
                   onClose={closeVideo}
+                  showEndedRecommendations={isVideoFinished && !paywallVideo && !showLogin && !activeTrailer}
+                  recommendedVideos={microEndedRecommendations}
+                  onSelectRecommended={(rec) => openVideo(rec)}
+                  onReplay={() => {
+                    setIsVideoFinished(false);
+                    setModalAutoPlay(true);
+                    setReplayNonce((n) => n + 1);
+                  }}
                   playerSlot={<Suspense fallback={<LoadingPanel label={t('common.loading')} />}>{playerNode}</Suspense>}
                 />
               ) : (
@@ -2462,9 +2574,19 @@ const App: React.FC = () => {
 
           <main
             ref={mainRef}
-            className={`flex-1 overflow-y-auto overflow-x-hidden relative bg-zinc-950 no-scrollbar ${
+            className={`flex-1 relative bg-zinc-950 no-scrollbar ${
+              currentView === ViewState.FOR_YOU
+                ? 'overflow-hidden pb-[58px] md:pb-0'
+                : 'overflow-y-auto overflow-x-hidden'
+            } ${
               currentView === ViewState.HOME && !searchQuery ? 'landing-main' : ''
-            } ${currentView === ViewState.SHORTS ? 'shorts-main' : 'pb-24 md:pb-8'}`}
+            } ${
+              currentView === ViewState.SHORTS
+                ? 'shorts-main'
+                : currentView === ViewState.FOR_YOU
+                  ? ''
+                  : 'pb-24 md:pb-8'
+            }`}
           >
             <SectionErrorBoundary label="this view" onReset={() => handleNavigate(ViewState.HOME)}>
               <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
@@ -2490,65 +2612,80 @@ const App: React.FC = () => {
             </SectionErrorBoundary>
           </main>
 
-          {/* Mobile Bottom Nav */}
-          <div
-            className={`md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 flex justify-around p-3 z-50 pb-safe ${
+          {/* DramaBox-Style Mobile Bottom Tab Bar: For You | Discover | My List | Pass */}
+          <nav
+            aria-label="Mobile navigation"
+            className={`md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800/90 flex justify-around items-center px-2 py-2 z-50 pb-[max(0.5rem,env(safe-area-inset-bottom))] ${
               currentView === ViewState.SHORTS ? 'shorts-hidden-mobile' : ''
             }`}
           >
             <button
               type="button"
+              onClick={() => handleNavigate(ViewState.FOR_YOU)}
+              aria-current={currentView === ViewState.FOR_YOU ? 'page' : undefined}
+              className={`flex flex-col items-center gap-0.5 px-2 py-0.5 rounded-lg transition-colors ${
+                currentView === ViewState.FOR_YOU ? 'text-red-500' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Flame size={20} fill={currentView === ViewState.FOR_YOU ? 'currentColor' : 'none'} />
+              <span className="text-[10px] font-bold">{language === 'sw' ? 'Kwako' : 'For You'}</span>
+            </button>
+            <button
+              type="button"
               onClick={() => handleNavigate(ViewState.HOME)}
-              className={`flex flex-col items-center gap-1 ${
-                currentView === ViewState.HOME ? 'text-white' : 'text-zinc-500'
+              aria-current={currentView === ViewState.HOME || currentView === ViewState.MICRO_DRAMAS ? 'page' : undefined}
+              className={`flex flex-col items-center gap-0.5 px-2 py-0.5 rounded-lg transition-colors ${
+                currentView === ViewState.HOME || currentView === ViewState.MICRO_DRAMAS
+                  ? 'text-white'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               <Home size={20} />
-              <span className="text-[10px]">{t('nav.home')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavigate(ViewState.MICRO_DRAMAS)}
-              className={`flex flex-col items-center gap-1 ${
-                currentView === ViewState.MICRO_DRAMAS ? 'text-red-500' : 'text-zinc-500'
-              }`}
-            >
-              <div className="w-5 h-5 border-2 border-current rounded-sm" />
-              <span className="text-[10px]">{t('nav.microDramas')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavigate(ViewState.SHORTS)}
-              className={`flex flex-col items-center gap-1 ${
-                currentView === ViewState.SHORTS ? 'text-white' : 'text-zinc-500'
-              }`}
-            >
-              <PlayCircle size={20} />
-              <span className="text-[10px]">{t('nav.shorts')}</span>
+              <span className="text-[10px] font-bold">{t('nav.discover')}</span>
             </button>
             <button
               type="button"
               onClick={() => handleNavigate(ViewState.WATCH_LATER)}
-              className={`flex flex-col items-center gap-1 ${
-                currentView === ViewState.WATCH_LATER ? 'text-white' : 'text-zinc-500'
+              aria-current={currentView === ViewState.WATCH_LATER ? 'page' : undefined}
+              className={`flex flex-col items-center gap-0.5 px-2 py-0.5 rounded-lg transition-colors ${
+                currentView === ViewState.WATCH_LATER ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <Clock size={20} />
-              <span className="text-[10px]">{t('nav.myList')}</span>
+              <Bookmark size={20} fill={currentView === ViewState.WATCH_LATER ? 'currentColor' : 'none'} />
+              <span className="text-[10px] font-bold">{t('nav.myList')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!hasActivePass) {
+                  setShowBuyPassModal(true);
+                } else {
+                  handleNavigate(ViewState.SETTINGS, 'pass');
+                }
+              }}
+              aria-current={currentView === ViewState.SETTINGS ? 'page' : undefined}
+              className={`relative flex flex-col items-center gap-0.5 px-2 py-0.5 rounded-lg transition-colors ${
+                hasActivePass ? 'text-emerald-400' : 'text-amber-400'
+              }`}
+            >
+              <Ticket size={20} />
+              <span className="text-[10px] font-extrabold">
+                {hasActivePass ? (language === 'sw' ? 'Pasi ✓' : 'Pass ✓') : 'KSh 10'}
+              </span>
             </button>
             {isAdmin && (
               <button
                 type="button"
                 onClick={() => handleNavigate(ViewState.ANALYTICS)}
-                className={`flex flex-col items-center gap-1 ${
-                  currentView === ViewState.ANALYTICS ? 'text-white' : 'text-zinc-500'
+                className={`flex flex-col items-center gap-0.5 px-2 py-0.5 rounded-lg transition-colors ${
+                  currentView === ViewState.ANALYTICS ? 'text-white' : 'text-zinc-400'
                 }`}
               >
                 <BarChart2 size={20} />
-                <span className="text-[10px]">{t('nav.studioShort')}</span>
+                <span className="text-[10px] font-bold">{t('nav.studioShort')}</span>
               </button>
             )}
-          </div>
+          </nav>
 
           {/* Smart PWA Install Banner */}
           <PWAInstallBanner />

@@ -4,7 +4,7 @@ import type Hls from 'hls.js';
 import { Video } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { loadHls } from '../lib/hlsLoader';
-import { LONG_FORMAT_PREVIEW_SECONDS } from '../lib/monetization';
+import { getFreeEpisodeCount, LONG_FORMAT_PREVIEW_SECONDS } from '../lib/monetization';
 import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
 import { isMicroDrama } from '../lib/series';
 import { publicMediaUrl } from '../lib/mediaUrl';
@@ -16,6 +16,7 @@ const HERO_START_OFFSET_SECONDS = 60;
 interface Props {
   video: Video;
   featuredVideos?: Video[];
+  seriesEpisodeCount?: number;
   real: boolean;
   saved: boolean;
   hasActivePass?: boolean;
@@ -33,6 +34,7 @@ interface Props {
 export default function LandingHero({
   video,
   featuredVideos = [],
+  seriesEpisodeCount,
   real,
   saved,
   hasActivePass = false,
@@ -296,11 +298,21 @@ export default function LandingHero({
           <span className="inline-flex items-center gap-1 rounded bg-red-600 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow">
             {isMicro ? 'MICRO DRAMA' : (real ? 'TUBETV ORIGINAL' : 'DEMO PREMIERE')}
           </span>
-          {(isMicro || video.episode) && !hasActivePass && (
-            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 border border-emerald-400/40 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">
-              {language === 'sw' ? 'VIPINDI 1 & 2 BURE' : 'EP 1 & 2 FREE'}
-            </span>
-          )}
+          {(isMicro || video.episode) && !hasActivePass && (() => {
+            const freeCount = getFreeEpisodeCount(video, seriesEpisodeCount);
+            if (freeCount <= 0) return null;
+            return (
+              <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 border border-emerald-400/40 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">
+                {language === 'sw'
+                  ? freeCount === 2
+                    ? 'VIPINDI 1 & 2 BURE'
+                    : `VIPINDI 1–${freeCount} BURE`
+                  : freeCount === 2
+                    ? 'EP 1 & 2 FREE'
+                    : `EP 1–${freeCount} FREE`}
+              </span>
+            );
+          })()}
           {video.episode && (
             <span className="rounded border border-white/20 bg-black/50 px-2 py-0.5 text-[10px] font-bold text-zinc-200">
               {language === 'sw' ? `Kipindi cha ${video.episode}` : `Ep ${video.episode}`}

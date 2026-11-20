@@ -1,6 +1,21 @@
 import type { Video } from '../types';
 
 export const LONG_FORMAT_PREVIEW_SECONDS = 30;
+/** Default free opening episodes while a series is building its catalogue (< 30 episodes). */
+export const DEFAULT_FREE_EPISODES = 2;
+/** Once a series reaches 30+ published episodes, automatically expand the free hook to 5 episodes. */
+export const EXPANDED_FREE_EPISODES = 5;
+export const EXPANDED_FREE_EPISODE_THRESHOLD = 30;
+
+export function getFreeEpisodeCount(video: Video, totalSeriesEpisodes?: number): number {
+  if (typeof video.freeEpisodes === 'number' && Number.isFinite(video.freeEpisodes) && video.freeEpisodes >= 0) {
+    return video.freeEpisodes;
+  }
+  if (typeof totalSeriesEpisodes === 'number' && totalSeriesEpisodes >= EXPANDED_FREE_EPISODE_THRESHOLD) {
+    return EXPANDED_FREE_EPISODES;
+  }
+  return DEFAULT_FREE_EPISODES;
+}
 
 export function isLongFormatVideo(video: Video): boolean {
   if (video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas') return false;
@@ -24,15 +39,13 @@ export function getEpisodeNumber(video: Video): number | undefined {
   return undefined;
 }
 
-export function isContentFree(video: Video): boolean {
+export function isContentFree(video: Video, totalSeriesEpisodes?: number): boolean {
   // Shorts are free by default
   if (video.category === 'Shorts' || video.isShort) return true;
 
   const currentEpisodeNumber = getEpisodeNumber(video);
   if (currentEpisodeNumber !== undefined) {
-    const freeCount = typeof video.freeEpisodes === 'number' && Number.isFinite(video.freeEpisodes)
-      ? video.freeEpisodes
-      : 2;
+    const freeCount = getFreeEpisodeCount(video, totalSeriesEpisodes);
     return currentEpisodeNumber <= freeCount;
   }
 
@@ -45,12 +58,13 @@ export function isContentFree(video: Video): boolean {
 export function isVideoLocked(
   video: Video,
   hasActiveSubscription: boolean,
-  unlockedVideoIds: string[] = []
+  unlockedVideoIds: string[] = [],
+  totalSeriesEpisodes?: number
 ): boolean {
   // Subscribers have unlimited access to all content
   if (hasActiveSubscription) return false;
 
-  // Unlocked specifically in this session / device
+  // Unlocked specifically in this session / device (e.g. rewarded ad or WhatsApp share unlock)
   if (unlockedVideoIds.includes(video.id)) return false;
 
   // Shorts are free by default
@@ -58,12 +72,10 @@ export function isVideoLocked(
 
   const currentEpisodeNumber = getEpisodeNumber(video);
 
-  // ENFORCED: Any episodic content (Micro Dramas, Series, or episodic shorts)
-  // Opening teaser episodes (1 & 2) are free hooks; Episode 3+ (after episode 2) triggers paywall.
+  // ENFORCED: Episodic content gives 2 free opening episodes until a series reaches 30 episodes,
+  // then automatically expands to 5 free opening episodes (unless overridden by video.freeEpisodes).
   if (currentEpisodeNumber !== undefined) {
-    const freeCount = typeof video.freeEpisodes === 'number' && Number.isFinite(video.freeEpisodes)
-      ? video.freeEpisodes
-      : 2;
+    const freeCount = getFreeEpisodeCount(video, totalSeriesEpisodes);
     return currentEpisodeNumber > freeCount;
   }
 

@@ -14,6 +14,7 @@ export const SHORT_PAID_DURATION_CUTOFF_SECONDS = 30;
 export const SHORT_PAID_QUALIFIED_RATIO = 0.8;
 export const DEFAULT_CREATOR_POOL_PERCENT = 60; // 60/40 revenue split in favor of creative (60% to creative, 40% platform)
 export const PAYMENT_GATEWAY_FEE_PERCENT = 1.5; // 1.5% Paystack Kenya fee
+export const PLATFORM_FEE_PERCENT = 5; // 5% platform fee deducted from gross
 
 /**
  * Returns the minimum playback position (in seconds) required to award a Qualified View.
@@ -38,6 +39,7 @@ export interface RoyaltyPoolConfig {
   periodLabel: string;
   grossSubscriptionRevenueKes: number;
   gatewayFeePercent?: number;
+  platformFeePercent?: number;
   creatorPoolPercent?: number;
   payoutThresholdKes?: number;
   premiumOnly?: boolean;
@@ -159,6 +161,7 @@ export interface RoyaltyComputationResult {
   periodLabel: string;
   grossRevenueKes: number;
   gatewayFeesKes: number;
+  platformFeesKes: number;
   netSubscriptionPoolKes: number;
   netCreatorPoolKes: number;
   platformShareKes: number;
@@ -304,12 +307,14 @@ export function computeShareOfPlayRoyalties(
 ): RoyaltyComputationResult {
   const grossRev = Math.max(0, config.grossSubscriptionRevenueKes || 0);
   const feePercent = config.gatewayFeePercent ?? PAYMENT_GATEWAY_FEE_PERCENT;
+  const platformFeePercent = config.platformFeePercent ?? PLATFORM_FEE_PERCENT;
   const poolPercent = config.creatorPoolPercent ?? DEFAULT_CREATOR_POOL_PERCENT;
   const thresholdKes = config.payoutThresholdKes ?? MINIMUM_PAYOUT_THRESHOLD_KES;
 
-  // Deduct payment gateway fee (Paystack 1.5%)
+  // Deduct payment gateway fee (1.5%) and platform fee (5%) from gross
   const gatewayFees = grossRev * (feePercent / 100);
-  const netPool = grossRev - gatewayFees;
+  const platformFees = grossRev * (platformFeePercent / 100);
+  const netPool = Math.max(0, grossRev - gatewayFees - platformFees);
 
   // Creator share (60% in favor of creative) vs Platform share (40%)
   const netCreatorPool = netPool * (poolPercent / 100);
@@ -362,7 +367,7 @@ export function computeShareOfPlayRoyalties(
   // Safe fallback if zero views
   const safeTotalQv = Math.max(1, totalQualifiedViews);
   const useUserCentric = Boolean(overrides?.userCentricGrossByVideo);
-  const netFactor = (1 - feePercent / 100) * (poolPercent / 100);
+  const netFactor = Math.max(0, 1 - (feePercent + platformFeePercent) / 100) * (poolPercent / 100);
   const unattributedGross = Math.max(0, overrides?.unattributedGrossKes ?? 0);
 
   // Compute per-video creator net earnings (KES)
@@ -501,6 +506,7 @@ export function computeShareOfPlayRoyalties(
     periodLabel: config.periodLabel,
     grossRevenueKes: Math.round(grossRev),
     gatewayFeesKes: Math.round(gatewayFees * 100) / 100,
+    platformFeesKes: Math.round(platformFees * 100) / 100,
     netSubscriptionPoolKes: Math.round(netPool * 100) / 100,
     netCreatorPoolKes: Math.round(netCreatorPool * 100) / 100,
     platformShareKes: Math.round(platformShare * 100) / 100,

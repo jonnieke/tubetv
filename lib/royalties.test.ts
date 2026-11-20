@@ -47,14 +47,16 @@ describe('Creator Royalties & Share of Play Engine', () => {
 
     // Gross: 100,000
     // Gateway Fee: 1,500 (1.5%)
-    // Net Subscription Pool: 98,500
-    // Net Creator Pool: 59,100 (60% of 98,500 in favor of creative)
-    // Platform Share: 39,400 (40% of 98,500)
+    // Platform Fee: 5,000 (5%)
+    // Net Subscription Pool: 93,500
+    // Net Creator Pool: 56,100 (60% of 93,500 in favor of creative)
+    // Platform Share: 37,400 (40% of 93,500)
     expect(result.grossRevenueKes).toBe(100000);
     expect(result.gatewayFeesKes).toBe(1500);
-    expect(result.netSubscriptionPoolKes).toBe(98500);
-    expect(result.netCreatorPoolKes).toBe(59100);
-    expect(result.platformShareKes).toBe(39400);
+    expect(result.platformFeesKes).toBe(5000);
+    expect(result.netSubscriptionPoolKes).toBe(93500);
+    expect(result.netCreatorPoolKes).toBe(56100);
+    expect(result.platformShareKes).toBe(37400);
   });
 
   it('allocates pro-rata Share of Play based on 30s Qualified Views', () => {
@@ -158,19 +160,19 @@ describe('Creator Royalties & Share of Play Engine', () => {
     const bigCreator = result.creators.find((c) => c.creator === 'Big Creator')!;
     const smallCreator = result.creators.find((c) => c.creator === 'Small Creator')!;
 
-    expect(bigCreator.netEarningsKes).toBe(1200);
+    expect(bigCreator.netEarningsKes).toBe(1140);
     expect(bigCreator.isEligibleForPayout).toBe(true);
     expect(bigCreator.payoutStatus).toBe('ELIGIBLE');
     expect(bigCreator.thresholdProgressPercent).toBe(100);
 
-    expect(smallCreator.netEarningsKes).toBe(300);
+    expect(smallCreator.netEarningsKes).toBe(285);
     expect(smallCreator.isEligibleForPayout).toBe(false);
     expect(smallCreator.payoutStatus).toBe('CARRIED_FORWARD');
-    expect(smallCreator.thresholdProgressPercent).toBe(30); // 300 / 1000 = 30%
+    expect(smallCreator.thresholdProgressPercent).toBe(28); // Math.round(285 / 1000 * 100) = 28%
 
     expect(result.eligibleCreatorsCount).toBe(1);
     expect(result.carriedForwardCreatorsCount).toBe(1);
-    expect(result.totalEligiblePayoutKes).toBe(1200);
+    expect(result.totalEligiblePayoutKes).toBe(1140);
   });
 
   it('awards qualified views at 80% for paid content under 30 seconds', () => {
@@ -209,8 +211,8 @@ describe('Creator Royalties & Share of Play Engine', () => {
     );
     const creatorA = result.creators.find((c) => c.creator === 'Creator A')!;
     const creatorB = result.creators.find((c) => c.creator === 'Creator B')!;
-    expect(creatorA.netEarningsKes).toBeCloseTo(5.91, 2);
-    expect(creatorB.netEarningsKes).toBeCloseTo(5.91, 2);
+    expect(creatorA.netEarningsKes).toBeCloseTo(5.61, 2);
+    expect(creatorB.netEarningsKes).toBeCloseTo(5.61, 2);
   });
 
   it('balances movies vs short episodes with sqrt weighting, 90m cap, and daily replay deduplication', () => {
@@ -266,7 +268,7 @@ describe('Creator Royalties & Share of Play Engine', () => {
     // Total creator pool = 1,000 * 60% = 600 -> 300 each this period
     const result = computeShareOfPlayRoyalties(
       videos,
-      { periodLabel: 'Last 30 Days', grossSubscriptionRevenueKes: 1000, gatewayFeePercent: 0, creatorPoolPercent: 60 },
+      { periodLabel: 'Last 30 Days', grossSubscriptionRevenueKes: 1000, gatewayFeePercent: 0, platformFeePercent: 0, creatorPoolPercent: 60 },
       { carriedForwardByCreator: { 'Studio A': 750 } },
     );
 

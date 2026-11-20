@@ -1,0 +1,25 @@
+name: Daily New Shows Push Digest (6PM EAT)
+
+on:
+  schedule:
+    # 15:00 UTC = 18:00 EAT (GMT+3) daily
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger 6PM EAT New Show Digest
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NOTIFY_CRON_SECRET: ${{ secrets.NOTIFY_CRON_SECRET }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$NOTIFY_CRON_SECRET" ]; then
+            echo "SUPABASE_URL or NOTIFY_CRON_SECRET secret is not set; skipping."
+            exit 0
+          fi
+          curl -fsS -X POST "${SUPABASE_URL}/functions/v1/send-push" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${NOTIFY_CRON_SECRET}" \
+            -d '{"action":"daily_digest"}'

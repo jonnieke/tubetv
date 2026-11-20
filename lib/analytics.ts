@@ -100,7 +100,10 @@ export function trackEvent(name: AnalyticsEventName, properties: EventProperties
   };
 
   window.dispatchEvent(new CustomEvent('tubetv:analytics', { detail: event }));
-  if (!endpoint) return;
+  const host = window.location.hostname;
+  const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
+  const allowLocal = (import.meta.env.VITE_ANALYTICS_ALLOW_LOCALHOST as string) === 'true';
+  if (!endpoint || (isLocalHost && !allowLocal)) return;
   const payload = JSON.stringify(event);
   try {
     if (typeof navigator !== 'undefined' && navigator.sendBeacon) {

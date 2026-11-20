@@ -99,7 +99,7 @@ export const REGIONAL_PRICING: Record<RegionCode, RegionalPriceConfig> = {
     dialPrefix: '+1',
     supportsMpesaStk: false,
     paymentMethodsLabel: 'Apple Pay, Google Pay, Visa / Mastercard',
-    prices: { daily: '$0.99', weekly: '$1.99', monthly: '$2.99' },
+    prices: { daily: '$2.99', weekly: '$5.99', monthly: '$9.99' },
   },
   GB: {
     code: 'GB',
@@ -110,7 +110,7 @@ export const REGIONAL_PRICING: Record<RegionCode, RegionalPriceConfig> = {
     dialPrefix: '+44',
     supportsMpesaStk: false,
     paymentMethodsLabel: 'Apple Pay, Google Pay, UK Debit/Credit Card',
-    prices: { daily: '£0.79', weekly: '£1.49', monthly: '£2.49' },
+    prices: { daily: '£2.49', weekly: '£4.99', monthly: '£7.99' },
   },
   EU: {
     code: 'EU',
@@ -121,7 +121,7 @@ export const REGIONAL_PRICING: Record<RegionCode, RegionalPriceConfig> = {
     dialPrefix: '+33',
     supportsMpesaStk: false,
     paymentMethodsLabel: 'Apple Pay, Google Pay, Card',
-    prices: { daily: '€0.89', weekly: '€1.79', monthly: '€2.79' },
+    prices: { daily: '€2.79', weekly: '€5.49', monthly: '€8.99' },
   },
 };
 

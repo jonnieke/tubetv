@@ -147,6 +147,7 @@ export default function AnalyticsDashboard({
   const [interactionSearch, setInteractionSearch] = useState<string>('');
   const [selectedPayerFilter, setSelectedPayerFilter] = useState<string | null>(null);
   const [showAllInteractions, setShowAllInteractions] = useState<boolean>(false);
+  const [hideZeroSecStarts, setHideZeroSecStarts] = useState<boolean>(true);
 
   useEffect(() => {
     if (videos !== undefined) return;
@@ -463,7 +464,7 @@ export default function AnalyticsDashboard({
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg">
               <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                <span>Range Gross Revenue</span>
+                <span>Money Collected</span>
                 <Wallet className="h-4 w-4 text-emerald-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
@@ -478,7 +479,7 @@ export default function AnalyticsDashboard({
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg">
               <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                <span>Creator Pool (60%)</span>
+                <span>Creator Payout Pool (60%)</span>
                 <Coins className="h-4 w-4 text-amber-400" />
               </div>
               <div className="mt-2">
@@ -487,13 +488,13 @@ export default function AnalyticsDashboard({
                 </strong>
               </div>
               <p className="mt-2 text-[11px] text-zinc-400">
-                After 1.5% gateway fee ({formatKes(royaltySnapshot.gatewayFeesKes)})
+                After 1.5% gateway + 5% platform fee ({formatKes(royaltySnapshot.gatewayFeesKes + royaltySnapshot.platformFeesKes)})
               </p>
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg">
               <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                <span>Qualified Views (30s / 80% &lt;30s)</span>
+                <span>Verified Plays</span>
                 <Eye className="h-4 w-4 text-blue-400" />
               </div>
               <div className="mt-2">
@@ -502,14 +503,14 @@ export default function AnalyticsDashboard({
                 </strong>
               </div>
               <p className="mt-2 text-[11px] text-zinc-400">
-                {myVideos.length} published titles · {formatNumber(totalViews)} lifetime views
+                Watched ≥30s (or 80% of shorts) · {myVideos.length} titles
               </p>
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                  <span>Eligible Payouts (&ge; KSh 1,000)</span>
+                  <span>Ready to Pay (≥ KSh 1,000)</span>
                   <Users className="h-4 w-4 text-emerald-400" />
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
@@ -525,7 +526,7 @@ export default function AnalyticsDashboard({
                 className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 px-3 py-2 text-xs font-bold text-black transition-colors cursor-pointer"
               >
                 <Download className="h-3.5 w-3.5" />
-                Export M-Pesa CSV
+                Export M-Pesa Batch
               </button>
             </div>
           </div>
@@ -539,18 +540,29 @@ export default function AnalyticsDashboard({
                   <div>
                     <h2 className="text-base font-bold text-white flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-emerald-400" />
-                      Daily Revenue (KSh) vs Qualified Views
+                      Daily Money Collected vs. Verified Plays
                     </h2>
-                    <p className="text-xs text-zinc-400">Last 14 days of live verified activity</p>
+                    <p className="text-xs text-zinc-400">
+                      Last 14 days of verified activity
+                      {chartSeries.slice.length > 0 && (() => {
+                        const peak = chartSeries.slice.reduce(
+                          (best, d) => (d.revenueKes > best.revenueKes ? d : best),
+                          chartSeries.slice[0],
+                        );
+                        return peak.revenueKes > 0
+                          ? ` · Best day: ${peak.date} (${formatKes(peak.revenueKes)})`
+                          : '';
+                      })()}
+                    </p>
                   </div>
                   <div className="flex items-center gap-3 text-[11px] text-zinc-300">
                     <span className="inline-flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                      Revenue
+                      Money Collected
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full bg-violet-400" />
-                      Qualified Views
+                      Verified Plays
                     </span>
                   </div>
                 </div>
@@ -780,6 +792,7 @@ export default function AnalyticsDashboard({
                 }),
               );
               const rows = (funnel?.rangeInteractions || []).filter((r) => {
+                if (hideZeroSecStarts && r.watchSeconds === 0 && r.event === 'playback_start') return false;
                 if (selectedPayerFilter && r.payerLabel !== selectedPayerFilter) return false;
                 if (!interactionSearch.trim()) return true;
                 const q = interactionSearch.toLowerCase();
@@ -828,13 +841,26 @@ export default function AnalyticsDashboard({
               return (
                 <>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <input
-                      type="search"
-                      value={interactionSearch}
-                      onChange={(e) => setInteractionSearch(e.target.value)}
-                      placeholder="Filter by title, location (e.g. KE), viewer ID or device..."
-                      className="w-full sm:w-80 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-white placeholder-zinc-500"
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="search"
+                        value={interactionSearch}
+                        onChange={(e) => setInteractionSearch(e.target.value)}
+                        placeholder="Filter by title, location (e.g. KE), viewer ID or device..."
+                        className="w-full sm:w-80 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-white placeholder-zinc-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setHideZeroSecStarts((v) => !v)}
+                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                          hideZeroSecStarts
+                            ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                            : 'border-zinc-700 bg-zinc-800 text-zinc-300'
+                        }`}
+                      >
+                        {hideZeroSecStarts ? 'Verified Plays Only (Hide 0s)' : 'Showing All Events'}
+                      </button>
+                    </div>
                     <button
                       type="button"
                       onClick={exportRangeCsv}
@@ -878,8 +904,11 @@ export default function AnalyticsDashboard({
                                   <td className="py-2.5 pr-4 align-top">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       {hasPaid ? (
-                                        <span className="inline-flex items-center rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
-                                          Paid {formatKes(r.paidKes!)}
+                                        <span
+                                          title={`This viewer spent ${formatKes(r.paidKes!)} total in the selected date range (not per play)`}
+                                          className="inline-flex items-center rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300"
+                                        >
+                                          Pass Holder ({formatKes(r.paidKes!)} total)
                                         </span>
                                       ) : (
                                         <span className="inline-flex items-center rounded-md bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
@@ -934,45 +963,54 @@ export default function AnalyticsDashboard({
             })()}
           </div>
 
-          {/* Category Breakdown (Titles & Measured Views) */}
+          {/* Category Breakdown (Watch-Time & Catalogue Categories) */}
           {categoryData.length > 0 && (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <div>
-                  <h2 className="text-base font-bold text-white">Category Breakdown (Measured Views)</h2>
+                  <h2 className="text-base font-bold text-white">Watch-Time &amp; Catalogue Categories</h2>
                   <p className="text-xs text-zinc-400">
-                    Combines Bunny lifetime plays and Supabase 30-day Qualified Views across {totalViews.toLocaleString('en-KE')} total views
+                    How each category performs across {totalViews.toLocaleString('en-KE')} total plays
                   </p>
                 </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                {categoryData.map((cat) => (
-                  <div key={cat.category} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-white truncate">{cat.category}</span>
-                      <span className="text-[10px] text-zinc-500">{cat.titles} titles</span>
+                {categoryData.map((cat) => {
+                  const sharePct = totalViews > 0 ? Math.round((cat.lifetimeViews / totalViews) * 100) : 0;
+                  return (
+                    <div key={cat.category} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-white truncate">{cat.category}</span>
+                        <span className="text-[10px] text-zinc-500">{cat.titles} titles</span>
+                      </div>
+                      <div className="mt-1.5 flex items-baseline justify-between gap-2">
+                        <strong className="text-base font-black text-emerald-300">
+                          {cat.lifetimeViews.toLocaleString('en-KE')}
+                        </strong>
+                        <span className="text-[10px] text-zinc-400">
+                          {cat.rangeViews > 0 ? `${cat.rangeViews.toLocaleString('en-KE')} in range` : `${sharePct}% share`}
+                        </span>
+                      </div>
+                      <div className="mt-2 h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-emerald-500/80"
+                          style={{ width: `${Math.max(4, sharePct)}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="mt-1.5 flex items-baseline justify-between gap-2">
-                      <strong className="text-base font-black text-emerald-300">
-                        {cat.lifetimeViews.toLocaleString('en-KE')}
-                      </strong>
-                      <span className="text-[10px] text-zinc-400">
-                        {cat.rangeViews > 0 ? `${cat.rangeViews.toLocaleString('en-KE')} in range` : 'views'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Bottom Table: Title-by-Title Revenue & Share-of-Play */}
+          {/* Bottom Table: Top Earning Titles (Plain-English Breakdown) */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
-                <h2 className="text-base font-bold text-white">Title-by-Title Revenue &amp; Share-of-Play ({dateFrom} → {dateTo})</h2>
+                <h2 className="text-base font-bold text-white">Top Earning Titles ({dateFrom} → {dateTo})</h2>
                 <p className="text-xs text-zinc-400">
-                  Attributed from verified 30s (or 80% &lt;30s) Qualified Views across {royaltySnapshot.content.length} premium titles ({formatKes(royaltySnapshot.netCreatorPoolKes)} creator pool)
+                  Split across {royaltySnapshot.content.length} premium titles from {formatKes(royaltySnapshot.netCreatorPoolKes)} creator pool
                 </p>
               </div>
               <button
@@ -980,7 +1018,7 @@ export default function AnalyticsDashboard({
                 onClick={() => (embedded && onOpenRoyalties ? onOpenRoyalties() : setActiveTab('royalties'))}
                 className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 cursor-pointer"
               >
-                Full Creator Royalties
+                Full Creator Royalties &amp; M-Pesa Payouts
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -991,9 +1029,9 @@ export default function AnalyticsDashboard({
                   <tr className="border-b border-zinc-800 text-zinc-400 uppercase tracking-wider text-[10px]">
                     <th className="py-2.5 pr-4">Title</th>
                     <th className="py-2.5 pr-4">Category</th>
-                    <th className="py-2.5 pr-4 text-right">Qualified Views</th>
-                    <th className="py-2.5 pr-4 text-right">Share %</th>
-                    <th className="py-2.5 pr-4 text-right">Attributed Revenue</th>
+                    <th className="py-2.5 pr-4 text-right">Verified Plays</th>
+                    <th className="py-2.5 pr-4 text-right">Watch Share</th>
+                    <th className="py-2.5 pr-4 text-right">Earned (KES)</th>
                     <th className="py-2.5 text-right">Access</th>
                   </tr>
                 </thead>

@@ -16,9 +16,19 @@ import {
   ChevronUp,
   Globe,
   Clock,
+  PlayCircle,
+  Share2,
 } from 'lucide-react';
 import { Video } from '../types';
 import { isMicroDrama } from '../lib/series';
+import {
+  AD_UNLOCK_DURATION_SECONDS,
+  getRemainingAdUnlocksToday,
+  getRemainingShareUnlocksToday,
+  grantAdUnlock,
+  grantShareUnlock,
+} from '../lib/unlockRewards';
+import { getActiveSponsor } from '../lib/sponsors';
 import {
   SUBSCRIPTION_PLANS,
   SubscriptionPlanCode,
@@ -141,6 +151,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const [deviceConflict, setDeviceConflict] = useState(false);
   const [restoreExpiredInfo, setRestoreExpiredInfo] = useState<{ tier?: string; phone?: string } | null>(null);
   const [showAdvancedRef, setShowAdvancedRef] = useState(false);
+  const [adCountdown, setAdCountdown] = useState<number | null>(null);
+  const [remainingAdUnlocks, setRemainingAdUnlocks] = useState(() => getRemainingAdUnlocksToday());
+  const [remainingShareUnlocks, setRemainingShareUnlocks] = useState(() => getRemainingShareUnlocksToday());
+  const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -265,6 +279,82 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     if (completeTimerRef.current) {
       clearTimeout(completeTimerRef.current);
       completeTimerRef.current = null;
+    }
+    if (adTimerRef.current) {
+      clearInterval(adTimerRef.current);
+      adTimerRef.current = null;
+    }
+  };
+
+  const handleStartAdUnlock = () => {
+    if (!video?.id || adCountdown !== null || remainingAdUnlocks <= 0) return;
+    clearTimers();
+    setErrorMessage('');
+    setAdCountdown(AD_UNLOCK_DURATION_SECONDS);
+    trackEvent('ad_unlock_started', {
+      videoId: video.id,
+      episode: episodeNumber,
+      isMicroDrama: isMicro,
+    });
+
+    adTimerRef.current = setInterval(() => {
+      setAdCountdown((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          if (adTimerRef.current) {
+            clearInterval(adTimerRef.current);
+            adTimerRef.current = null;
+          }
+          const result = grantAdUnlock(video.id);
+          setRemainingAdUnlocks(result.remainingToday);
+          if (result.unlocked) {
+            trackEvent('ad_unlock_completed', {
+              videoId: video.id,
+              episode: episodeNumber,
+              remainingToday: result.remainingToday,
+            });
+            setStatus('completed');
+            completeTimerRef.current = setTimeout(() => {
+              onSuccess();
+            }, 650);
+          }
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const handleShareToUnlock = () => {
+    if (!video?.id || remainingShareUnlocks <= 0) return;
+    setErrorMessage('');
+    const siteOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://www.tube.co.ke';
+    const shareUrl = `${siteOrigin}/watch/${encodeURIComponent(video.id)}?src=wa_unlock`;
+    const shareText =
+      language === 'sw'
+        ? `🔥 Usikose Kipindi ${episodeNumber} cha "${showTitle}" kwenye TubeTV! Tazama sasa: ${shareUrl}`
+        : `🔥 This cliffhanger on "${showTitle}" (Ep ${episodeNumber}) is wild! Watch on TubeTV: ${shareUrl}`;
+
+    try {
+      const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      // Fallback if popups are blocked
+    }
+
+    const result = grantShareUnlock(video.id);
+    setRemainingShareUnlocks(result.remainingToday);
+    if (result.unlocked) {
+      trackEvent('share_unlock_completed', {
+        videoId: video.id,
+        episode: episodeNumber,
+        channel: 'whatsapp',
+        remainingToday: result.remainingToday,
+      });
+      setStatus('completed');
+      completeTimerRef.current = setTimeout(() => {
+        onSuccess();
+      }, 650);
     }
   };
 
@@ -1321,6 +1411,80 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                     t('paywall.payButton', { amount: activePlan.amountKes })
                   )}
                 </button>
+
+                {/* Hybrid Free-Tier Bridge for Micro Drama Cliffhangers: Watch 15s Ad or Share on WhatsApp */}
+                {isEpisodicCliffhanger && video && !activePass && (remainingAdUnlocks > 0 || remainingShareUnlocks > 0 || adCountdown !== null) && (
+                  <div className="pt-2.5 border-t border-zinc-800/80 space-y-2">
+                    {adCountdown !== null ? (
+                      <div className="rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-950/50 via-zinc-900 to-zinc-950 p-3.5 text-center space-y-2">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
+                          {getActiveSponsor()?.name || 'TubeTV Sponsor Spot'}
+                        </p>
+                        <p className="text-xs font-semibold text-white">
+                          {getActiveSponsor()?.tagline ||
+                            (language === 'sw'
+                              ? `Inafungua Kipindi ${episodeNumber} bure...`
+                              : `Unlocking Episode ${episodeNumber} free in ${adCountdown}s...`)}
+                        </p>
+                        <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                          <div
+                            className="h-full bg-amber-400 transition-all duration-1000"
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                ((AD_UNLOCK_DURATION_SECONDS - adCountdown) / AD_UNLOCK_DURATION_SECONDS) * 100,
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                        <p className="text-[11px] font-bold text-amber-300">
+                          {language === 'sw'
+                            ? `Subiri sekunde ${adCountdown}...`
+                            : `Reward ready in ${adCountdown}s`}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-[11px] font-semibold text-zinc-400 text-center">
+                          {language === 'sw'
+                            ? `Au fungua Kipindi ${episodeNumber} pekee BURE:`
+                            : `Or unlock just Episode ${episodeNumber} FREE:`}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            disabled={isBusy || remainingAdUnlocks <= 0}
+                            onClick={handleStartAdUnlock}
+                            className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-amber-500/35 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 px-2.5 py-2 text-amber-200 transition-colors cursor-pointer"
+                          >
+                            <span className="inline-flex items-center gap-1 text-xs font-bold">
+                              <PlayCircle size={14} className="text-amber-400" />
+                              {language === 'sw' ? 'Tazama Tangazo' : 'Watch 15s Ad'}
+                            </span>
+                            <span className="text-[10px] text-amber-300/80">
+                              {remainingAdUnlocks} {language === 'sw' ? 'zimesalia leo' : 'left today'}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isBusy || remainingShareUnlocks <= 0}
+                            onClick={handleShareToUnlock}
+                            className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-emerald-500/35 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-40 px-2.5 py-2 text-emerald-200 transition-colors cursor-pointer"
+                          >
+                            <span className="inline-flex items-center gap-1 text-xs font-bold">
+                              <Share2 size={14} className="text-emerald-400" />
+                              {language === 'sw' ? 'Shiriki WhatsApp' : 'Share WhatsApp'}
+                            </span>
+                            <span className="text-[10px] text-emerald-300/80">
+                              {remainingShareUnlocks} {language === 'sw' ? 'zimesalia leo' : 'left today'}
+                            </span>
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </form>
             )) : deviceConflict ? (
               <div className="bg-zinc-900 border border-amber-500/40 rounded-2xl p-5 text-center space-y-3 animate-in fade-in zoom-in-95">
