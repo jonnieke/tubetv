@@ -2,6 +2,13 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import { getOrCreateDeviceId } from './subscriptions';
 
 export type EpisodeReaction = 'fire' | 'shock' | 'cry' | 'heart';
+export type PollChoice = 'yes' | 'no';
+
+export interface EpisodePollStats {
+  yesVotes: number;
+  noVotes: number;
+  userChoice?: PollChoice;
+}
 
 export interface EpisodeComment {
   id: string;
@@ -14,6 +21,7 @@ export interface EpisodeComment {
 
 const LIKED_STORAGE_KEY = 'tubetv_liked_videos_v1';
 const COMMENTS_STORAGE_PREFIX = 'tubetv_ep_comments_v1:';
+const POLL_STORAGE_PREFIX = 'tubetv_ep_poll_v1:';
 const DISPLAY_NAME_KEY = 'tubetv_viewer_handle_v1';
 
 export function getSavedViewerHandle(): string {
@@ -224,4 +232,86 @@ export async function postEpisodeComment(params: {
   }
 
   return optimistic;
+}
+
+function readLocalPollChoice(videoId: string): PollChoice | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const val = window.localStorage.getItem(`${POLL_STORAGE_PREFIX}${videoId}`);
+    return val === 'yes' || val === 'no' ? val : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLocalPollChoice(videoId: string, choice: PollChoice): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(`${POLL_STORAGE_PREFIX}${videoId}`, choice);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export async function fetchEpisodePoll(videoId: string): Promise<EpisodePollStats> {
+  const localChoice = readLocalPollChoice(videoId);
+  const fallback: EpisodePollStats = {
+    yesVotes: localChoice === 'yes' ? 1 : 0,
+    noVotes: localChoice === 'no' ? 1 : 0,
+    userChoice: localChoice,
+  };
+
+  if (!isSupabaseConfigured || !videoId) return fallback;
+
+  try {
+    const deviceId = getOrCreateDeviceId();
+    const [yesRes, noRes, myVoteRes] = await Promise.all([
+      supabase
+        .from('episode_poll_votes')
+        .select('id', { count: 'exact', head: true })
+        .eq('video_id', videoId)
+        .eq('choice', 'yes'),
+      supabase
+        .from('episode_poll_votes')
+        .select('id', { count: 'exact', head: true })
+        .eq('video_id', videoId)
+        .eq('choice', 'no'),
+      supabase
+        .from('episode_poll_votes')
+        .select('choice')
+        .eq('video_id', videoId)
+        .eq('device_id', deviceId)
+        .maybeSingle(),
+    ]);
+
+    if (yesRes.error || noRes.error) return fallback;
+    const remoteChoice =
+      myVoteRes.data?.choice === 'yes' || myVoteRes.data?.choice === 'no'
+        ? (myVoteRes.data.choice as PollChoice)
+        : localChoice;
+
+    return {
+      yesVotes: yesRes.count ?? 0,
+      noVotes: noRes.count ?? 0,
+      userChoice: remoteChoice,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export async function voteEpisodePoll(videoId: string, choice: PollChoice): Promise<void> {
+  writeLocalPollChoice(videoId, choice);
+  if (!isSupabaseConfigured || !videoId) return;
+  try {
+    const deviceId = getOrCreateDeviceId();
+    await supabase
+      .from('episode_poll_votes')
+      .upsert(
+        { video_id: videoId, device_id: deviceId, choice },
+        { onConflict: 'video_id,device_id' },
+      );
+  } catch {
+    // Keep optimistic local vote if offline
+  }
 }

@@ -20,11 +20,15 @@ import { buildComingSoonSchedule, isMicroDrama, isNewEpisode } from '../lib/seri
 import { getFreeEpisodeCount } from '../lib/monetization';
 import {
   fetchEpisodeEngagement,
+  fetchEpisodePoll,
   getSavedViewerHandle,
   postEpisodeComment,
   toggleEpisodeLike,
+  voteEpisodePoll,
   type EpisodeComment,
+  type EpisodePollStats,
   type EpisodeReaction,
+  type PollChoice,
 } from '../lib/engagement';
 import { trackEvent } from '../lib/analytics';
 
@@ -106,6 +110,7 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
   const [commentBody, setCommentBody] = useState('');
   const [selectedReaction, setSelectedReaction] = useState<EpisodeReaction | undefined>(undefined);
   const [isPostingComment, setIsPostingComment] = useState(false);
+  const [pollStats, setPollStats] = useState<EpisodePollStats>({ yesVotes: 0, noVotes: 0 });
 
   // Touch swipe tracking for DramaBox-style vertical episode navigation on mobile
   const touchStartYRef = useRef<number | null>(null);
@@ -125,10 +130,30 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
       setLikeCount(res.likeCount);
       setComments(res.comments);
     });
+    fetchEpisodePoll(activeVideo.id).then((res) => {
+      if (!active) return;
+      setPollStats(res);
+    });
     return () => {
       active = false;
     };
   }, [activeVideo.id]);
+
+  const handleVotePoll = (choice: PollChoice) => {
+    setPollStats((prev) => {
+      if (prev.userChoice === choice) return prev;
+      const yesVotes =
+        prev.yesVotes + (choice === 'yes' ? 1 : 0) - (prev.userChoice === 'yes' ? 1 : 0);
+      const noVotes =
+        prev.noVotes + (choice === 'no' ? 1 : 0) - (prev.userChoice === 'no' ? 1 : 0);
+      return {
+        yesVotes: Math.max(0, yesVotes),
+        noVotes: Math.max(0, noVotes),
+        userChoice: choice,
+      };
+    });
+    void voteEpisodePoll(activeVideo.id, choice);
+  };
 
   const handleToggleLike = () => {
     const nextLiked = !isLiked;
@@ -410,8 +435,93 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
     </div>
   );
 
+  const renderCliffhangerPoll = () => {
+    const totalVotes = pollStats.yesVotes + pollStats.noVotes;
+    const yesPct = totalVotes > 0 ? Math.round((pollStats.yesVotes / totalVotes) * 100) : 50;
+    const noPct = totalVotes > 0 ? 100 - yesPct : 50;
+    const voted = Boolean(pollStats.userChoice);
+
+    return (
+      <div className="rounded-xl border border-rose-500/25 bg-gradient-to-br from-rose-950/30 via-zinc-900/90 to-zinc-950 p-3 space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-extrabold uppercase tracking-wider text-rose-300">
+            {language === 'sw' ? `Kura ya Kipindi ${epNum}` : `Ep ${epNum} Cliffhanger Verdict`}
+          </p>
+          {totalVotes > 0 && (
+            <span className="text-[10px] font-semibold text-zinc-400">
+              {totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}
+            </span>
+          )}
+        </div>
+        <p className="text-xs font-semibold text-white">
+          {language === 'sw'
+            ? 'Je, mabadiliko ya kipindi hiki yalikushangaza?'
+            : 'Did this episode twist catch you off guard?'}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => handleVotePoll('yes')}
+            aria-pressed={pollStats.userChoice === 'yes'}
+            className={`relative overflow-hidden rounded-lg border px-3 py-2 text-left text-xs font-bold transition-all ${
+              pollStats.userChoice === 'yes'
+                ? 'border-rose-500 bg-rose-600/25 text-white'
+                : 'border-zinc-800 bg-zinc-900/90 text-zinc-200 hover:border-rose-500/50'
+            }`}
+          >
+            {voted && (
+              <span
+                className="pointer-events-none absolute inset-y-0 left-0 bg-rose-500/20 transition-all duration-500"
+                style={{ width: `${yesPct}%` }}
+              />
+            )}
+            <span className="relative z-10 flex items-center justify-between gap-1">
+              <span>🔥 {language === 'sw' ? 'Ndiyo!' : 'Shook!'}</span>
+              {voted && <span className="text-[11px] text-rose-300">{yesPct}%</span>}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleVotePoll('no')}
+            aria-pressed={pollStats.userChoice === 'no'}
+            className={`relative overflow-hidden rounded-lg border px-3 py-2 text-left text-xs font-bold transition-all ${
+              pollStats.userChoice === 'no'
+                ? 'border-sky-500 bg-sky-600/25 text-white'
+                : 'border-zinc-800 bg-zinc-900/90 text-zinc-200 hover:border-sky-500/50'
+            }`}
+          >
+            {voted && (
+              <span
+                className="pointer-events-none absolute inset-y-0 left-0 bg-sky-500/20 transition-all duration-500"
+                style={{ width: `${noPct}%` }}
+              />
+            )}
+            <span className="relative z-10 flex items-center justify-between gap-1">
+              <span>🧊 {language === 'sw' ? 'Nilijua' : 'Saw it'}</span>
+              {voted && <span className="text-[11px] text-sky-300">{noPct}%</span>}
+            </span>
+          </button>
+        </div>
+        {voted && (
+          <button
+            type="button"
+            onClick={() => onShare(activeVideo)}
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 py-1.5 text-[11px] font-bold text-emerald-300 transition-colors"
+          >
+            <Share2 size={12} />
+            <span>
+              {language === 'sw' ? 'Shiriki maoni yako WhatsApp' : 'Share this cliffhanger on WhatsApp'}
+            </span>
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const renderCommentsPanel = () => (
     <div className="space-y-3">
+      {renderCliffhangerPoll()}
       {/* Quick Reaction Chips */}
       <div className="flex flex-wrap items-center gap-1.5">
         {REACTION_CHIPS.map((chip) => {
