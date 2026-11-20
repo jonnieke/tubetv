@@ -22,6 +22,7 @@ import { shouldSaveData } from '../lib/network';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { fetchEpisodeEngagement, toggleEpisodeLike } from '../lib/engagement';
+import { canCheckInToday, claimDailyCheckIn, getBingeStreakState } from '../lib/bingeStreak';
 import { trackEvent } from '../lib/analytics';
 import { publicMediaUrl } from '../lib/mediaUrl';
 
@@ -86,7 +87,16 @@ const ForYouFeed: React.FC<ForYouFeedProps> = ({
   const items = useMemo(() => buildForYouFeedItems(videos), [videos]);
   const [activeId, setActiveId] = useState<string | null>(() => items[0]?.opener.id ?? null);
   const [isMuted, setIsMuted] = useState(true);
+  const [streak, setStreak] = useState(() => getBingeStreakState());
+  const [canClaimStreak, setCanClaimStreak] = useState(() => canCheckInToday());
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleStreakTap = () => {
+    if (!canClaimStreak) return;
+    const res = claimDailyCheckIn();
+    setStreak(res.state);
+    setCanClaimStreak(false);
+  };
 
   useEffect(() => {
     if (items.length > 0 && (!activeId || !items.some((i) => i.opener.id === activeId))) {
@@ -177,14 +187,33 @@ const ForYouFeed: React.FC<ForYouFeedProps> = ({
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsMuted((m) => !m)}
-          aria-label={isMuted ? 'Unmute feed' : 'Mute feed'}
-          className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-black/55 backdrop-blur-md border border-white/15 text-white hover:bg-black/80 transition"
-        >
-          {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} className="text-red-400" />}
-        </button>
+        <div className="pointer-events-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleStreakTap}
+            title={
+              canClaimStreak
+                ? 'Tap to claim your daily check-in free episode unlock'
+                : `${streak.currentStreak}-day binge streak · ${streak.bonusUnlockCredits} free unlock(s)`
+            }
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-extrabold backdrop-blur-md border transition ${
+              canClaimStreak
+                ? 'bg-amber-500/25 border-amber-400/60 text-amber-200 animate-pulse'
+                : 'bg-black/55 border-white/15 text-zinc-200'
+            }`}
+          >
+            <span>🔥</span>
+            <span>{canClaimStreak ? '+1 Free' : `${Math.max(1, streak.currentStreak)}d`}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsMuted((m) => !m)}
+            aria-label={isMuted ? 'Unmute feed' : 'Mute feed'}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 backdrop-blur-md border border-white/15 text-white hover:bg-black/80 transition"
+          >
+            {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} className="text-red-400" />}
+          </button>
+        </div>
       </div>
 
       {/* Snap-Scroll Vertical Teaser Feed */}

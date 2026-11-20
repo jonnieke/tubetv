@@ -28,6 +28,12 @@ import {
   grantAdUnlock,
   grantShareUnlock,
 } from '../lib/unlockRewards';
+import {
+  canCheckInToday,
+  claimDailyCheckIn,
+  getBingeStreakState,
+  spendBonusCreditToUnlock,
+} from '../lib/bingeStreak';
 import { getActiveSponsor } from '../lib/sponsors';
 import {
   SUBSCRIPTION_PLANS,
@@ -154,6 +160,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const [adCountdown, setAdCountdown] = useState<number | null>(null);
   const [remainingAdUnlocks, setRemainingAdUnlocks] = useState(() => getRemainingAdUnlocksToday());
   const [remainingShareUnlocks, setRemainingShareUnlocks] = useState(() => getRemainingShareUnlocksToday());
+  const [streakState, setStreakState] = useState(() => getBingeStreakState());
+  const [streakCheckInAvailable, setStreakCheckInAvailable] = useState(() => canCheckInToday());
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -323,6 +331,27 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
         return prev - 1;
       });
     }, 1000);
+  };
+
+  const handleStreakUnlock = () => {
+    if (!video?.id) return;
+    setErrorMessage('');
+    let currentCredits = streakState.bonusUnlockCredits;
+    if (streakCheckInAvailable) {
+      const checkIn = claimDailyCheckIn();
+      setStreakState(checkIn.state);
+      setStreakCheckInAvailable(false);
+      currentCredits = checkIn.state.bonusUnlockCredits;
+    }
+    if (currentCredits <= 0) return;
+    const spent = spendBonusCreditToUnlock(video.id);
+    setStreakState(spent.state);
+    if (spent.unlocked) {
+      setStatus('completed');
+      completeTimerRef.current = setTimeout(() => {
+        onSuccess();
+      }, 650);
+    }
   };
 
   const handleShareToUnlock = () => {
@@ -1412,8 +1441,15 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                   )}
                 </button>
 
-                {/* Hybrid Free-Tier Bridge for Micro Drama Cliffhangers: Watch 15s Ad or Share on WhatsApp */}
-                {isEpisodicCliffhanger && video && !activePass && (remainingAdUnlocks > 0 || remainingShareUnlocks > 0 || adCountdown !== null) && (
+                {/* Hybrid Free-Tier Bridge for Micro Drama Cliffhangers: Daily Streak, Watch 15s Ad, or Share on WhatsApp */}
+                {isEpisodicCliffhanger &&
+                  video &&
+                  !activePass &&
+                  (streakCheckInAvailable ||
+                    streakState.bonusUnlockCredits > 0 ||
+                    remainingAdUnlocks > 0 ||
+                    remainingShareUnlocks > 0 ||
+                    adCountdown !== null) && (
                   <div className="pt-2.5 border-t border-zinc-800/80 space-y-2">
                     {adCountdown !== null ? (
                       <div className="rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-950/50 via-zinc-900 to-zinc-950 p-3.5 text-center space-y-2">
@@ -1450,6 +1486,30 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                             ? `Au fungua Kipindi ${episodeNumber} pekee BURE:`
                             : `Or unlock just Episode ${episodeNumber} FREE:`}
                         </p>
+                        {(streakCheckInAvailable || streakState.bonusUnlockCredits > 0) && (
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={handleStreakUnlock}
+                            className="w-full flex items-center justify-between rounded-xl border border-rose-500/45 bg-gradient-to-r from-rose-600/20 via-amber-500/15 to-rose-600/20 hover:from-rose-600/30 hover:to-rose-600/30 px-3 py-2 text-xs font-bold text-white transition-all cursor-pointer"
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              <span>🔥</span>
+                              <span>
+                                {streakCheckInAvailable
+                                  ? language === 'sw'
+                                    ? `Ingia Leo (Siku ${streakState.currentStreak + 1}) & Fungua Bure`
+                                    : `Daily Check-In (Day ${streakState.currentStreak + 1}) · Unlock Free`
+                                  : language === 'sw'
+                                    ? `Tumia Bonasi ya Mfululizo (${streakState.bonusUnlockCredits})`
+                                    : `Use Binge Streak Bonus (${streakState.bonusUnlockCredits} left)`}
+                              </span>
+                            </span>
+                            <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                              FREE
+                            </span>
+                          </button>
+                        )}
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             type="button"

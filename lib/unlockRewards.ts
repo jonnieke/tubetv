@@ -16,7 +16,7 @@ const STORAGE_KEY = 'tubetv_reward_unlocks_v1';
 
 interface StoredUnlockEntry {
   videoId: string;
-  source: 'ad' | 'share';
+  source: 'ad' | 'share' | 'streak';
   grantedAt: number;
   expiresAt: number;
 }
@@ -138,6 +138,29 @@ export function grantShareUnlock(videoId: string): {
   return {
     unlocked: true,
     remainingToday: Math.max(0, MAX_DAILY_SHARE_UNLOCKS - (used + 1)),
+    unlockedIds: Array.from(new Set(nextEntries.map((e) => e.videoId))),
+  };
+}
+
+export function grantBonusUnlock(videoId: string): {
+  unlocked: boolean;
+  unlockedIds: string[];
+} {
+  const state = readState();
+  if (state.entries.some((e) => e.videoId === videoId)) {
+    return {
+      unlocked: true,
+      unlockedIds: Array.from(new Set(state.entries.map((e) => e.videoId))),
+    };
+  }
+  const now = Date.now();
+  const nextEntries: StoredUnlockEntry[] = [
+    ...state.entries,
+    { videoId, source: 'streak', grantedAt: now, expiresAt: now + REWARD_UNLOCK_TTL_MS },
+  ];
+  writeState({ entries: nextEntries });
+  return {
+    unlocked: true,
     unlockedIds: Array.from(new Set(nextEntries.map((e) => e.videoId))),
   };
 }
