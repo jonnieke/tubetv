@@ -68,6 +68,10 @@ interface AnalyticsSummaryPayload {
     totalWatchSeconds: number;
     avgWatchSeconds: number;
     byLocation: Record<string, { interactions: number; watchSeconds: number }>;
+    byTrafficSource?: Record<
+      string,
+      { interactions: number; paidConversions: number; adUnlocks: number; shareUnlocks: number }
+    >;
   };
   rangeInteractions?: Array<{
     occurredAt: string;
@@ -629,6 +633,61 @@ export default function AnalyticsDashboard({
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Microdrama Viral Funnel & Traffic Attribution */}
+              <div className="rounded-xl border border-rose-500/20 bg-gradient-to-br from-rose-950/20 via-zinc-950/80 to-zinc-950 p-3.5 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-300">
+                    Microdrama Viral Funnel &amp; Hybrid Unlocks
+                  </p>
+                  <span className="text-[10px] font-semibold text-zinc-500">Live 30-day counts</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {[
+                    { label: 'For You Views', value: funnel?.counts?.foryou_impression ?? 0 },
+                    { label: 'Swipe-Up Eps', value: funnel?.counts?.microdrama_swipe_next ?? 0 },
+                    { label: 'Ad Unlocks', value: funnel?.counts?.ad_unlock_completed ?? 0 },
+                    { label: 'WA Unlocks', value: funnel?.counts?.share_unlock_completed ?? 0 },
+                    { label: 'Comments', value: funnel?.counts?.episode_comment_posted ?? 0 },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-lg bg-zinc-900/90 border border-zinc-800/90 px-2.5 py-2"
+                    >
+                      <p className="text-[10px] text-zinc-400 truncate">{item.label}</p>
+                      <strong className="text-sm font-bold text-white">{formatNumber(item.value)}</strong>
+                    </div>
+                  ))}
+                </div>
+
+                {funnel?.rangeSummary?.byTrafficSource &&
+                  Object.keys(funnel.rangeSummary.byTrafficSource).length > 0 && (
+                    <div className="pt-2 border-t border-zinc-800/80">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+                        Acquisition Sources (TikTok · WhatsApp · Direct)
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(funnel.rangeSummary.byTrafficSource)
+                          .sort((a, b) => b[1].interactions - a[1].interactions)
+                          .slice(0, 6)
+                          .map(([src, stats]) => (
+                            <span
+                              key={src}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-[11px] text-zinc-200"
+                            >
+                              <strong className="uppercase text-rose-300">{src}</strong>
+                              <span className="text-zinc-400">{formatNumber(stats.interactions)} events</span>
+                              {stats.paidConversions > 0 && (
+                                <span className="text-emerald-400 font-bold">
+                                  · {stats.paidConversions} paid
+                                </span>
+                              )}
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  )}
               </div>
             </div>
 

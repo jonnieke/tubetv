@@ -20,6 +20,13 @@ const names = [
   "playback_first_frame",
   "playback_complete",
   "episode_next",
+  "microdrama_swipe_next",
+  "episode_comment_posted",
+  "ad_unlock_started",
+  "ad_unlock_completed",
+  "share_unlock_completed",
+  "foryou_impression",
+  "foryou_watch_series",
   "playback_error",
   "playback_buffer",
   "paywall_view",
@@ -420,6 +427,10 @@ serve(async (req) => {
     event: string;
     watchSeconds: number;
   }> = [];
+  const byTrafficSource: Record<
+    string,
+    { interactions: number; paidConversions: number; adUnlocks: number; shareUnlocks: number }
+  > = {};
 
   const rangeQualifiedViewsByVideo: Record<string, number> = {};
   if (Array.isArray(rangeEventsRes.data)) {
@@ -441,6 +452,7 @@ serve(async (req) => {
       const country = typeof props.country === "string" ? props.country : "KE";
       const location = city ? `${city}, ${country}` : country;
       const device = typeof props.device === "string" && props.device ? props.device : "Web";
+      const trafficSource = typeof props.trafficSource === "string" && props.trafficSource ? props.trafficSource.toLowerCase() : "direct";
       const watchSeconds = typeof props.watchSeconds === "number" && Number.isFinite(props.watchSeconds) ? Math.max(0, Math.round(props.watchSeconds)) : 0;
       const occurredAt = typeof row.occurred_at === "string" ? row.occurred_at : "";
 
@@ -449,6 +461,14 @@ serve(async (req) => {
       if (!byLocation[location]) byLocation[location] = { interactions: 0, watchSeconds: 0 };
       byLocation[location].interactions += 1;
       byLocation[location].watchSeconds += watchSeconds;
+
+      if (!byTrafficSource[trafficSource]) {
+        byTrafficSource[trafficSource] = { interactions: 0, paidConversions: 0, adUnlocks: 0, shareUnlocks: 0 };
+      }
+      byTrafficSource[trafficSource].interactions += 1;
+      if (row.event_name === "paywall_completed") byTrafficSource[trafficSource].paidConversions += 1;
+      if (row.event_name === "ad_unlock_completed") byTrafficSource[trafficSource].adUnlocks += 1;
+      if (row.event_name === "share_unlock_completed") byTrafficSource[trafficSource].shareUnlocks += 1;
 
       if (rangeInteractions.length < 1000) {
         rangeInteractions.push({
@@ -560,6 +580,7 @@ serve(async (req) => {
     totalWatchSeconds: rangeTotalWatchSeconds,
     avgWatchSeconds: rangeInteractions.length > 0 ? Math.round(rangeTotalWatchSeconds / rangeInteractions.length) : 0,
     byLocation,
+    byTrafficSource,
   };
 
   return jsonReply(
