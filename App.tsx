@@ -7,6 +7,7 @@ import {
   TopTenCarousel,
 } from './components/LandingShowcase';
 import MicroDramaComingSoon from './components/MicroDramaComingSoon';
+import ContinueBingeBar from './components/ContinueBingeBar';
 import ViewerWelcome from './components/ViewerWelcome';
 import CatalogueArtwork from './components/CatalogueArtwork';
 import BrowseIntro from './components/BrowseIntro';
@@ -88,7 +89,7 @@ import {
 import { recommendVideos, getRelatedVideos } from './lib/recommendations';
 import { normalizeContentRating, PUBLIC_CONTENT_RATINGS } from './lib/contentRating';
 import { shouldSaveData } from './lib/network';
-import { isLongFormatVideo, isVideoLocked } from './lib/monetization';
+import { getFreeEpisodeCount, isLongFormatVideo, isVideoLocked } from './lib/monetization';
 import { getRewardUnlockedVideoIds } from './lib/unlockRewards';
 import { prebufferHlsStream } from './lib/hlsPrebuffer';
 import { captureSessionAttribution } from './lib/attribution';
@@ -811,9 +812,10 @@ const App: React.FC = () => {
   const [playerShareCopied, setPlayerShareCopied] = useState(false);
 
   const handleShareCurrentVideo = async (video: Video) => {
-    const shareUrl = `${window.location.origin}/watch/${encodeURIComponent(video.id)}`;
+    const freeCount = getFreeEpisodeCount(video, getSeriesEpisodeCount(video));
+    const shareUrl = `${window.location.origin}/watch/${encodeURIComponent(video.id)}?utm_source=share&autoplay=1`;
     const shareTitle = video.seriesTitle || video.title;
-    const shareText = `Watch "${shareTitle}" on TubeTV (Ep 1 & 2 free): ${shareUrl}`;
+    const shareText = `Watch "${shareTitle}" on TubeTV (Ep 1–${freeCount} free): ${shareUrl}`;
 
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
@@ -846,9 +848,10 @@ const App: React.FC = () => {
   };
 
   const handleWhatsAppShareCurrentVideo = (video: Video) => {
-    const shareUrl = `${window.location.origin}/watch/${encodeURIComponent(video.id)}`;
+    const freeCount = getFreeEpisodeCount(video, getSeriesEpisodeCount(video));
+    const shareUrl = `${window.location.origin}/watch/${encodeURIComponent(video.id)}?utm_source=whatsapp&autoplay=1`;
     const shareTitle = video.seriesTitle || video.title;
-    const shareText = `Watch "${shareTitle}" on TubeTV (Ep 1 & 2 free): ${shareUrl}`;
+    const shareText = `🔥 Watch "${shareTitle}" on TubeTV (Ep 1–${freeCount} FREE, no signup): ${shareUrl}`;
     trackEvent('video_shared', { videoId: video.id, method: 'whatsapp' });
     window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener');
   };
@@ -1651,6 +1654,26 @@ const App: React.FC = () => {
                 )}
               </div>
             )}
+
+            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && recommendations.continueWatching.length > 0 && (() => {
+              const resumeItem =
+                recommendations.continueWatching.find(isMicroDrama) || recommendations.continueWatching[0];
+              if (!resumeItem) return null;
+              const prog = watchProgress[resumeItem.id];
+              const fraction =
+                prog && prog.duration > 0 ? Math.min(1, Math.max(0, prog.seconds / prog.duration)) : 0;
+              const upcoming = nextEpisode(ratingFilteredVideos, resumeItem.id);
+              return (
+                <ContinueBingeBar
+                  video={resumeItem}
+                  nextVideo={upcoming}
+                  progressFraction={fraction}
+                  isNextLocked={upcoming ? isItemLocked(upcoming) : false}
+                  language={language}
+                  onResume={(target) => openVideo(target, { autoPlay: true, strictEpisode: true })}
+                />
+              );
+            })()}
 
             {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && !hasMicroDramas && (
               <MicroDramaComingSoon compact onExplore={() => handleNavigate(ViewState.MICRO_DRAMAS)} />
