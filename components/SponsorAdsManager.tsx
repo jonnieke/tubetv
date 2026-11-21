@@ -12,6 +12,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import {
+  approveSponsorAd,
   createSponsorAd,
   deleteSponsorAd,
   listAllSponsorAds,
@@ -100,6 +101,19 @@ export const SponsorAdsManager: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Could not save sponsor ad.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleApprove = async (ad: SponsorAd) => {
+    try {
+      await approveSponsorAd(ad.id);
+      setAds((prev) =>
+        prev.map((item) =>
+          item.id === ad.id ? { ...item, approvalStatus: 'approved', isActive: true } : item,
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve ad.');
     }
   };
 
@@ -281,12 +295,22 @@ export const SponsorAdsManager: React.FC = () => {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${
-                          ad.isActive
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                            : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                          ad.approvalStatus === 'pending_review'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : ad.approvalStatus === 'completed'
+                              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                              : ad.isActive
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
                         }`}
                       >
-                        {ad.isActive ? 'Live' : 'Paused'}
+                        {ad.approvalStatus === 'pending_review'
+                          ? 'Pending Review'
+                          : ad.approvalStatus === 'completed'
+                            ? 'Completed'
+                            : ad.isActive
+                              ? 'Live'
+                              : 'Paused'}
                       </span>
                       <strong className="text-xs font-bold text-white truncate">{ad.advertiserName}</strong>
                       <span className="text-xs text-zinc-400 truncate">· {ad.title}</span>
@@ -314,14 +338,25 @@ export const SponsorAdsManager: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleToggle(ad)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-2.5 py-1.5 text-[11px] font-bold text-zinc-200 transition cursor-pointer"
-                    >
-                      {ad.isActive ? <PauseCircle size={13} /> : <PlayCircle size={13} />}
-                      <span>{ad.isActive ? 'Pause' : 'Activate'}</span>
-                    </button>
+                    {ad.approvalStatus === 'pending_review' ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleApprove(ad)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-[11px] font-extrabold text-white transition cursor-pointer"
+                      >
+                        <CheckCircle2 size={13} />
+                        <span>Approve &amp; Go Live</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void handleToggle(ad)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-2.5 py-1.5 text-[11px] font-bold text-zinc-200 transition cursor-pointer"
+                      >
+                        {ad.isActive ? <PauseCircle size={13} /> : <PlayCircle size={13} />}
+                        <span>{ad.isActive ? 'Pause' : 'Activate'}</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => void handleDelete(ad)}

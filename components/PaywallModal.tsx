@@ -198,7 +198,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
   useEffect(() => {
     let mounted = true;
-    void fetchActiveSponsorAds().then((ads) => {
+    void fetchActiveSponsorAds(currentSeriesId).then((ads) => {
       if (mounted && ads.length > 0) {
         setAdPool(ads);
       }
@@ -206,7 +206,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [currentSeriesId]);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -455,7 +455,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
             adTimerRef.current = null;
           }
           if (chosenAd?.id) {
-            void recordSponsorAdMetric(chosenAd.id, 'completions');
+            void recordSponsorAdMetric(chosenAd.id, 'completions', {
+              hostVideoId: video.id,
+              hostCreator: video.author,
+            });
           }
           // If this extra episode requires 2 non-skippable ads, launch Ad 2 of 2 next!
           if (stepNumber < totalSteps) {

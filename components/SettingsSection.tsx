@@ -22,6 +22,8 @@ import {
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { Video } from '../types';
 import { supabase } from '../lib/supabase';
+import CreatorBoostCard from './CreatorBoostCard';
+import CreatorPromoLinkCard from './CreatorPromoLinkCard';
 import {
   computeShareOfPlayRoyalties,
   exportCreatorSelfStatementCsv,
@@ -945,6 +947,10 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                     );
                   }
 
+                  const creatorVideos = videos.filter(
+                    (v) => (v.author || '').toLowerCase() === unlockedCreatorName.toLowerCase(),
+                  );
+
                   return (
                     <div className="space-y-6 animate-in fade-in duration-200">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-zinc-900/80 p-5">
@@ -973,6 +979,23 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({
                           Download My Statement (CSV)
                         </button>
                       </div>
+
+                      {/* Creator 60% Ad-Host Earnings + Self-Serve 30s Show Boost */}
+                      {unlockedProfileMeta?.code && (
+                        <CreatorBoostCard
+                          creatorCode={unlockedProfileMeta.code}
+                          creatorName={summary.creator}
+                          videos={creatorVideos.length > 0 ? creatorVideos : videos}
+                        />
+                      )}
+
+                      {/* Creator Tracked Viral Promo Link Generator */}
+                      {creatorVideos.length > 0 && (
+                        <CreatorPromoLinkCard
+                          videos={creatorVideos}
+                          defaultCreatorCode={unlockedProfileMeta?.code}
+                        />
+                      )}
 
                       {/* Creator KPI Cards */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
