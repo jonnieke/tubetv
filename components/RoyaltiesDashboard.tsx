@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { BunnyVideoItem } from '../services/bunnyService';
 import CreatorPayoutDisbursement from './CreatorPayoutDisbursement';
+import CreatorPromoLinkCard from './CreatorPromoLinkCard';
 import { supabase } from '../lib/supabase';
 import {
   computeShareOfPlayRoyalties,
@@ -512,6 +513,8 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
           </div>
         </div>
       )}
+
+      {videos.length > 0 && <CreatorPromoLinkCard videos={videos} />}
 
       {payoutSuccessMessage && (
         <div className="bg-emerald-950/60 border border-emerald-500/50 text-emerald-200 px-5 py-3.5 rounded-xl text-sm flex items-center justify-between">
