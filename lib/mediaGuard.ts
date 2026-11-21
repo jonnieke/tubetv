@@ -17,10 +17,13 @@ export function isMediaBlocked(): boolean {
   return false;
 }
 
-export function pauseAllPageMedia(): void {
+export function pauseAllPageMedia(includeAdPlayers = false): void {
   if (typeof document === 'undefined') return;
   const mediaNodes = document.querySelectorAll<HTMLMediaElement>('video, audio');
   mediaNodes.forEach((node) => {
+    if (!includeAdPlayers && typeof node.getAttribute === 'function' && node.getAttribute('data-ad-player') === 'true') {
+      return;
+    }
     try {
       if (!node.paused) {
         node.pause();
@@ -34,7 +37,7 @@ export function pauseAllPageMedia(): void {
 export function setOverlayMediaBlocked(blocked: boolean): void {
   overlayBlocked = blocked;
   if (blocked) {
-    pauseAllPageMedia();
+    pauseAllPageMedia(false);
   }
 }
 
@@ -45,20 +48,22 @@ export function installGlobalMediaGuard(): () => void {
 
   const onVisibilityChange = () => {
     if (document.visibilityState === 'hidden') {
-      pauseAllPageMedia();
+      pauseAllPageMedia(true);
     }
   };
 
   const onPageHide = () => {
-    pauseAllPageMedia();
+    pauseAllPageMedia(true);
   };
 
   // Capture-phase `play` listener catches any late-resolving HLS/autoPlay video
   // trying to start behind an open paywall or while the tab is hidden.
   const onMediaPlayCapture = (event: Event) => {
-    if (!isMediaBlocked()) return;
     const target = event.target as HTMLMediaElement | null;
-    if (target && typeof target.pause === 'function') {
+    if (!target || typeof target.pause !== 'function') return;
+    const isAdPlayer = target.getAttribute('data-ad-player') === 'true';
+    const hidden = document.visibilityState === 'hidden';
+    if (hidden || (overlayBlocked && !isAdPlayer)) {
       try {
         target.pause();
       } catch {

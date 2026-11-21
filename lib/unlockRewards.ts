@@ -1,28 +1,84 @@
 /**
  * Hybrid free-tier unlock rewards for Micro Drama cliffhangers:
- *  - Watch a 15s sponsor ad to unlock 1 episode (capped at 2 per 24h)
- *  - Share a cliffhanger on WhatsApp to unlock 1 episode (capped at 2 per 24h)
+ *  - Non-skippable 30-second sponsor ads
+ *  - WhatsApp cliffhanger shares
+ *
+ * Tiered per-series caps prevent viewers from watching short series entirely for free:
+ *  - <= 5 episodes:   1 WhatsApp share + 1 single-ad unlock (30s)
+ *  - 6–10 episodes:   2 WhatsApp shares + 2 single-ad unlocks (30s each)
+ *  - > 10 episodes:   2 WhatsApp shares + 2 single-ad unlocks + 1 extra episode requiring 2 non-skippable 30s ads (60s)
  *
  * Unlocks last 24 hours on this device and dispatch `tubetv:unlocks-updated`
  * so playback gates update immediately without page reload.
  */
 
-export const MAX_DAILY_AD_UNLOCKS = 2;
+export const MAX_DAILY_AD_UNLOCKS = 3;
 export const MAX_DAILY_SHARE_UNLOCKS = 2;
 export const REWARD_UNLOCK_TTL_MS = 24 * 60 * 60 * 1000;
-export const AD_UNLOCK_DURATION_SECONDS = 15;
+export const AD_UNLOCK_DURATION_SECONDS = 30;
 
 const STORAGE_KEY = 'tubetv_reward_unlocks_v1';
 
+export interface SeriesUnlockPolicy {
+  maxShareUnlocks: number;
+  maxSingleAdUnlocks: number;
+  maxDoubleAdUnlocks: number;
+  totalAdUnlocks: number;
+}
+
+export interface SeriesUnlockStatus {
+  remainingShares: number;
+  remainingAdUnlocks: number;
+  /** Number of non-skippable 30s ads required for the next ad-unlocked episode (0 if exhausted). */
+  nextAdCost: 0 | 1 | 2;
+  policy: SeriesUnlockPolicy;
+}
+
 interface StoredUnlockEntry {
   videoId: string;
+  seriesKey?: string;
   source: 'ad' | 'share' | 'streak';
+  adsWatched?: number;
   grantedAt: number;
   expiresAt: number;
 }
 
 interface StoredUnlockState {
   entries: StoredUnlockEntry[];
+}
+
+export function getSeriesUnlockPolicy(totalSeriesEpisodes?: number): SeriesUnlockPolicy {
+  if (typeof totalSeriesEpisodes === 'number' && Number.isFinite(totalSeriesEpisodes) && totalSeriesEpisodes > 0) {
+    if (totalSeriesEpisodes <= 5) {
+      return {
+        maxShareUnlocks: 1,
+        maxSingleAdUnlocks: 1,
+        maxDoubleAdUnlocks: 0,
+        totalAdUnlocks: 1,
+      };
+    }
+    if (totalSeriesEpisodes <= 10) {
+      return {
+        maxShareUnlocks: 2,
+        maxSingleAdUnlocks: 2,
+        maxDoubleAdUnlocks: 0,
+        totalAdUnlocks: 2,
+      };
+    }
+    return {
+      maxShareUnlocks: 2,
+      maxSingleAdUnlocks: 2,
+      maxDoubleAdUnlocks: 1,
+      totalAdUnlocks: 3,
+    };
+  }
+  // Safe default when series count is unknown (treated as 6–10 episode tier)
+  return {
+    maxShareUnlocks: 2,
+    maxSingleAdUnlocks: 2,
+    maxDoubleAdUnlocks: 0,
+    totalAdUnlocks: 2,
+  };
 }
 
 function readState(): StoredUnlockState {
@@ -35,7 +91,12 @@ function readState(): StoredUnlockState {
     const valid = Array.isArray(parsed.entries)
       ? parsed.entries.filter(
           (entry): entry is StoredUnlockEntry =>
-            Boolean(entry && typeof entry.videoId === 'string' && typeof entry.expiresAt === 'number' && entry.expiresAt > now),
+            Boolean(
+              entry &&
+                typeof entry.videoId === 'string' &&
+                typeof entry.expiresAt === 'number' &&
+                entry.expiresAt > now,
+            ),
         )
       : [];
     return { entries: valid };
@@ -54,9 +115,44 @@ function writeState(state: StoredUnlockState): void {
   }
 }
 
-function countGrantedLast24h(entries: StoredUnlockEntry[], source: 'ad' | 'share'): number {
+function countGrantedLast24h(
+  entries: StoredUnlockEntry[],
+  source: 'ad' | 'share',
+  seriesKey?: string,
+): number {
   const cutoff = Date.now() - REWARD_UNLOCK_TTL_MS;
-  return entries.filter((e) => e.source === source && e.grantedAt >= cutoff).length;
+  return entries.filter((e) => {
+    if (e.source !== source || e.grantedAt < cutoff) return false;
+    if (seriesKey && e.seriesKey) {
+      return e.seriesKey === seriesKey;
+    }
+    return true;
+  }).length;
+}
+
+export function getSeriesUnlockStatus(
+  seriesKey?: string,
+  totalSeriesEpisodes?: number,
+): SeriesUnlockStatus {
+  const { entries } = readState();
+  const policy = getSeriesUnlockPolicy(totalSeriesEpisodes);
+  const usedShares = countGrantedLast24h(entries, 'share', seriesKey);
+  const usedAds = countGrantedLast24h(entries, 'ad', seriesKey);
+
+  const remainingShares = Math.max(0, policy.maxShareUnlocks - usedShares);
+  const remainingAdUnlocks = Math.max(0, policy.totalAdUnlocks - usedAds);
+
+  let nextAdCost: 0 | 1 | 2 = 0;
+  if (remainingAdUnlocks > 0) {
+    nextAdCost = usedAds < policy.maxSingleAdUnlocks ? 1 : 2;
+  }
+
+  return {
+    remainingShares,
+    remainingAdUnlocks,
+    nextAdCost,
+    policy,
+  };
 }
 
 export function getRewardUnlockedVideoIds(): string[] {
@@ -71,65 +167,82 @@ export function getRewardUnlockSource(videoId: string): 'ad' | 'share' | 'streak
   return match ? match.source : null;
 }
 
-export function getRemainingAdUnlocksToday(): number {
-  const { entries } = readState();
-  return Math.max(0, MAX_DAILY_AD_UNLOCKS - countGrantedLast24h(entries, 'ad'));
+export function getRemainingAdUnlocksToday(seriesKey?: string, totalSeriesEpisodes?: number): number {
+  return getSeriesUnlockStatus(seriesKey, totalSeriesEpisodes).remainingAdUnlocks;
 }
 
-export function getRemainingShareUnlocksToday(): number {
-  const { entries } = readState();
-  return Math.max(0, MAX_DAILY_SHARE_UNLOCKS - countGrantedLast24h(entries, 'share'));
+export function getRemainingShareUnlocksToday(seriesKey?: string, totalSeriesEpisodes?: number): number {
+  return getSeriesUnlockStatus(seriesKey, totalSeriesEpisodes).remainingShares;
 }
 
-export function grantAdUnlock(videoId: string): {
+export function grantAdUnlock(
+  videoId: string,
+  seriesKey?: string,
+  totalSeriesEpisodes?: number,
+): {
   unlocked: boolean;
   remainingToday: number;
+  adsRequired: number;
   unlockedIds: string[];
 } {
   const state = readState();
+  const status = getSeriesUnlockStatus(seriesKey, totalSeriesEpisodes);
   if (state.entries.some((e) => e.videoId === videoId)) {
     return {
       unlocked: true,
-      remainingToday: Math.max(0, MAX_DAILY_AD_UNLOCKS - countGrantedLast24h(state.entries, 'ad')),
+      remainingToday: status.remainingAdUnlocks,
+      adsRequired: status.nextAdCost || 1,
       unlockedIds: Array.from(new Set(state.entries.map((e) => e.videoId))),
     };
   }
-  const used = countGrantedLast24h(state.entries, 'ad');
-  if (used >= MAX_DAILY_AD_UNLOCKS) {
+  if (status.remainingAdUnlocks <= 0 || status.nextAdCost === 0) {
     return {
       unlocked: false,
       remainingToday: 0,
+      adsRequired: 0,
       unlockedIds: Array.from(new Set(state.entries.map((e) => e.videoId))),
     };
   }
   const now = Date.now();
   const nextEntries: StoredUnlockEntry[] = [
     ...state.entries,
-    { videoId, source: 'ad', grantedAt: now, expiresAt: now + REWARD_UNLOCK_TTL_MS },
+    {
+      videoId,
+      seriesKey,
+      source: 'ad',
+      adsWatched: status.nextAdCost,
+      grantedAt: now,
+      expiresAt: now + REWARD_UNLOCK_TTL_MS,
+    },
   ];
   writeState({ entries: nextEntries });
   return {
     unlocked: true,
-    remainingToday: Math.max(0, MAX_DAILY_AD_UNLOCKS - (used + 1)),
+    remainingToday: Math.max(0, status.remainingAdUnlocks - 1),
+    adsRequired: status.nextAdCost,
     unlockedIds: Array.from(new Set(nextEntries.map((e) => e.videoId))),
   };
 }
 
-export function grantShareUnlock(videoId: string): {
+export function grantShareUnlock(
+  videoId: string,
+  seriesKey?: string,
+  totalSeriesEpisodes?: number,
+): {
   unlocked: boolean;
   remainingToday: number;
   unlockedIds: string[];
 } {
   const state = readState();
+  const status = getSeriesUnlockStatus(seriesKey, totalSeriesEpisodes);
   if (state.entries.some((e) => e.videoId === videoId)) {
     return {
       unlocked: true,
-      remainingToday: Math.max(0, MAX_DAILY_SHARE_UNLOCKS - countGrantedLast24h(state.entries, 'share')),
+      remainingToday: status.remainingShares,
       unlockedIds: Array.from(new Set(state.entries.map((e) => e.videoId))),
     };
   }
-  const used = countGrantedLast24h(state.entries, 'share');
-  if (used >= MAX_DAILY_SHARE_UNLOCKS) {
+  if (status.remainingShares <= 0) {
     return {
       unlocked: false,
       remainingToday: 0,
@@ -139,12 +252,18 @@ export function grantShareUnlock(videoId: string): {
   const now = Date.now();
   const nextEntries: StoredUnlockEntry[] = [
     ...state.entries,
-    { videoId, source: 'share', grantedAt: now, expiresAt: now + REWARD_UNLOCK_TTL_MS },
+    {
+      videoId,
+      seriesKey,
+      source: 'share',
+      grantedAt: now,
+      expiresAt: now + REWARD_UNLOCK_TTL_MS,
+    },
   ];
   writeState({ entries: nextEntries });
   return {
     unlocked: true,
-    remainingToday: Math.max(0, MAX_DAILY_SHARE_UNLOCKS - (used + 1)),
+    remainingToday: Math.max(0, status.remainingShares - 1),
     unlockedIds: Array.from(new Set(nextEntries.map((e) => e.videoId))),
   };
 }

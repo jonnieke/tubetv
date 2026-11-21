@@ -18,16 +18,24 @@ import {
   Clock,
   PlayCircle,
   Share2,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+import type Hls from 'hls.js';
 import { Video } from '../types';
-import { isMicroDrama } from '../lib/series';
+import { isMicroDrama, seriesKey } from '../lib/series';
+import { loadHls } from '../lib/hlsLoader';
 import {
   AD_UNLOCK_DURATION_SECONDS,
-  getRemainingAdUnlocksToday,
-  getRemainingShareUnlocksToday,
+  getSeriesUnlockStatus,
   grantAdUnlock,
   grantShareUnlock,
 } from '../lib/unlockRewards';
+import {
+  fetchActiveSponsorAds,
+  recordSponsorAdMetric,
+  type SponsorAd,
+} from '../lib/sponsorAds';
 import {
   canCheckInToday,
   claimDailyCheckIn,
@@ -60,6 +68,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface PaywallModalProps {
   video?: Video | null;
+  seriesEpisodeCount?: number;
   onSuccess: () => void;
   onClose: () => void;
 }
@@ -126,7 +135,12 @@ function formatMpesaFailureMessage(raw?: string): string {
   return msg || 'M-Pesa payment was cancelled or declined. You were not charged.';
 }
 
-export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, onClose }) => {
+export const PaywallModal: React.FC<PaywallModalProps> = ({
+  video,
+  seriesEpisodeCount,
+  onSuccess,
+  onClose,
+}) => {
   const { language, t } = useLanguage();
   const [activePass, setActivePass] = useState<StoredPass | null>(() => getStoredPass());
   const [isAutoCheckingPhone, setIsAutoCheckingPhone] = useState(false);
@@ -157,12 +171,42 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
   const [deviceConflict, setDeviceConflict] = useState(false);
   const [restoreExpiredInfo, setRestoreExpiredInfo] = useState<{ tier?: string; phone?: string } | null>(null);
   const [showAdvancedRef, setShowAdvancedRef] = useState(false);
+  const currentSeriesId = video ? seriesKey(video) || video.id : undefined;
+  const [unlockStatus, setUnlockStatus] = useState(() =>
+    getSeriesUnlockStatus(currentSeriesId, seriesEpisodeCount),
+  );
   const [adCountdown, setAdCountdown] = useState<number | null>(null);
-  const [remainingAdUnlocks, setRemainingAdUnlocks] = useState(() => getRemainingAdUnlocksToday());
-  const [remainingShareUnlocks, setRemainingShareUnlocks] = useState(() => getRemainingShareUnlocksToday());
+  const [adStepIndex, setAdStepIndex] = useState<number>(1);
+  const [adStepsTotal, setAdStepsTotal] = useState<number>(1);
+  const [activeSponsorAd, setActiveSponsorAd] = useState<SponsorAd | null>(null);
+  const [adPool, setAdPool] = useState<SponsorAd[]>([]);
+  const [adMuted, setAdMuted] = useState<boolean>(false);
+  const [adPausedHidden, setAdPausedHidden] = useState<boolean>(false);
   const [streakState, setStreakState] = useState(() => getBingeStreakState());
   const [streakCheckInAvailable, setStreakCheckInAvailable] = useState(() => canCheckInToday());
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const adVideoRef = useRef<HTMLVideoElement | null>(null);
+  const adHlsRef = useRef<Hls | null>(null);
+
+  const remainingAdUnlocks = unlockStatus.remainingAdUnlocks;
+  const remainingShareUnlocks = unlockStatus.remainingShares;
+  const nextAdCost = unlockStatus.nextAdCost;
+
+  useEffect(() => {
+    setUnlockStatus(getSeriesUnlockStatus(currentSeriesId, seriesEpisodeCount));
+  }, [currentSeriesId, seriesEpisodeCount, video?.id]);
+
+  useEffect(() => {
+    let mounted = true;
+    void fetchActiveSponsorAds().then((ads) => {
+      if (mounted && ads.length > 0) {
+        setAdPool(ads);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -292,20 +336,117 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
       clearInterval(adTimerRef.current);
       adTimerRef.current = null;
     }
+    if (adHlsRef.current) {
+      adHlsRef.current.destroy();
+      adHlsRef.current = null;
+    }
   };
 
-  const handleStartAdUnlock = () => {
-    if (!video?.id || adCountdown !== null || remainingAdUnlocks <= 0) return;
-    clearTimers();
-    setErrorMessage('');
-    setAdCountdown(AD_UNLOCK_DURATION_SECONDS);
-    trackEvent('ad_unlock_started', {
-      videoId: video.id,
-      episode: episodeNumber,
-      isMicroDrama: isMicro,
-    });
+  // Attach Bunny HLS / MP4 sponsor video whenever an activeSponsorAd is playing
+  useEffect(() => {
+    if (!activeSponsorAd?.videoUrl || adCountdown === null) return;
+    let cancelled = false;
+    const el = adVideoRef.current;
+    if (!el) return;
+
+    const streamUrl = activeSponsorAd.videoUrl;
+    el.muted = adMuted;
+
+    const attach = async () => {
+      if (adHlsRef.current) {
+        adHlsRef.current.destroy();
+        adHlsRef.current = null;
+      }
+      if (streamUrl.includes('.m3u8')) {
+        if (el.canPlayType('application/vnd.apple.mpegurl')) {
+          el.src = streamUrl;
+          el.play().catch(() => {
+            el.muted = true;
+            setAdMuted(true);
+            el.play().catch(() => {});
+          });
+        } else {
+          const HlsClass = await loadHls();
+          if (cancelled || !adVideoRef.current) return;
+          if (HlsClass && HlsClass.isSupported()) {
+            const hls = new HlsClass({ enableWorker: true, maxBufferLength: 15 });
+            adHlsRef.current = hls;
+            hls.loadSource(streamUrl);
+            hls.attachMedia(el);
+            hls.on(HlsClass.Events.MANIFEST_PARSED, () => {
+              if (!cancelled) {
+                el.play().catch(() => {
+                  el.muted = true;
+                  setAdMuted(true);
+                  el.play().catch(() => {});
+                });
+              }
+            });
+          }
+        }
+      } else {
+        el.src = streamUrl;
+        el.play().catch(() => {
+          el.muted = true;
+          setAdMuted(true);
+          el.play().catch(() => {});
+        });
+      }
+    };
+
+    void attach();
+    return () => {
+      cancelled = true;
+      if (adHlsRef.current) {
+        adHlsRef.current.destroy();
+        adHlsRef.current = null;
+      }
+      if (el) {
+        el.pause();
+        el.removeAttribute('src');
+      }
+    };
+  }, [activeSponsorAd?.id, activeSponsorAd?.videoUrl, adStepIndex]);
+
+  useEffect(() => {
+    if (adVideoRef.current) {
+      adVideoRef.current.muted = adMuted;
+    }
+  }, [adMuted]);
+
+  const pickAdForStep = (stepNumber: number): SponsorAd | null => {
+    if (adPool.length === 0) return null;
+    const idx = (Math.floor(Date.now() / 1000) + stepNumber - 1) % adPool.length;
+    return adPool[idx] || adPool[0];
+  };
+
+  const runAdStep = (stepNumber: number, totalSteps: number) => {
+    if (!video?.id) return;
+    if (adTimerRef.current) {
+      clearInterval(adTimerRef.current);
+      adTimerRef.current = null;
+    }
+
+    const chosenAd = pickAdForStep(stepNumber);
+    const stepDuration = chosenAd?.durationSeconds || AD_UNLOCK_DURATION_SECONDS;
+    setActiveSponsorAd(chosenAd);
+    setAdStepIndex(stepNumber);
+    setAdStepsTotal(totalSteps);
+    setAdCountdown(stepDuration);
+    setAdPausedHidden(false);
+
+    if (chosenAd?.id) {
+      void recordSponsorAdMetric(chosenAd.id, 'impressions');
+    }
 
     adTimerRef.current = setInterval(() => {
+      // Non-skippable enforcement: pause countdown while user is tabbed away
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        setAdPausedHidden(true);
+        return;
+      }
+      setAdPausedHidden(false);
+
       setAdCountdown((prev) => {
         if (prev === null) return null;
         if (prev <= 1) {
@@ -313,24 +454,46 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
             clearInterval(adTimerRef.current);
             adTimerRef.current = null;
           }
-          const result = grantAdUnlock(video.id);
-          setRemainingAdUnlocks(result.remainingToday);
+          if (chosenAd?.id) {
+            void recordSponsorAdMetric(chosenAd.id, 'completions');
+          }
+          // If this extra episode requires 2 non-skippable ads, launch Ad 2 of 2 next!
+          if (stepNumber < totalSteps) {
+            setTimeout(() => runAdStep(stepNumber + 1, totalSteps), 250);
+            return stepDuration;
+          }
+
+          setActiveSponsorAd(null);
+          const result = grantAdUnlock(video.id, currentSeriesId, seriesEpisodeCount);
+          setUnlockStatus(getSeriesUnlockStatus(currentSeriesId, seriesEpisodeCount));
           if (result.unlocked) {
             trackEvent('ad_unlock_completed', {
               videoId: video.id,
               episode: episodeNumber,
+              adsWatched: totalSteps,
               remainingToday: result.remainingToday,
             });
             setStatus('completed');
-            completeTimerRef.current = setTimeout(() => {
-              onSuccess();
-            }, 650);
           }
           return null;
         }
         return prev - 1;
       });
     }, 1000);
+  };
+
+  const handleStartAdUnlock = () => {
+    if (!video?.id || adCountdown !== null || remainingAdUnlocks <= 0 || nextAdCost === 0) return;
+    clearTimers();
+    setErrorMessage('');
+    const totalAdsNeeded = nextAdCost;
+    trackEvent('ad_unlock_started', {
+      videoId: video.id,
+      episode: episodeNumber,
+      adsRequired: totalAdsNeeded,
+      isMicroDrama: isMicro,
+    });
+    runAdStep(1, totalAdsNeeded);
   };
 
   const handleStreakUnlock = () => {
@@ -359,8 +522,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     setErrorMessage('');
 
     // 1. Persist the unlock & decrement daily counter IMMEDIATELY before OS switches to WhatsApp
-    const result = grantShareUnlock(video.id);
-    setRemainingShareUnlocks(result.remainingToday);
+    const result = grantShareUnlock(video.id, currentSeriesId, seriesEpisodeCount);
+    setUnlockStatus(getSeriesUnlockStatus(currentSeriesId, seriesEpisodeCount));
     if (!result.unlocked) return;
 
     trackEvent('share_unlock_completed', {
@@ -1490,31 +1653,80 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                     adCountdown !== null) && (
                   <div className="pt-2.5 border-t border-zinc-800/80 space-y-2">
                     {adCountdown !== null ? (
-                      <div className="rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-950/50 via-zinc-900 to-zinc-950 p-3.5 text-center space-y-2">
-                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
-                          {getActiveSponsor()?.name || 'TubeTV Sponsor Spot'}
-                        </p>
-                        <p className="text-xs font-semibold text-white">
-                          {getActiveSponsor()?.tagline ||
-                            (language === 'sw'
-                              ? `Inafungua Kipindi ${episodeNumber} bure...`
-                              : `Unlocking Episode ${episodeNumber} free in ${adCountdown}s...`)}
-                        </p>
+                      <div className="rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-950/50 via-zinc-900 to-zinc-950 p-3 text-center space-y-2.5">
+                        <div className="flex items-center justify-between gap-2 text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
+                          <span>
+                            {activeSponsorAd?.advertiserName || getActiveSponsor()?.name || 'TubeTV Sponsor Spot'}
+                          </span>
+                          <span className="rounded-full bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 text-amber-200">
+                            {adStepsTotal > 1 ? `Ad ${adStepIndex}/${adStepsTotal} · ` : ''}
+                            Non-Skippable · {adCountdown}s
+                          </span>
+                        </div>
+
+                        {activeSponsorAd?.videoUrl ? (
+                          <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black border border-zinc-800">
+                            <video
+                              ref={adVideoRef}
+                              data-ad-player="true"
+                              playsInline
+                              autoPlay
+                              loop
+                              controls={false}
+                              disablePictureInPicture
+                              controlsList="nodownload noplaybackrate nofullscreen"
+                              onContextMenu={(e) => e.preventDefault()}
+                              className="w-full h-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setAdMuted((m) => !m)}
+                              aria-label={adMuted ? 'Unmute ad' : 'Mute ad'}
+                              className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 border border-white/20 text-white"
+                            >
+                              {adMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                            </button>
+                            {activeSponsorAd.clickUrl && (
+                              <a
+                                href={activeSponsorAd.clickUrl}
+                                target="_blank"
+                                rel="noopener noreferrer sponsored"
+                                className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-amber-500/90 px-2.5 py-0.5 text-[10px] font-extrabold text-zinc-950"
+                              >
+                                Learn more <ExternalLink size={10} />
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs font-semibold text-white py-2">
+                            {getActiveSponsor()?.tagline ||
+                              (language === 'sw'
+                                ? `Inafungua Kipindi ${episodeNumber} bure...`
+                                : `Unlocking Episode ${episodeNumber} free in ${adCountdown}s...`)}
+                          </p>
+                        )}
+
                         <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
                           <div
                             className="h-full bg-amber-400 transition-all duration-1000"
                             style={{
                               width: `${Math.min(
                                 100,
-                                ((AD_UNLOCK_DURATION_SECONDS - adCountdown) / AD_UNLOCK_DURATION_SECONDS) * 100,
+                                (((activeSponsorAd?.durationSeconds || AD_UNLOCK_DURATION_SECONDS) - adCountdown) /
+                                  (activeSponsorAd?.durationSeconds || AD_UNLOCK_DURATION_SECONDS)) *
+                                  100,
                               )}%`,
                             }}
                           />
                         </div>
                         <p className="text-[11px] font-bold text-amber-300">
-                          {language === 'sw'
-                            ? `Subiri sekunde ${adCountdown}...`
-                            : `Reward ready in ${adCountdown}s`}
+                          {adPausedHidden
+                            ? 'Paused — stay on this screen to finish the ad'
+                            : adStepsTotal > 1 && adStepIndex < adStepsTotal
+                              ? `Ad ${adStepIndex} of ${adStepsTotal} · ${adCountdown}s left (then 1 more 30s ad)`
+                              : language === 'sw'
+                                ? `Subiri sekunde ${adCountdown}... (Usiruke)`
+                                : `Keep watching · Unlocks in ${adCountdown}s`}
                         </p>
                       </div>
                     ) : (
@@ -1557,10 +1769,21 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                           >
                             <span className="inline-flex items-center gap-1 text-xs font-bold">
                               <PlayCircle size={14} className="text-amber-400" />
-                              {language === 'sw' ? 'Tazama Tangazo' : 'Watch 15s Ad'}
+                              {nextAdCost === 2
+                                ? language === 'sw'
+                                  ? 'Matangazo 2 (60s)'
+                                  : 'Watch 2 Ads (60s)'
+                                : language === 'sw'
+                                  ? 'Tangazo (30s)'
+                                  : 'Watch 30s Ad'}
                             </span>
                             <span className="text-[10px] text-amber-300/80">
-                              {remainingAdUnlocks} {language === 'sw' ? 'zimesalia leo' : 'left today'}
+                              {remainingAdUnlocks}{' '}
+                              {nextAdCost === 2
+                                ? 'extra ep left'
+                                : language === 'sw'
+                                  ? 'zimesalia leo'
+                                  : 'left today'}
                             </span>
                           </button>
 

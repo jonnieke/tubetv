@@ -2051,6 +2051,7 @@ const App: React.FC = () => {
             <Suspense fallback={<LoadingPanel label={t('common.loading')} />}>
               <PaywallModal
                 video={paywallVideo}
+                seriesEpisodeCount={paywallVideo ? getSeriesEpisodeCount(paywallVideo) : undefined}
                 onSuccess={() => {
                   let storedTargetId: string | null = null;
                   try {

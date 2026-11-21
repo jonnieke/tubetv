@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star, Coins, Inbox, BellRing, Lock, LayoutDashboard
+  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star, Coins, Inbox, BellRing, Megaphone, Lock, LayoutDashboard
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
 import UploadSection from './UploadSection';
@@ -9,6 +9,7 @@ import AnalyticsDashboard from './AnalyticsDashboard';
 import RoyaltiesDashboard from './RoyaltiesDashboard';
 import FilmmakerSubmissionsQueue from './FilmmakerSubmissionsQueue';
 import PassNotificationsPanel from './PassNotificationsPanel';
+import SponsorAdsManager from './SponsorAdsManager';
 import { NavItem, Video } from '../types';
 import { isContentFree } from '../lib/monetization';
 import { normalizeContentRating, ratingDescription, type ContentRating } from '../lib/contentRating';
@@ -549,7 +550,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddCategory = () => {},
   onRemoveCategory = () => {},
 }) => {
-  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties' | 'submissions' | 'alerts'>('analytics');
+  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties' | 'submissions' | 'alerts' | 'ads'>('analytics');
   const [items, setItems] = useState<BunnyVideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -958,6 +959,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'royalties', label: 'Royalties & Payouts', subtitle: 'Creator splits, statements & M-Pesa payouts', icon: Coins },
     { id: 'submissions', label: 'Submissions', subtitle: 'Review filmmaker pitches & screeners', icon: Inbox },
     { id: 'alerts', label: 'Pass Alerts', subtitle: 'Subscriber pass & expiry notifications', icon: BellRing },
+    { id: 'ads', label: 'Sponsor Ads', subtitle: '30s non-skippable video ads & impressions', icon: Megaphone },
   ];
   const currentSection = navItems.find((n) => n.id === activeTab) || navItems[0];
 
@@ -1116,6 +1118,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'alerts' && (
         <div className="animate-in fade-in duration-500">
           <PassNotificationsPanel />
+        </div>
+      )}
+
+      {activeTab === 'ads' && (
+        <div className="animate-in fade-in duration-500">
+          <SponsorAdsManager />
         </div>
       )}
 
