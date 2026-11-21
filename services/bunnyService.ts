@@ -496,19 +496,17 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
   const isMicroDramaCat = seriesFormat === 'micro-drama' || category === 'Micro Dramas';
   const rawFreeEpisodes = getMeta(activeItem.metaTags, 'freeEpisodes');
   const parsedFreeEpisodes = rawFreeEpisodes ? parseInt(rawFreeEpisodes, 10) : NaN;
-  const freeEpisodes = Number.isFinite(parsedFreeEpisodes) && parsedFreeEpisodes >= 0
-    ? parsedFreeEpisodes
-    : isMicroDramaCat
-      ? 2
-      : 0;
+  const explicitFreeEpisodes =
+    Number.isFinite(parsedFreeEpisodes) && parsedFreeEpisodes >= 0 ? parsedFreeEpisodes : undefined;
+  const effectiveFreeEpisodes = explicitFreeEpisodes ?? (isMicroDramaCat ? 2 : 0);
 
   let isPremium: boolean;
   if (isShort) {
     isPremium = false;
   } else if (isMicroDramaCat) {
-    // Micro Dramas: episodes 1 and 2 are explicitly free; the rest are premium by default.
+    // Micro Dramas: episodes 1 and 2 are free by default (expanding to 5 at 30+ episodes via monetization.ts)
     isPremium = parsedEpisode !== undefined
-      ? parsedEpisode > freeEpisodes
+      ? parsedEpisode > effectiveFreeEpisodes
       : rawTier !== 'free' && rawIsPremium !== 'false';
   } else {
     // Except Shorts and Micro Dramas, everything else is Premium by default unless explicitly free.
@@ -528,7 +526,7 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     isPremium,
     isShort,
     accessTier,
-    freeEpisodes,
+    ...(explicitFreeEpisodes !== undefined ? { freeEpisodes: explicitFreeEpisodes } : {}),
     author: getMeta(activeItem.metaTags, 'author') || getMeta(activeItem.metaTags, 'creator') || 'Tube Creator',
     category,
     tags: getMeta(activeItem.metaTags, 'tags')
