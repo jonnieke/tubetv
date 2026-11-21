@@ -354,36 +354,52 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
     }
   };
 
-  const handleShareToUnlock = () => {
+  const handleShareToUnlock = async () => {
     if (!video?.id || remainingShareUnlocks <= 0) return;
     setErrorMessage('');
+
+    // 1. Persist the unlock & decrement daily counter IMMEDIATELY before OS switches to WhatsApp
+    const result = grantShareUnlock(video.id);
+    setRemainingShareUnlocks(result.remainingToday);
+    if (!result.unlocked) return;
+
+    trackEvent('share_unlock_completed', {
+      videoId: video.id,
+      episode: episodeNumber,
+      channel: 'whatsapp',
+      remainingToday: result.remainingToday,
+    });
+
     const siteOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://www.tube.co.ke';
-    const shareUrl = `${siteOrigin}/watch/${encodeURIComponent(video.id)}?src=wa_unlock`;
+    const shareUrl = `${siteOrigin}/watch/${encodeURIComponent(video.id)}?src=wa_unlock&autoplay=1`;
     const shareText =
       language === 'sw'
         ? `🔥 Usikose Kipindi ${episodeNumber} cha "${showTitle}" kwenye TubeTV! Tazama sasa: ${shareUrl}`
         : `🔥 This cliffhanger on "${showTitle}" (Ep ${episodeNumber}) is wild! Watch on TubeTV: ${shareUrl}`;
 
+    // Show the "Unlocked — Tap to Continue Watching" state right away so returning from WhatsApp lands on a clear Resume CTA
+    setStatus('completed');
+
+    // 2. Prefer Native OS Share Sheet on mobile so viewer stays in TubeTV when done
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: `${showTitle} · Ep ${episodeNumber}`,
+          text: shareText,
+          url: shareUrl,
+        });
+        onSuccess();
+        return;
+      } catch {
+        // User cancelled or native share unsupported; fall back to WhatsApp deep-link below
+      }
+    }
+
     try {
       const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
       window.open(waUrl, '_blank', 'noopener,noreferrer');
     } catch {
-      // Fallback if popups are blocked
-    }
-
-    const result = grantShareUnlock(video.id);
-    setRemainingShareUnlocks(result.remainingToday);
-    if (result.unlocked) {
-      trackEvent('share_unlock_completed', {
-        videoId: video.id,
-        episode: episodeNumber,
-        channel: 'whatsapp',
-        remainingToday: result.remainingToday,
-      });
-      setStatus('completed');
-      completeTimerRef.current = setTimeout(() => {
-        onSuccess();
-      }, 650);
+      // Ignore popup blockers; user still sees the Resume Watching button
     }
   };
 
@@ -895,6 +911,28 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ video, onSuccess, on
                     : 'Get unlimited access to all premium Kenyan movies, series, and cliffhangers across TubeTV.'}
           </p>
         </div>
+
+        {status === 'completed' && (
+          <div className="p-5 text-center space-y-4">
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              {language === 'sw'
+                ? `Kipindi ${episodeNumber} cha "${showTitle}" kimefunguliwa! Gusa kitufe hapa chini kuendelea kutazama.`
+                : `Episode ${episodeNumber} of "${showTitle}" is unlocked and ready! Tap below to continue watching.`}
+            </p>
+            <button
+              type="button"
+              onClick={onSuccess}
+              className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 transition-all cursor-pointer"
+            >
+              <PlayCircle size={17} />
+              <span>
+                {language === 'sw'
+                  ? `Endelea Kutazama Kipindi ${episodeNumber}`
+                  : `Continue Watching Episode ${episodeNumber}`}
+              </span>
+            </button>
+          </div>
+        )}
 
         {status !== 'completed' && (
           <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-3 space-y-2.5 no-scrollbar">

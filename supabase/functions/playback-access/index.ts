@@ -6,6 +6,62 @@ import { verifyPassToken } from "../_shared/passToken.ts";
 import { buildBunnyPlaybackUrl } from "../_shared/bunnyToken.ts";
 
 const METHODS = "GET, OPTIONS";
+const VALID_REWARD_SOURCES = new Set(["ad", "share", "streak"]);
+const MAX_DAILY_REWARD_EPISODES_PER_DEVICE = 6;
+const rewardDeviceUsage = new Map<string, { videoIds: Set<string>; resetAt: number }>();
+
+function hasValidRewardUnlock(
+  req: Request,
+  item: { metaTags?: Array<{ property?: string; value?: string }>; title?: unknown },
+  videoId: string,
+): boolean {
+  const url = new URL(req.url);
+  const rewardSource = (url.searchParams.get("rewardUnlock") || "").trim().toLowerCase();
+  const deviceId = (url.searchParams.get("deviceId") || "").trim();
+  if (!VALID_REWARD_SOURCES.has(rewardSource) || deviceId.length < 6) {
+    return false;
+  }
+
+  // Only allow single-episode reward unlocks on episodic content (Micro Dramas / Series)
+  const tags = Array.isArray(item.metaTags) ? item.metaTags : [];
+  const epStr = getTag(tags, "episode");
+  const isEpisodic =
+    (epStr !== "" && Number(epStr) > 0) ||
+    getTag(tags, "seriesformat").toLowerCase() === "micro-drama" ||
+    getTag(tags, "category").toLowerCase() === "micro dramas" ||
+    /(?:S\d+)?E(\d{1,3})/i.test(String(item.title || "")) ||
+    /Episode\s*(\d{1,3})/i.test(String(item.title || ""));
+  if (!isEpisodic) {
+    return false;
+  }
+
+  const now = Date.now();
+  if (rewardDeviceUsage.size > 5000) {
+    for (const [k, v] of rewardDeviceUsage.entries()) {
+      if (now > v.resetAt) rewardDeviceUsage.delete(k);
+    }
+  }
+
+  const clientIp =
+    req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "anon";
+  const bucketKey = `${deviceId.slice(0, 64)}:${clientIp}`;
+  let record = rewardDeviceUsage.get(bucketKey);
+  if (!record || now > record.resetAt) {
+    record = { videoIds: new Set<string>(), resetAt: now + 24 * 60 * 60 * 1000 };
+    rewardDeviceUsage.set(bucketKey, record);
+  }
+  if (record.videoIds.has(videoId)) {
+    return true;
+  }
+  if (record.videoIds.size >= MAX_DAILY_REWARD_EPISODES_PER_DEVICE) {
+    return false;
+  }
+  record.videoIds.add(videoId);
+  return true;
+}
 
 function getTag(tags: Array<{ property?: string; value?: string }>, name: string): string {
   return tags.find((t) => t.property?.toLowerCase() === name.toLowerCase())?.value?.trim() || "";
@@ -155,7 +211,7 @@ serve(async (req) => {
     }
 
     const locked = isCatalogueItemLocked(published);
-    if (locked && !(await hasValidEntitlement(req))) {
+    if (locked && !(await hasValidEntitlement(req)) && !hasValidRewardUnlock(req, published, videoId)) {
       return jsonReply(
         req,
         { locked: true, error: "An active TubeTV pass is required to watch this title." },

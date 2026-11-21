@@ -64,6 +64,13 @@ export function getRewardUnlockedVideoIds(): string[] {
   return Array.from(new Set(entries.map((e) => e.videoId)));
 }
 
+export function getRewardUnlockSource(videoId: string): 'ad' | 'share' | 'streak' | null {
+  if (!videoId) return null;
+  const { entries } = readState();
+  const match = entries.find((e) => e.videoId === videoId);
+  return match ? match.source : null;
+}
+
 export function getRemainingAdUnlocksToday(): number {
   const { entries } = readState();
   return Math.max(0, MAX_DAILY_AD_UNLOCKS - countGrantedLast24h(entries, 'ad'));

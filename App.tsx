@@ -982,7 +982,7 @@ const App: React.FC = () => {
       }
       const video = videos.find((item) => item.id === id);
       if (video) {
-        if (isVideoLocked(video, hasActivePass)) {
+        if (isItemLocked(video)) {
           openPaywallForVideo(video);
         } else {
           setActiveHeroVideo(video);
@@ -996,7 +996,7 @@ const App: React.FC = () => {
           const directVideo = bunnyVideoToVideo(item) as Video;
           const isUncategorized = !directVideo.category || directVideo.category.trim().toLowerCase() === 'uncategorized';
           if (directVideo.muted || isUncategorized || normalizeContentRating(directVideo.contentRating) === '18') return;
-          if (isVideoLocked(directVideo, hasActivePass)) {
+          if (isItemLocked(directVideo)) {
             openPaywallForVideo(directVideo);
           } else {
             setActiveHeroVideo(directVideo);
@@ -1012,7 +1012,7 @@ const App: React.FC = () => {
       active = false;
       window.removeEventListener('popstate', syncRoute);
     };
-  }, [videos, hasActivePass, isAdmin, isAuthLoading]);
+  }, [videos, hasActivePass, isItemLocked, isAdmin, isAuthLoading]);
 
   useEffect(() => {
     const pathname = window.location.pathname;
@@ -2307,7 +2307,7 @@ const App: React.FC = () => {
                       onClick={() => {
                         const next = nextEpisode(ratingFilteredVideos, activeHeroVideo.id);
                         if (next) {
-                          if (isVideoLocked(next, hasActivePass)) {
+                          if (isItemLocked(next)) {
                             openPaywallForVideo(next);
                           } else {
                             trackEvent('episode_next', {
@@ -2321,7 +2321,7 @@ const App: React.FC = () => {
                       }}
                     >
                       ▶ {t('player.nextEpisode')}{' '}
-                      {isVideoLocked(nextEpisode(ratingFilteredVideos, activeHeroVideo.id)!, hasActivePass) ? '🔒' : ''}
+                      {isItemLocked(nextEpisode(ratingFilteredVideos, activeHeroVideo.id)!) ? '🔒' : ''}
                     </button>
                   )}
                   <div className="mt-4">
@@ -2398,7 +2398,7 @@ const App: React.FC = () => {
 
                       <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                         {visibleEpisodes.map((video) => {
-                          const locked = isVideoLocked(video, hasActivePass);
+                          const locked = isItemLocked(video);
                           const isCurrent = video.id === activeHeroVideo.id;
                           const isNew = isNewEpisode(video);
                           return (
@@ -2467,7 +2467,7 @@ const App: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                       {playerRecommendations.slice(0, 4).map((rec) => {
-                        const recLocked = isVideoLocked(rec, hasActivePass);
+                        const recLocked = isItemLocked(rec);
                         return (
                           <button
                             type="button"

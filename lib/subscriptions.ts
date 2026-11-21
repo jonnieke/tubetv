@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { isLocalAuthUserId } from './localAuth';
+import { getRewardUnlockSource } from './unlockRewards';
 
 export const SUBSCRIPTION_PLANS = {
   daily: { code: 'daily', label: '24-Hour Pass', amountKes: 10, description: '24 hours of unlimited premium access' },
@@ -923,8 +924,10 @@ export async function resolveAuthorizedPlaybackUrl(
     }
 
     const deviceId = getOrCreateDeviceId();
+    const rewardSource = !storedPass?.token ? getRewardUnlockSource(videoId) : null;
+    const rewardParam = rewardSource ? `&rewardUnlock=${encodeURIComponent(rewardSource)}` : '';
     const res = await fetch(
-      `${SUPABASE_URL}/functions/v1/playback-access?id=${encodeURIComponent(videoId)}&deviceId=${encodeURIComponent(deviceId)}`,
+      `${SUPABASE_URL}/functions/v1/playback-access?id=${encodeURIComponent(videoId)}&deviceId=${encodeURIComponent(deviceId)}${rewardParam}`,
       { headers, cache: 'no-store', signal: AbortSignal.timeout(5000) },
     );
 
