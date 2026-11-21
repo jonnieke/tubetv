@@ -320,13 +320,14 @@ const App: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    setOverlayMediaBlocked(Boolean(paywallVideo || showBuyPassModal || showLogin));
-  }, [paywallVideo, showBuyPassModal, showLogin]);
   const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
   const [pendingResumeVideoId, setPendingResumeVideoId] = useState<string | null>(null);
   const [episodeRangeStart, setEpisodeRangeStart] = useState<number>(0);
   const [showBuyPassModal, setShowBuyPassModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    setOverlayMediaBlocked(Boolean(paywallVideo || showBuyPassModal || showLogin));
+  }, [paywallVideo, showBuyPassModal, showLogin]);
 
   const openPaywallForVideo = useCallback((video: Video) => {
     setOverlayMediaBlocked(true);
