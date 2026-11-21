@@ -93,6 +93,7 @@ import { getFreeEpisodeCount, isLongFormatVideo, isVideoLocked } from './lib/mon
 import { getRewardUnlockedVideoIds } from './lib/unlockRewards';
 import { prebufferHlsStream } from './lib/hlsPrebuffer';
 import { captureSessionAttribution } from './lib/attribution';
+import { installGlobalMediaGuard, pauseAllPageMedia, setOverlayMediaBlocked } from './lib/mediaGuard';
 import {
   clearStoredPass,
   fetchActiveSubscription,
@@ -310,16 +311,26 @@ const App: React.FC = () => {
 
   useEffect(() => {
     captureSessionAttribution();
+    const uninstallMediaGuard = installGlobalMediaGuard();
     const syncUnlocks = () => setRewardUnlockedIds(getRewardUnlockedVideoIds());
     window.addEventListener('tubetv:unlocks-updated', syncUnlocks);
-    return () => window.removeEventListener('tubetv:unlocks-updated', syncUnlocks);
+    return () => {
+      uninstallMediaGuard();
+      window.removeEventListener('tubetv:unlocks-updated', syncUnlocks);
+    };
   }, []);
+
+  useEffect(() => {
+    setOverlayMediaBlocked(Boolean(paywallVideo || showBuyPassModal || showLogin));
+  }, [paywallVideo, showBuyPassModal, showLogin]);
   const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
   const [pendingResumeVideoId, setPendingResumeVideoId] = useState<string | null>(null);
   const [episodeRangeStart, setEpisodeRangeStart] = useState<number>(0);
   const [showBuyPassModal, setShowBuyPassModal] = useState<boolean>(false);
 
   const openPaywallForVideo = useCallback((video: Video) => {
+    setOverlayMediaBlocked(true);
+    pauseAllPageMedia();
     try {
       sessionStorage.setItem('tubetv_paywall_target_video_id', video.id);
       localStorage.setItem('tubetv_last_watched_video_id', video.id);
