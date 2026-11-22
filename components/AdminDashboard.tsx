@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, ShieldAlert, Star, Coins, Inbox, BellRing, Megaphone, Lock, LayoutDashboard
+  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, Shield, ShieldAlert, Star, Coins, Inbox, BellRing, Megaphone, Lock, LayoutDashboard
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
 import UploadSection from './UploadSection';
