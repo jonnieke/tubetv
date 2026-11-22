@@ -1391,6 +1391,8 @@ const App: React.FC = () => {
           <ShortsPlayer
             shorts={realShorts}
             initialShortId={selectedShortId}
+            hasActivePass={hasActivePass}
+            onRequestPass={() => setShowBuyPassModal(true)}
             onExit={() => {
               setSelectedShortId(undefined);
               handleNavigate(ViewState.HOME);

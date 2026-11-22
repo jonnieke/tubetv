@@ -187,13 +187,14 @@ function getTag(tags: Array<{ property?: string; value?: string }>, name: string
   return tags.find((t) => t.property?.toLowerCase() === name.toLowerCase())?.value?.trim() || "";
 }
 
-function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; value?: string }>; title?: unknown }): boolean {
+function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; value?: string }>; title?: unknown; length?: unknown }): boolean {
   const tags = Array.isArray(item.metaTags) ? item.metaTags : [];
   const category = getTag(tags, "category").toLowerCase();
   const isShort = category === "shorts" || getTag(tags, "isshort").toLowerCase() === "true";
+  const lengthSec = Number(item.length) || 0;
 
-  // Shorts are free by default
-  if (isShort) {
+  // Shorts are free by default ONLY when <= 90 seconds (blocks full episodes/skits exploiting Shorts)
+  if (isShort && (lengthSec <= 0 || lengthSec <= 90)) {
     return false;
   }
 

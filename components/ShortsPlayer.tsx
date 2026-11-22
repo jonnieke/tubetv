@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { ArrowLeft, Share2, Music2, Volume2, VolumeX, Play, Check } from 'lucide-react';
+import { ArrowLeft, Share2, Music2, Volume2, VolumeX, Play, Check, Lock, Sparkles, ExternalLink } from 'lucide-react';
 import { ShortVideo } from '../types';
 import { MOCK_SHORTS } from '../constants';
 import type Hls from 'hls.js';
@@ -7,24 +7,77 @@ import { loadHls } from '../lib/hlsLoader';
 import { shouldSaveData } from '../lib/network';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import {
+  MAX_DAILY_FREE_SHORTS,
+  getFreeShortsStatus,
+  recordFreeShortView,
+} from '../lib/shortsLimit';
+import { fetchActiveSponsorAds, type SponsorAd } from '../lib/sponsorAds';
 
 interface ShortsPlayerProps {
   shorts?: ShortVideo[];
   initialShortId?: string;
+  hasActivePass?: boolean;
+  onRequestPass?: () => void;
   onExit: () => void;
 }
 
 const ShortsPlayer: React.FC<ShortsPlayerProps> = ({
   shorts = MOCK_SHORTS,
   initialShortId,
+  hasActivePass = false,
+  onRequestPass,
   onExit,
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { preferences } = usePlayback();
   const dataSaver = shouldSaveData(preferences.dataSaver);
   const [activeId, setActiveId] = useState<string | null>(initialShortId || (shorts[0]?.id ?? null));
+  const [shortsBlocked, setShortsBlocked] = useState<boolean>(false);
+  const [remainingFree, setRemainingFree] = useState<number>(() => getFreeShortsStatus().remainingToday);
+  const [adPool, setAdPool] = useState<SponsorAd[]>([]);
+  const [inFeedAd, setInFeedAd] = useState<SponsorAd | null>(null);
+  const [adSkipCountdown, setAdSkipCountdown] = useState<number>(0);
   const isInitialScrollDoneRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (hasActivePass) {
+      setShortsBlocked(false);
+      setInFeedAd(null);
+      return;
+    }
+    let mounted = true;
+    void fetchActiveSponsorAds().then((ads) => {
+      if (mounted) setAdPool(ads);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [hasActivePass]);
+
+  useEffect(() => {
+    if (hasActivePass || !activeId) return;
+    const res = recordFreeShortView(activeId);
+    setRemainingFree(res.remainingToday);
+    if (!res.allowed) {
+      setShortsBlocked(true);
+      setInFeedAd(null);
+      return;
+    }
+    setShortsBlocked(false);
+    if (res.shouldShowSponsorAd && adPool.length > 0) {
+      const ad = adPool[Math.floor(Math.random() * adPool.length)] || adPool[0];
+      setInFeedAd(ad);
+      setAdSkipCountdown(5);
+    }
+  }, [activeId, hasActivePass, adPool]);
+
+  useEffect(() => {
+    if (!inFeedAd || adSkipCountdown <= 0) return;
+    const timer = setTimeout(() => setAdSkipCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [inFeedAd, adSkipCountdown]);
 
   useEffect(() => {
     if (!initialShortId) {
@@ -104,7 +157,113 @@ const ShortsPlayer: React.FC<ShortsPlayerProps> = ({
         <span>
           Shorts <i>by TubeTV</i>
         </span>
+        {!hasActivePass && (
+          <span className="ml-auto rounded-full border border-amber-500/30 bg-black/70 px-2.5 py-0.5 text-[10px] font-bold text-amber-300">
+            {remainingFree}/{MAX_DAILY_FREE_SHORTS} free left
+          </span>
+        )}
       </div>
+
+      {/* Daily Free Shorts Cap Paywall Overlay */}
+      {shortsBlocked && !hasActivePass && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/92 backdrop-blur-md p-6">
+          <div className="max-w-sm w-full rounded-2xl border border-amber-500/35 bg-zinc-950 p-6 text-center space-y-4 shadow-2xl">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15 text-amber-400">
+              <Lock size={22} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-white">
+                {language === 'sw' ? 'Umefikia kikomo cha Shorts bure leo' : 'Daily Free Shorts Limit Reached'}
+              </h2>
+              <p className="mt-1.5 text-xs text-zinc-300 leading-relaxed">
+                {language === 'sw'
+                  ? `Umetazama Shorts ${MAX_DAILY_FREE_SHORTS} bure leo. Fungua Shorts zisizo na kikomo, Micro-Dramas na Filamu bila matangazo kwa shilingi 10 tu kwa siku.`
+                  : `You've watched your ${MAX_DAILY_FREE_SHORTS} free Shorts today. Unlock unlimited, ad-free Shorts, Micro-Dramas & Movies for only 10 bob daily.`}
+              </p>
+            </div>
+            {onRequestPass && (
+              <button
+                type="button"
+                onClick={onRequestPass}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs py-3 transition cursor-pointer"
+              >
+                <Sparkles size={14} />
+                <span>{language === 'sw' ? 'Fungua Vyote · KSh 10 / Siku' : 'Unlock Unlimited · KSh 10 Daily'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onExit}
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-bold text-xs py-2.5 transition cursor-pointer"
+            >
+              {t('shorts.back')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* In-Feed Sponsor Ad Overlay (every 5th free Short when active ads exist) */}
+      {inFeedAd && !shortsBlocked && !hasActivePass && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/95 p-4">
+          <div className="relative w-full max-w-[420px] rounded-2xl overflow-hidden border border-amber-500/40 bg-zinc-950 shadow-2xl">
+            <div className="flex items-center justify-between px-3 py-2 bg-zinc-900/90 border-b border-zinc-800">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
+                Sponsored · {inFeedAd.advertiserName}
+              </span>
+              {adSkipCountdown > 0 ? (
+                <span className="text-[10px] font-bold text-zinc-400">Continue in {adSkipCountdown}s</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setInFeedAd(null)}
+                  className="rounded-md bg-white text-black px-2.5 py-0.5 text-[10px] font-extrabold cursor-pointer"
+                >
+                  Skip Ad →
+                </button>
+              )}
+            </div>
+            <div className="aspect-[9/14] max-h-[60vh] w-full bg-black flex items-center justify-center">
+              <video
+                src={inFeedAd.videoUrl}
+                data-ad-player="true"
+                autoPlay
+                playsInline
+                controls={false}
+                onEnded={() => setInFeedAd(null)}
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <div className="p-3 flex flex-wrap items-center justify-between gap-2 bg-zinc-900/90">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-white truncate">{inFeedAd.title}</p>
+                {onRequestPass && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInFeedAd(null);
+                      onRequestPass();
+                    }}
+                    className="text-[10px] font-semibold text-amber-300 hover:underline cursor-pointer"
+                  >
+                    Remove ads · KSh 10 daily pass
+                  </button>
+                )}
+              </div>
+              {inFeedAd.clickUrl && (
+                <a
+                  href={inFeedAd.clickUrl}
+                  target="_blank"
+                  rel="noopener noreferrer sponsored"
+                  className="inline-flex items-center gap-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 px-3 py-1.5 text-[11px] font-extrabold"
+                >
+                  <span>Learn more</span>
+                  <ExternalLink size={11} />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div
         ref={containerRef}
         className="shorts-feed h-full w-full md:w-[450px] overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
@@ -123,7 +282,7 @@ const ShortsPlayer: React.FC<ShortsPlayerProps> = ({
           <ShortItem
             key={short.id}
             short={short}
-            isActive={activeId === short.id}
+            isActive={activeId === short.id && !shortsBlocked && !inFeedAd}
             isNearby={Math.abs(index - resolvedActiveIndex) <= 1}
             dataSaver={dataSaver}
             videoSrc={short.videoUrl}

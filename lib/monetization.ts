@@ -1,4 +1,5 @@
 import type { Video } from '../types';
+import { MAX_FREE_SHORT_DURATION_SECONDS } from './shortsLimit';
 
 export const LONG_FORMAT_PREVIEW_SECONDS = 30;
 /** Default free opening episodes while a series is building its catalogue (< 30 episodes). */
@@ -6,6 +7,24 @@ export const DEFAULT_FREE_EPISODES = 2;
 /** Once a series reaches 30+ published episodes, automatically expand the free hook to 5 episodes. */
 export const EXPANDED_FREE_EPISODES = 5;
 export const EXPANDED_FREE_EPISODE_THRESHOLD = 30;
+
+function parseShortDurationSeconds(duration?: string | number): number {
+  if (typeof duration === 'number' && Number.isFinite(duration)) return duration;
+  if (typeof duration !== 'string' || !duration.trim()) return 0;
+  const parts = duration.trim().split(':').map((p) => Number(p));
+  if (parts.some((n) => !Number.isFinite(n))) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || 0;
+}
+
+function isFreeShortEligible(video: Video): boolean {
+  if (video.category !== 'Shorts' && !video.isShort) return false;
+  const durationSec = parseShortDurationSeconds(video.duration);
+  // Enforce 90-second ceiling on free Shorts so long videos cannot exploit the free Shorts bucket
+  if (durationSec > MAX_FREE_SHORT_DURATION_SECONDS) return false;
+  return true;
+}
 
 export function getFreeEpisodeCount(video: Video, totalSeriesEpisodes?: number): number {
   if (typeof video.freeEpisodes === 'number' && Number.isFinite(video.freeEpisodes) && video.freeEpisodes >= 0) {
@@ -40,8 +59,8 @@ export function getEpisodeNumber(video: Video): number | undefined {
 }
 
 export function isContentFree(video: Video, totalSeriesEpisodes?: number): boolean {
-  // Shorts are free by default
-  if (video.category === 'Shorts' || video.isShort) return true;
+  // Shorts (<= 90s) are free by default
+  if (isFreeShortEligible(video)) return true;
 
   const currentEpisodeNumber = getEpisodeNumber(video);
   if (currentEpisodeNumber !== undefined) {
@@ -67,8 +86,8 @@ export function isVideoLocked(
   // Unlocked specifically in this session / device (e.g. rewarded ad or WhatsApp share unlock)
   if (unlockedVideoIds.includes(video.id)) return false;
 
-  // Shorts are free by default
-  if (video.category === 'Shorts' || video.isShort) return false;
+  // Shorts (<= 90s) are free by default
+  if (isFreeShortEligible(video)) return false;
 
   const currentEpisodeNumber = getEpisodeNumber(video);
 
