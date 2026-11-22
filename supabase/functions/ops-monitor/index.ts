@@ -213,7 +213,7 @@ serve(async (req) => {
 
     const { data: stuckRows, error: queryErr } = await service
       .from("payment_transactions")
-      .select("id, user_id, phone, plan_code, amount_kes, status, provider, paystack_reference, checkout_request_id, created_at")
+      .select("id, user_id, phone_e164, plan_code, amount_kes, status, provider, paystack_reference, checkout_request_id, created_at")
       .in("status", ["pending", "submitted"])
       .lte("created_at", cutoffRecent)
       .gte("created_at", cutoffOld)
@@ -222,7 +222,7 @@ serve(async (req) => {
 
     if (queryErr) {
       console.error("reconcile_query_error", queryErr);
-      return jsonReply(req, { error: "Could not query stuck transactions." }, 503, METHODS);
+      return jsonReply(req, { error: `Could not query stuck transactions: ${queryErr.message}` }, 503, METHODS);
     }
 
     const stuck = stuckRows || [];
@@ -239,29 +239,24 @@ serve(async (req) => {
             signal: AbortSignal.timeout(8_000),
           });
           const verifyJson = await verifyRes.json().catch(() => ({}));
-          const psStatus = String(verifyJson?.data?.status || "").toLowerCase();
+          const psData = verifyJson?.data || {};
+          const psStatus = String(psData.status || "").toLowerCase();
 
           if (verifyRes.ok && psStatus === "success") {
-            const hours = PLAN_DURATION_HOURS[String(tx.plan_code || "monthly")] || 24 * 30;
-            const endDate = new Date(Date.now() + hours * 3600 * 1000).toISOString();
-
-            await service
-              .from("payment_transactions")
-              .update({ status: "succeeded", result_description: "Auto-reconciled via Paystack verify" })
-              .eq("id", tx.id);
-
-            await service.from("subscriptions").insert({
-              user_id: tx.user_id || null,
-              tier: tx.plan_code || "monthly",
-              is_active: true,
-              end_date: endDate,
-              mpesa_ref: ref,
-              phone: tx.phone || null,
+            const paidKes = Math.max(Number(tx.amount_kes) || 0, Math.round((Number(psData.amount) || 0) / 100));
+            const { data: fulfillRes, error: fulfillErr } = await service.rpc("fulfill_paystack_payment", {
+              p_reference: ref,
+              p_amount_kes: paidKes,
+              p_channel: String(psData.channel || "card"),
+              p_paid_at: psData.paid_at || new Date().toISOString(),
+              p_customer_email: psData.customer?.email || null,
+              p_phone: tx.phone_e164 || null,
             });
-
-            recoveredCount += 1;
-            details.push({ id: tx.id, ref, outcome: "recovered_paystack" });
-            continue;
+            if (!fulfillErr && fulfillRes?.ok) {
+              recoveredCount += 1;
+              details.push({ id: tx.id, ref, outcome: "recovered_paystack" });
+              continue;
+            }
           } else if (verifyRes.ok && (psStatus === "failed" || psStatus === "abandoned")) {
             await service
               .from("payment_transactions")
