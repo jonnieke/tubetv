@@ -14,7 +14,9 @@ export function isDynamicChunkLoadError(error: unknown): boolean {
     combined.includes('error loading dynamically imported module') ||
     combined.includes('Loading chunk') ||
     combined.includes('Unable to preload CSS') ||
-    combined.includes("Unexpected token '<'")
+    combined.includes("Unexpected token '<'") ||
+    combined.includes("reading 'default'") ||
+    combined.includes(".default'")
   );
 }
 
