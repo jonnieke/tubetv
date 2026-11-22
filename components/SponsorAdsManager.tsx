@@ -20,6 +20,7 @@ import {
   uploadSponsorAdFile,
   type SponsorAd,
 } from '../lib/sponsorAds';
+import ShowSponsorshipsManager from './ShowSponsorshipsManager';
 
 export const SponsorAdsManager: React.FC = () => {
   const [ads, setAds] = useState<SponsorAd[]>([]);
@@ -372,6 +373,8 @@ export const SponsorAdsManager: React.FC = () => {
           </div>
         )}
       </div>
+
+      <ShowSponsorshipsManager />
     </div>
   );
 };

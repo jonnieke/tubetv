@@ -175,3 +175,44 @@ export async function createShowSponsorship(input: {
     isActive: Boolean(data.is_active),
   };
 }
+
+export async function listShowSponsorships(): Promise<ShowSponsorshipRecord[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase
+    .from('show_sponsorships')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw new Error(error.message);
+  return (Array.isArray(data) ? data : []).map((row) => ({
+    id: String(row.id),
+    seriesKey: String(row.series_key),
+    seriesTitle: row.series_title ? String(row.series_title) : undefined,
+    sponsorName: String(row.sponsor_name),
+    tagline: String(row.tagline || ''),
+    badge: String(row.badge || 'Presented by'),
+    logoUrl: row.logo_url ? String(row.logo_url) : undefined,
+    clickUrl: String(row.click_url || ''),
+    packageTier: (row.package_tier || 'presented_by') as ShowSponsorshipRecord['packageTier'],
+    unlocksFreeViewing: Boolean(row.unlocks_free_viewing),
+    campaignBudgetKes: Number(row.campaign_budget_kes) || 0,
+    startsAt: String(row.starts_at),
+    endsAt: row.ends_at ? String(row.ends_at) : undefined,
+    isActive: Boolean(row.is_active),
+  }));
+}
+
+export async function toggleShowSponsorshipActive(id: string, isActive: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('show_sponsorships')
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+  sponsorCache.clear();
+}
+
+export async function deleteShowSponsorship(id: string): Promise<void> {
+  const { error } = await supabase.from('show_sponsorships').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  sponsorCache.clear();
+}
