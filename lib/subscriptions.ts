@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { isLocalAuthUserId } from './localAuth';
 import { getRewardUnlockToken } from './unlockRewards';
+import { setPlaySessionToken } from './playSession';
 
 export const SUBSCRIPTION_PLANS = {
   daily: { code: 'daily', label: '24-Hour Pass', amountKes: 10, description: '24 hours of unlimited premium access' },
@@ -951,6 +952,9 @@ export async function resolveAuthorizedPlaybackUrl(
     if (res.ok) {
       const payload = await res.json();
       if (payload?.locked) return { locked: true, url: '' };
+      if (typeof payload?.playSessionToken === 'string' && payload.playSessionToken) {
+        setPlaySessionToken(videoId, payload.playSessionToken);
+      }
       if (typeof payload?.playbackUrl === 'string' && payload.playbackUrl) {
         return { locked: false, url: payload.playbackUrl };
       }

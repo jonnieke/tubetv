@@ -4,6 +4,7 @@ import { corsHeaders, isOriginAllowed, jsonReply } from "../_shared/cors.ts";
 import { publicItem } from "../_shared/publicCatalog.ts";
 import { verifyPassToken } from "../_shared/passToken.ts";
 import { verifyRewardToken } from "../_shared/rewardToken.ts";
+import { issuePlaySessionToken } from "../_shared/playSessionToken.ts";
 import { buildBunnyPlaybackUrl } from "../_shared/bunnyToken.ts";
 
 const METHODS = "GET, OPTIONS";
@@ -327,6 +328,21 @@ serve(async (req) => {
     const tokenTtlSeconds = lengthSeconds > 1200 ? Math.min(7200, Math.max(3600, Math.ceil(lengthSeconds * 1.5))) : 1800;
 
     const signedPlayback = await buildBunnyPlaybackUrl(pullZone, videoId, tokenAuthKey, tokenTtlSeconds);
+    const deviceId = (new URL(req.url).searchParams.get("deviceId") || "anon").trim().slice(0, 64);
+    const minQualifiedSeconds =
+      lengthSeconds > 0 && lengthSeconds < 30 ? Math.max(8, Math.floor(lengthSeconds * 0.75)) : 25;
+    let playSessionToken: string | undefined;
+    try {
+      playSessionToken = await issuePlaySessionToken({
+        videoId,
+        deviceId,
+        minSeconds: minQualifiedSeconds,
+        ttlSeconds: tokenTtlSeconds,
+      });
+    } catch {
+      // Optional if signing secret is unconfigured in local dev
+    }
+
     return jsonReply(
       req,
       {
@@ -334,6 +350,7 @@ serve(async (req) => {
         playbackUrl: signedPlayback.url,
         signed: signedPlayback.signed,
         expiresAt: signedPlayback.expiresAt,
+        ...(playSessionToken ? { playSessionToken } : {}),
         ...(sponsoredBy ? { sponsoredBy } : {}),
       },
       200,

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, isOriginAllowed } from "../_shared/cors.ts";
+import { verifyPlaySessionToken } from "../_shared/playSessionToken.ts";
 
 const EVENTS = new Set([
   "catalogue_view",
@@ -32,6 +33,7 @@ const EVENTS = new Set([
 
 const METHODS = "POST, OPTIONS";
 const rateCounts = new Map<string, { count: number; resetAt: number }>();
+const redeemedPlaySessions = new Map<string, number>(); // sid -> expMs (prevents single-session qualified_view replay)
 const MAX_EVENTS_PER_VIEWER_MINUTE = 60;
 const MAX_EVENTS_PER_IP_MINUTE = 1500; // Allows shared school/campus/office Wi-Fi NATs without false 429s
 
@@ -103,6 +105,48 @@ serve(async (req) => {
     });
   }
 
+  // Anti-farming verification for royalty-bearing `qualified_view` events
+  let verifiedPlaySession = false;
+  if (body.name === "qualified_view") {
+    const rawPlayToken = typeof body.playSessionToken === "string" ? body.playSessionToken.trim() : "";
+    const reportedVideoId = String(props.videoId || "").trim();
+    const isPaidEvent = props.isPaid === true;
+
+    if (rawPlayToken) {
+      const verified = await verifyPlaySessionToken(rawPlayToken);
+      const elapsedSeconds = verified ? (Date.now() - verified.issuedAt) / 1000 : -1;
+      if (
+        !verified ||
+        (reportedVideoId && verified.videoId !== reportedVideoId) ||
+        elapsedSeconds < verified.minSeconds
+      ) {
+        return new Response(JSON.stringify({ error: "Invalid or premature qualified view session." }), {
+          status: 400,
+          headers: { ...corsHeaders(req, METHODS), "Content-Type": "application/json" },
+        });
+      }
+
+      // Deduplicate so one playSessionToken can never credit multiple qualified_views
+      const now = Date.now();
+      if (redeemedPlaySessions.size > 10000) {
+        for (const [sid, exp] of redeemedPlaySessions.entries()) {
+          if (now > exp) redeemedPlaySessions.delete(sid);
+        }
+      }
+      if (redeemedPlaySessions.has(verified.sid)) {
+        return new Response(null, { status: 204, headers: corsHeaders(req, METHODS) });
+      }
+      redeemedPlaySessions.set(verified.sid, verified.exp);
+      verifiedPlaySession = true;
+    } else if (isPaidEvent) {
+      // Paid royalty-bearing qualified views MUST carry a server-issued playSessionToken
+      return new Response(JSON.stringify({ error: "Signed play session required for paid qualified view." }), {
+        status: 400,
+        headers: { ...corsHeaders(req, METHODS), "Content-Type": "application/json" },
+      });
+    }
+  }
+
   const country =
     req.headers.get("cf-ipcountry") ||
     req.headers.get("x-vercel-ip-country") ||
@@ -136,6 +180,7 @@ serve(async (req) => {
     ),
     ...(country && country !== "XX" ? { country: country.slice(0, 8).toUpperCase() } : {}),
     ...(city ? { city: city.slice(0, 60) } : {}),
+    ...(verifiedPlaySession ? { verifiedPlaySession: true } : {}),
   };
 
   const occurredAt = new Date(body.occurredAt);

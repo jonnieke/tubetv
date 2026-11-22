@@ -1,4 +1,5 @@
 import { getSessionAttribution } from './attribution';
+import { getPlaySessionToken } from './playSession';
 
 export type AnalyticsEventName =
   | 'catalogue_view'
@@ -111,6 +112,11 @@ function getAnonViewerMeta(): {
 export function trackEvent(name: AnalyticsEventName, properties: EventProperties = {}) {
   if (typeof window === 'undefined') return;
   const meta = getAnonViewerMeta();
+  const playSessionToken =
+    name === 'qualified_view' && typeof properties.videoId === 'string'
+      ? getPlaySessionToken(properties.videoId)
+      : null;
+
   const event = {
     name,
     properties: sanitizeEventProperties({
@@ -119,6 +125,7 @@ export function trackEvent(name: AnalyticsEventName, properties: EventProperties
     }),
     path: window.location.pathname,
     occurredAt: new Date().toISOString(),
+    ...(playSessionToken ? { playSessionToken } : {}),
   };
 
   window.dispatchEvent(new CustomEvent('tubetv:analytics', { detail: event }));
