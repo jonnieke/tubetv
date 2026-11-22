@@ -342,10 +342,14 @@ export function computeShareOfPlayRoyalties(
   let totalQualifiedViews = 0;
   let totalPlatformWatchSeconds = 0;
 
+  const hasMeasuredMap = Boolean(overrides?.measuredQualifiedViews);
   const contentIntermediates = videos.map(({ video, rawViews, rawGuid }) => {
     const measuredQV = overrides?.measuredQualifiedViews?.[rawGuid];
-    // If measured QV is recorded via analytics, use it; otherwise compute based on 30s benchmark (72% qualified rate)
-    const qv = typeof measuredQV === 'number' ? measuredQV : Math.max(0, Math.round(rawViews * 0.72));
+    // When live measured qualified views are supplied for a period, unwatched titles MUST be 0
+    // (never fall back to lifetime Bunny views and dilute the pool across unwatched catalogue titles).
+    const qv = hasMeasuredMap
+      ? Math.max(0, typeof measuredQV === 'number' ? measuredQV : 0)
+      : Math.max(0, Math.round(rawViews * 0.72));
     const durationSec = parseDurationToSeconds(video.duration);
     const avgWatchSec = Math.min(durationSec, Math.max(QUALIFIED_VIEW_SECONDS, Math.round(durationSec * 0.68)));
     const totalContentWatchSec = qv * avgWatchSec;

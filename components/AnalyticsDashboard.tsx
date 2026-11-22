@@ -1069,13 +1069,22 @@ export default function AnalyticsDashboard({
             </div>
           )}
 
-          {/* Bottom Table: Top Earning Titles (Plain-English Breakdown) */}
+          {/* Bottom Table: Top Earning Titles (User-Centric Breakdown) */}
+          {(() => {
+            const earningTitles = royaltySnapshot.content.filter(
+              (row) => row.attributedRevenueKes > 0 || row.qualifiedViews > 0,
+            );
+            const unattributedGross = funnel?.rangeUnattributedGrossKes ?? 0;
+            return (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
                 <h2 className="text-base font-bold text-white">Top Earning Titles ({dateFrom} → {dateTo})</h2>
                 <p className="text-xs text-zinc-400">
-                  Split across {royaltySnapshot.content.length} premium titles from {formatKes(royaltySnapshot.netCreatorPoolKes)} creator pool
+                  User-Centric: rewarded directly to{' '}
+                  <strong className="text-zinc-200">{earningTitles.length}</strong> watched premium{' '}
+                  {earningTitles.length === 1 ? 'title' : 'titles'} from {formatKes(royaltySnapshot.netCreatorPoolKes)} creator pool
+                  {unattributedGross > 0 ? ` · ${formatKes(unattributedGross)} gross from unqualified-only passes pooled across active titles` : ''}
                 </p>
               </div>
               <button
@@ -1101,7 +1110,13 @@ export default function AnalyticsDashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/70">
-                  {royaltySnapshot.content.slice(0, 12).map((row) => (
+                  {earningTitles.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-zinc-500">
+                        No verified premium plays recorded in this date window yet.
+                      </td>
+                    </tr>
+                  ) : earningTitles.slice(0, 12).map((row) => (
                     <tr key={row.videoId} className="hover:bg-zinc-800/30 transition-colors">
                       <td className="py-2.5 pr-4 font-medium text-white max-w-[240px] truncate">
                         {row.title}
@@ -1129,17 +1144,12 @@ export default function AnalyticsDashboard({
                       </td>
                     </tr>
                   ))}
-                  {royaltySnapshot.content.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="py-6 text-center text-zinc-500">
-                        No published titles loaded yet.
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
           </div>
+            );
+          })()}
         </section>
       )}
 

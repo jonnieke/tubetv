@@ -291,4 +291,29 @@ describe('Creator Royalties & Share of Play Engine', () => {
     expect(result.eligibleCreatorsCount).toBe(1);
     expect(result.totalEligiblePayoutKes).toBe(1050);
   });
+
+  it('never dilutes user-centric or unattributed revenue across unwatched titles when measuredQualifiedViews is provided', () => {
+    const videos: Video[] = [
+      { id: 'watched-ep', title: 'Watched Ep 3', thumbnail: '', views: 10, duration: '02:00', isPremium: true, author: 'Watched Studio', category: 'Series' },
+      { id: 'unwatched-ep', title: 'Old Viral Ep 3', thumbnail: '', views: 50000, duration: '02:00', isPremium: true, author: 'Unwatched Studio', category: 'Series' },
+    ];
+
+    const result = computeShareOfPlayRoyalties(
+      videos,
+      { periodLabel: 'Range', grossSubscriptionRevenueKes: 100, gatewayFeePercent: 0, platformFeePercent: 0, creatorPoolPercent: 60 },
+      {
+        measuredQualifiedViews: { 'watched-ep': 2 },
+        userCentricGrossByVideo: { 'watched-ep': 60 },
+        unattributedGrossKes: 40,
+      },
+    );
+
+    const watched = result.content.find((c) => c.videoId === 'watched-ep')!;
+    const unwatched = result.content.find((c) => c.videoId === 'unwatched-ep')!;
+
+    expect(watched.qualifiedViews).toBe(2);
+    expect(watched.attributedRevenueKes).toBe(60); // 100% of KSh 60 creator pool goes to the watched title
+    expect(unwatched.qualifiedViews).toBe(0);
+    expect(unwatched.attributedRevenueKes).toBe(0);
+  });
 });
