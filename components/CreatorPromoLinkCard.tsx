@@ -20,8 +20,11 @@ const CHANNELS: Array<{ id: PromoChannel; label: string }> = [
 export const CreatorPromoLinkCard: React.FC<Props> = ({ videos, defaultCreatorCode }) => {
   const seriesOptions = useMemo(() => {
     const grouped = new Map<string, Video[]>();
-    for (const v of videos) {
-      const key = seriesKey(v) || v.id;
+    for (const raw of videos) {
+      if (!raw) continue;
+      const normalizedId = raw.id || (raw as unknown as { guid?: string }).guid || '';
+      const v: Video = normalizedId === raw.id ? raw : { ...raw, id: normalizedId };
+      const key = seriesKey(v) || v.id || v.title || 'untitled';
       const list = grouped.get(key) || [];
       list.push(v);
       grouped.set(key, list);

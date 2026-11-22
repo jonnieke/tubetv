@@ -14,7 +14,7 @@ export const seriesSlug = (value: string | Video): string => {
     .replace(/^-+|-+$/g, '');
 };
 export const compareEpisodes = (a: Video, b: Video) =>
-  (a.season || 1) - (b.season || 1) || (a.episode || 1) - (b.episode || 1) || a.id.localeCompare(b.id);
+  (a.season || 1) - (b.season || 1) || (a.episode || 1) - (b.episode || 1) || String(a.id || '').localeCompare(String(b.id || ''));
 
 export function nextEpisode(videos: Video[], currentId: string): Video | undefined {
   const current = videos.find(video => video.id === currentId);
