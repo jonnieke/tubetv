@@ -184,6 +184,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   const [adStepsTotal, setAdStepsTotal] = useState<number>(1);
   const [activeSponsorAd, setActiveSponsorAd] = useState<SponsorAd | null>(null);
   const [adPool, setAdPool] = useState<SponsorAd[]>([]);
+  const [adPoolLoaded, setAdPoolLoaded] = useState<boolean>(false);
   const [adMuted, setAdMuted] = useState<boolean>(false);
   const [adPausedHidden, setAdPausedHidden] = useState<boolean>(false);
   const [streakState, setStreakState] = useState(() => getBingeStreakState());
@@ -203,9 +204,11 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
   useEffect(() => {
     let mounted = true;
+    setAdPoolLoaded(false);
     void fetchActiveSponsorAds(currentSeriesId).then((ads) => {
-      if (mounted && ads.length > 0) {
+      if (mounted) {
         setAdPool(ads);
+        setAdPoolLoaded(true);
       }
     });
     return () => {
@@ -512,6 +515,15 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
   const handleStartAdUnlock = () => {
     if (!video?.id || adCountdown !== null || remainingAdUnlocks <= 0 || nextAdCost === 0) return;
+    if (adPool.length === 0) {
+      setSelectedPlan('daily');
+      setErrorMessage(
+        language === 'sw'
+          ? 'Samahani hakuna matangazo leo, fungua vipindi vyote kwa shilingi 10 tu kwa siku.'
+          : 'Sorry, no ads today, unlock unlimited shows for only 10 bob daily.',
+      );
+      return;
+    }
     clearTimers();
     setErrorMessage('');
     const totalAdsNeeded = nextAdCost;
@@ -1807,31 +1819,52 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                           </button>
                         )}
                         <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            disabled={isBusy || remainingAdUnlocks <= 0}
-                            onClick={handleStartAdUnlock}
-                            className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-amber-500/35 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 px-2.5 py-2 text-amber-200 transition-colors cursor-pointer"
-                          >
-                            <span className="inline-flex items-center gap-1 text-xs font-bold">
-                              <PlayCircle size={14} className="text-amber-400" />
-                              {nextAdCost === 2
-                                ? language === 'sw'
-                                  ? 'Matangazo 2 (60s)'
-                                  : 'Watch 2 Ads (60s)'
-                                : language === 'sw'
-                                  ? 'Tangazo (30s)'
-                                  : 'Watch 30s Ad'}
-                            </span>
-                            <span className="text-[10px] text-amber-300/80">
-                              {remainingAdUnlocks}{' '}
-                              {nextAdCost === 2
-                                ? 'extra ep left'
-                                : language === 'sw'
-                                  ? 'zimesalia leo'
-                                  : 'left today'}
-                            </span>
-                          </button>
+                          {adPoolLoaded && adPool.length === 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPlan('daily')}
+                              className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-zinc-700/80 bg-zinc-900/80 hover:border-amber-500/50 px-2.5 py-2 text-center text-zinc-300 transition-colors cursor-pointer"
+                            >
+                              <span className="text-[11px] font-bold text-amber-200 leading-snug">
+                                {language === 'sw'
+                                  ? 'Samahani hakuna matangazo leo'
+                                  : 'Sorry no ads today'}
+                              </span>
+                              <span className="text-[10px] text-zinc-400 leading-tight">
+                                {language === 'sw'
+                                  ? 'Fungua vipindi vyote kwa 10 bob daily'
+                                  : 'Unlock unlimited shows for only 10 bob daily'}
+                              </span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isBusy || remainingAdUnlocks <= 0 || !adPoolLoaded}
+                              onClick={handleStartAdUnlock}
+                              className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-amber-500/35 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 px-2.5 py-2 text-amber-200 transition-colors cursor-pointer"
+                            >
+                              <span className="inline-flex items-center gap-1 text-xs font-bold">
+                                <PlayCircle size={14} className="text-amber-400" />
+                                {!adPoolLoaded
+                                  ? 'Checking ads...'
+                                  : nextAdCost === 2
+                                    ? language === 'sw'
+                                      ? 'Matangazo 2 (60s)'
+                                      : 'Watch 2 Ads (60s)'
+                                    : language === 'sw'
+                                      ? 'Tangazo (30s)'
+                                      : 'Watch 30s Ad'}
+                              </span>
+                              <span className="text-[10px] text-amber-300/80">
+                                {remainingAdUnlocks}{' '}
+                                {nextAdCost === 2
+                                  ? 'extra ep left'
+                                  : language === 'sw'
+                                    ? 'zimesalia leo'
+                                    : 'left today'}
+                              </span>
+                            </button>
+                          )}
 
                           <button
                             type="button"

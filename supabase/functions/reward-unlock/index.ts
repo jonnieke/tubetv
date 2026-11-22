@@ -183,28 +183,40 @@ serve(async (req) => {
       return jsonReply(req, { error: "Too many ad requests. Please wait a few minutes." }, 429, METHODS);
     }
 
-    let requiredSeconds = 27; // Default for 30s house ad (3s clock-jitter grace)
-    let verifiedAdId: string | null = null;
-    if (adId) {
-      const { data: adRow } = await service
-        .from("sponsor_ads")
-        .select("id, duration_seconds, is_active, approval_status")
-        .eq("id", adId)
-        .maybeSingle();
-
-      if (adRow && adRow.is_active && adRow.approval_status === "approved") {
-        verifiedAdId = adRow.id;
-        const duration = Number(adRow.duration_seconds) || 30;
-        requiredSeconds = Math.max(8, Math.min(90, duration - 3));
-        // Server-side impression increment (service_role)
-        await service.rpc("increment_sponsor_ad_metric", {
-          p_ad_id: verifiedAdId,
-          p_metric: "impressions",
-          p_host_video_id: videoId,
-          p_host_creator: hostCreator,
-        });
-      }
+    if (!adId) {
+      return jsonReply(
+        req,
+        { error: "Sorry no ads today, unlock unlimited shows for only 10 bob daily." },
+        404,
+        METHODS,
+      );
     }
+
+    const { data: adRow } = await service
+      .from("sponsor_ads")
+      .select("id, duration_seconds, is_active, approval_status")
+      .eq("id", adId)
+      .maybeSingle();
+
+    if (!adRow || !adRow.is_active || adRow.approval_status !== "approved") {
+      return jsonReply(
+        req,
+        { error: "Sorry no ads today, unlock unlimited shows for only 10 bob daily." },
+        404,
+        METHODS,
+      );
+    }
+
+    const verifiedAdId = adRow.id;
+    const duration = Number(adRow.duration_seconds) || 30;
+    const requiredSeconds = Math.max(8, Math.min(90, duration - 3));
+    // Server-side impression increment (service_role)
+    await service.rpc("increment_sponsor_ad_metric", {
+      p_ad_id: verifiedAdId,
+      p_metric: "impressions",
+      p_host_video_id: videoId,
+      p_host_creator: hostCreator,
+    });
 
     const { data: session, error: sessionErr } = await service
       .from("ad_watch_sessions")
