@@ -55,9 +55,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     res.setHeader(
       'Cache-Control',
       upstream.ok && !fresh
-        ? 'public, max-age=30, s-maxage=60, stale-while-revalidate=300'
+        ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=1800'
         : 'no-store',
     );
+    res.setHeader('CDN-Cache-Control', upstream.ok && !fresh ? 'public, s-maxage=300, stale-while-revalidate=1800' : 'no-store');
     res.setHeader('X-Catalogue-Proxy', 'vercel-cdn');
     res.end(body);
   } catch (error) {

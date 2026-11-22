@@ -50,10 +50,11 @@ async function attachSignedArtwork(item: ReturnType<typeof publicItem>) {
   };
 }
 
-// Isolate-level SWR cache to protect Bunny Management API and keep warm TTFB <10ms.
-const CACHE_TTL_MS = 60_000;
-const STALE_TTL_MS = 300_000;
+// Isolate-level SWR cache + in-flight deduplication to prevent cache-stampede timeouts.
+const CACHE_TTL_MS = 180_000;
+const STALE_TTL_MS = 900_000;
 const catalogCache = new Map<string, { payload: unknown; cachedAt: number }>();
+const inFlightCatalog = new Map<string, Promise<unknown>>();
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -73,7 +74,7 @@ serve(async (req) => {
   const bypassCache = query.get("fresh") === "1";
   const cacheHeader = bypassCache
     ? "no-store"
-    : "public, max-age=30, s-maxage=60, stale-while-revalidate=300";
+    : "public, max-age=60, s-maxage=300, stale-while-revalidate=1800";
 
   const singleId = query.get("id");
   if (singleId) {
@@ -129,29 +130,36 @@ serve(async (req) => {
   }
 
   try {
-    const upstream = await fetch(
-      `https://video.bunnycdn.com/library/${libraryId}/videos?page=${page}&itemsPerPage=${itemsPerPage}&orderBy=date`,
-      {
-        headers: { AccessKey: accessKey, Accept: "application/json" },
-        signal: AbortSignal.timeout(10_000),
-      },
-    );
-    if (!upstream.ok) {
-      if (cached && ageMs < STALE_TTL_MS) {
-        return jsonReply(req, cached.payload, 200, METHODS, {
-          "Cache-Control": cacheHeader,
-          "X-Catalog-Cache": "STALE",
-        });
+    let fetchPromise = !bypassCache ? inFlightCatalog.get(cacheKey) : undefined;
+    if (!fetchPromise) {
+      fetchPromise = (async () => {
+        const upstream = await fetch(
+          `https://video.bunnycdn.com/library/${libraryId}/videos?page=${page}&itemsPerPage=${itemsPerPage}&orderBy=date`,
+          {
+            headers: { AccessKey: accessKey, Accept: "application/json" },
+            signal: AbortSignal.timeout(10_000),
+          },
+        );
+        if (!upstream.ok) {
+          throw new Error(`bunny_upstream_${upstream.status}`);
+        }
+        const data = await upstream.json();
+        const rawItems = Array.isArray(data.items)
+          ? data.items.map((item: Record<string, unknown>) => publicItem(item, enforceRating, true)).filter(Boolean)
+          : [];
+        const items = await Promise.all(rawItems.map((item) => attachSignedArtwork(item)));
+        const payload = { items, totalItems: Number(data.totalItems) || 0, currentPage: page, itemsPerPage };
+        catalogCache.set(cacheKey, { payload, cachedAt: Date.now() });
+        return payload;
+      })().finally(() => {
+        inFlightCatalog.delete(cacheKey);
+      });
+      if (!bypassCache) {
+        inFlightCatalog.set(cacheKey, fetchPromise);
       }
-      return jsonReply(req, { error: "Catalogue unavailable." }, 503, METHODS, { "Cache-Control": "no-store" });
     }
-    const data = await upstream.json();
-    const rawItems = Array.isArray(data.items)
-      ? data.items.map((item: Record<string, unknown>) => publicItem(item, enforceRating, true)).filter(Boolean)
-      : [];
-    const items = await Promise.all(rawItems.map((item) => attachSignedArtwork(item)));
-    const payload = { items, totalItems: Number(data.totalItems) || 0, currentPage: page, itemsPerPage };
-    catalogCache.set(cacheKey, { payload, cachedAt: Date.now() });
+
+    const payload = await fetchPromise;
     return jsonReply(
       req,
       payload,

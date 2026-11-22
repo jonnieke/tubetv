@@ -8,6 +8,54 @@ import { buildBunnyPlaybackUrl } from "../_shared/bunnyToken.ts";
 
 const METHODS = "GET, OPTIONS";
 
+// Isolate-level metadata & sponsorship caches with in-flight deduplication
+// so viral spikes on Episode 3+ don't hammer Bunny's Management API or Postgres.
+const VIDEO_META_TTL_MS = 60_000;
+const SPONSOR_CACHE_TTL_MS = 60_000;
+const videoMetaCache = new Map<string, { item: ReturnType<typeof publicItem>; cachedAt: number }>();
+const inFlightVideoMeta = new Map<string, Promise<{ status: number; item: ReturnType<typeof publicItem> }>>();
+const sponsorUnlockCache = new Map<string, { sponsorName: string | null; cachedAt: number }>();
+
+async function fetchPublishedVideoMeta(
+  libraryId: string,
+  accessKey: string,
+  videoId: string,
+  enforceRating: boolean,
+): Promise<{ status: number; item: ReturnType<typeof publicItem> }> {
+  const now = Date.now();
+  const cached = videoMetaCache.get(videoId);
+  if (cached && now - cached.cachedAt < VIDEO_META_TTL_MS) {
+    return { status: cached.item ? 200 : 404, item: cached.item };
+  }
+
+  const existing = inFlightVideoMeta.get(videoId);
+  if (existing) return existing;
+
+  const task = (async () => {
+    const upstream = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${videoId}`, {
+      headers: { AccessKey: accessKey, Accept: "application/json" },
+      signal: AbortSignal.timeout(4_000),
+    });
+    if (!upstream.ok) {
+      return { status: upstream.status === 404 ? 404 : 503, item: null };
+    }
+    const raw = await upstream.json();
+    const published = publicItem(raw, enforceRating);
+    if (videoMetaCache.size > 2000) {
+      for (const [k, v] of videoMetaCache.entries()) {
+        if (now - v.cachedAt >= VIDEO_META_TTL_MS) videoMetaCache.delete(k);
+      }
+    }
+    videoMetaCache.set(videoId, { item: published, cachedAt: Date.now() });
+    return { status: published ? 200 : 404, item: published };
+  })().finally(() => {
+    inFlightVideoMeta.delete(videoId);
+  });
+
+  inFlightVideoMeta.set(videoId, task);
+  return task;
+}
+
 /**
  * Verifies a server-issued, HMAC-signed reward unlock token against the persistent
  * `reward_unlock_grants` ledger. Rejects spoofed query params and expired/mismatched tokens.
@@ -77,6 +125,12 @@ async function getActiveBrandSponsorUnlock(
   );
   if (candidateKeys.length === 0) return null;
 
+  const cacheKey = candidateKeys.join("|");
+  const cached = sponsorUnlockCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < SPONSOR_CACHE_TTL_MS) {
+    return cached.sponsorName;
+  }
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!supabaseUrl || !serviceKey) return null;
@@ -97,7 +151,9 @@ async function getActiveBrandSponsorUnlock(
     .limit(1)
     .maybeSingle();
 
-  return data?.sponsor_name || null;
+  const sponsorName = data?.sponsor_name || null;
+  sponsorUnlockCache.set(cacheKey, { sponsorName, cachedAt: Date.now() });
+  return sponsorName;
 }
 
 function getTag(tags: Array<{ property?: string; value?: string }>, name: string): string {
@@ -233,19 +289,17 @@ serve(async (req) => {
   }
 
   try {
-    const upstream = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${videoId}`, {
-      headers: { AccessKey: accessKey, Accept: "application/json" },
-      signal: AbortSignal.timeout(4_000),
-    });
-    if (!upstream.ok) {
-      return jsonReply(req, { error: "Video not found." }, upstream.status === 404 ? 404 : 503, METHODS);
+    const metaResult = await fetchPublishedVideoMeta(libraryId, accessKey, videoId, enforceRating);
+    if (metaResult.status !== 200 || !metaResult.item) {
+      return jsonReply(
+        req,
+        { error: metaResult.status === 404 ? "Video is not available for public playback." : "Video not found." },
+        metaResult.status,
+        METHODS,
+      );
     }
 
-    const raw = await upstream.json();
-    const published = publicItem(raw, enforceRating);
-    if (!published) {
-      return jsonReply(req, { error: "Video is not available for public playback." }, 404, METHODS);
-    }
+    const published = metaResult.item;
 
     const locked = isCatalogueItemLocked(published);
     let sponsoredBy: string | null = null;
