@@ -33,6 +33,32 @@ async function fetchPublishedVideoMeta(
   if (existing) return existing;
 
   const task = (async () => {
+    // Fast path: read from normalized Postgres `catalogue_episodes` mirror (sub-15ms, zero Bunny API calls)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (supabaseUrl && serviceKey) {
+      try {
+        const service = createClient(supabaseUrl, serviceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data: epRow } = await service
+          .from("catalogue_episodes")
+          .select("is_published, raw_public_item")
+          .eq("guid", videoId)
+          .maybeSingle();
+        if (epRow) {
+          const item = epRow.is_published && epRow.raw_public_item
+            ? (epRow.raw_public_item as ReturnType<typeof publicItem>)
+            : null;
+          videoMetaCache.set(videoId, { item, cachedAt: Date.now() });
+          return { status: item ? 200 : 404, item };
+        }
+      } catch {
+        // Fall through to Bunny Management API on transient DB error
+      }
+    }
+
+    // Fallback: live Bunny Management API for newly uploaded items not yet synced via webhook
     const upstream = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${videoId}`, {
       headers: { AccessKey: accessKey, Accept: "application/json" },
       signal: AbortSignal.timeout(4_000),

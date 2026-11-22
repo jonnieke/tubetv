@@ -39,6 +39,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/ops-monitor/index.ts"
 
+[functions.bunny-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/bunny-webhook/index.ts"
+
 [functions.admin-ai]
 enabled = true
 verify_jwt = true
