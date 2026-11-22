@@ -18,7 +18,7 @@ export async function buildBunnyPlaybackUrl(
   pullZone: string,
   videoId: string,
   tokenAuthKey?: string | null,
-  ttlSeconds = 14400,
+  ttlSeconds = 1800,
 ): Promise<{ url: string; signed: boolean; expiresAt: number | null }> {
   const cleanZone = pullZone.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
   const cleanKey = (tokenAuthKey || "").trim();

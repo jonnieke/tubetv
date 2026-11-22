@@ -321,7 +321,12 @@ serve(async (req) => {
       );
     }
 
-    const signedPlayback = await buildBunnyPlaybackUrl(pullZone, videoId, tokenAuthKey);
+    // Tight signed-URL TTL: 30 min for short episodes/micro-dramas; scales up to 2h for full-length movies
+    // so legitimate viewers are never cut off mid-film while leaked links expire quickly.
+    const lengthSeconds = Number(published.length) || 0;
+    const tokenTtlSeconds = lengthSeconds > 1200 ? Math.min(7200, Math.max(3600, Math.ceil(lengthSeconds * 1.5))) : 1800;
+
+    const signedPlayback = await buildBunnyPlaybackUrl(pullZone, videoId, tokenAuthKey, tokenTtlSeconds);
     return jsonReply(
       req,
       {
