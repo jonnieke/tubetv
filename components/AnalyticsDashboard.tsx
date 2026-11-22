@@ -468,16 +468,22 @@ export default function AnalyticsDashboard({
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg">
               <div className="flex items-center justify-between text-xs font-medium text-zinc-400">
-                <span>Money Collected</span>
+                <span>
+                  Money Collected{' '}
+                  <span className="text-[10px] font-semibold text-emerald-400">
+                    ({dateFrom === dateTo ? dateTo : `${dateFrom.slice(5)} → ${dateTo.slice(5)}`})
+                  </span>
+                </span>
                 <Wallet className="h-4 w-4 text-emerald-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
                 <strong className="text-2xl md:text-3xl font-bold text-white">
                   {formatKes(typeof funnel?.rangeRevenueKes === 'number' ? funnel.rangeRevenueKes : grossRevenueKes30d)}
                 </strong>
+                <span className="text-[11px] text-zinc-500">in selected range</span>
               </div>
               <p className="mt-2 text-[11px] text-zinc-400">
-                30d total: {formatKes(grossRevenueKes30d)} · M-Pesa {channelSplit.mpesaPct}% · Card {channelSplit.cardPct}%
+                Rolling 30d total: <strong className="text-zinc-200">{formatKes(grossRevenueKes30d)}</strong> · M-Pesa {channelSplit.mpesaPct}% · Card {channelSplit.cardPct}%
               </p>
             </div>
 
