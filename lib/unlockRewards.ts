@@ -39,6 +39,7 @@ interface StoredUnlockEntry {
   seriesKey?: string;
   source: 'ad' | 'share' | 'streak';
   adsWatched?: number;
+  rewardToken?: string;
   grantedAt: number;
   expiresAt: number;
 }
@@ -165,6 +166,31 @@ export function getRewardUnlockSource(videoId: string): 'ad' | 'share' | 'streak
   const { entries } = readState();
   const match = entries.find((e) => e.videoId === videoId);
   return match ? match.source : null;
+}
+
+export function getRewardUnlockToken(videoId: string): string | null {
+  if (!videoId) return null;
+  const { entries } = readState();
+  const match = entries.find((e) => e.videoId === videoId && typeof e.rewardToken === 'string' && e.rewardToken.length > 0);
+  return match?.rewardToken || null;
+}
+
+export function attachRewardUnlockToken(videoId: string, rewardToken: string, expiresAt?: number): void {
+  if (!videoId || !rewardToken) return;
+  const state = readState();
+  let updated = false;
+  const nextEntries = state.entries.map((entry) => {
+    if (entry.videoId !== videoId) return entry;
+    updated = true;
+    return {
+      ...entry,
+      rewardToken,
+      ...(typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? { expiresAt } : {}),
+    };
+  });
+  if (updated) {
+    writeState({ entries: nextEntries });
+  }
 }
 
 export function getRemainingAdUnlocksToday(seriesKey?: string, totalSeriesEpisodes?: number): number {

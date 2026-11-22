@@ -44,7 +44,7 @@ export function corsHeaders(
   return {
     ...(matchedOrigin ? { "Access-Control-Allow-Origin": matchedOrigin } : {}),
     "Access-Control-Allow-Headers":
-      "authorization, apikey, content-type, x-client-info, idempotency-key, x-pass-token",
+      "authorization, apikey, content-type, x-client-info, idempotency-key, x-pass-token, x-reward-token",
     "Access-Control-Allow-Methods": methods,
     "Vary": "Origin",
     ...extraHeaders,

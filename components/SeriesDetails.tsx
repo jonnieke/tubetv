@@ -8,6 +8,7 @@ import { publicMediaUrl } from '../lib/mediaUrl';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import CatalogueArtwork from './CatalogueArtwork';
+import SponsorBanner from './SponsorBanner';
 import { TrailerModal } from './TrailerModal';
 
 interface Props {
@@ -178,6 +179,11 @@ export default function SeriesDetails({ episodes, watchLaterIds, onToggleWatchLa
               </div>
             </div>
           </div>
+          <SponsorBanner
+            hasActivePass={false}
+            seriesKeys={[first.seriesId || '', seriesSlug(first), first.seriesTitle || ''].filter(Boolean)}
+            className="my-3 rounded-xl border border-amber-500/25 bg-gradient-to-r from-zinc-900/90 via-zinc-900/80 to-amber-950/30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3"
+          />
           <div className="series-details-episode-heading">
             <div>
               <p className="series-details-label">{language === 'sw' ? 'CHAGUA MSIMU' : 'CHOOSE A SEASON'}</p>

@@ -29,6 +29,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/playback-access/index.ts"
 
+[functions.reward-unlock]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/reward-unlock/index.ts"
+
 [functions.admin-ai]
 enabled = true
 verify_jwt = true

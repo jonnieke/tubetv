@@ -27,13 +27,16 @@ import { isMicroDrama, seriesKey } from '../lib/series';
 import { loadHls } from '../lib/hlsLoader';
 import {
   AD_UNLOCK_DURATION_SECONDS,
+  attachRewardUnlockToken,
   getSeriesUnlockStatus,
   grantAdUnlock,
   grantShareUnlock,
 } from '../lib/unlockRewards';
 import {
+  claimServerRewardUnlock,
+  completeSponsorAdSession,
   fetchActiveSponsorAds,
-  recordSponsorAdMetric,
+  startSponsorAdSession,
   type SponsorAd,
 } from '../lib/sponsorAds';
 import {
@@ -58,6 +61,7 @@ import {
   fetchPaystackStatus,
   restorePaystackPass,
   restorePassByPhone,
+  getOrCreateDeviceId,
   getStoredPass,
   getRememberedPhone,
   type StoredPass,
@@ -187,6 +191,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const adVideoRef = useRef<HTMLVideoElement | null>(null);
   const adHlsRef = useRef<Hls | null>(null);
+  const adSessionIdRef = useRef<string | null>(null);
 
   const remainingAdUnlocks = unlockStatus.remainingAdUnlocks;
   const remainingShareUnlocks = unlockStatus.remainingShares;
@@ -429,15 +434,24 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
     const chosenAd = pickAdForStep(stepNumber);
     const stepDuration = chosenAd?.durationSeconds || AD_UNLOCK_DURATION_SECONDS;
+    const deviceId = getOrCreateDeviceId();
     setActiveSponsorAd(chosenAd);
     setAdStepIndex(stepNumber);
     setAdStepsTotal(totalSteps);
     setAdCountdown(stepDuration);
     setAdPausedHidden(false);
+    adSessionIdRef.current = null;
 
-    if (chosenAd?.id) {
-      void recordSponsorAdMetric(chosenAd.id, 'impressions');
-    }
+    void startSponsorAdSession({
+      videoId: video.id,
+      deviceId,
+      adId: chosenAd?.id,
+      hostCreator: video.author,
+    }).then((session) => {
+      if (session?.sessionId) {
+        adSessionIdRef.current = session.sessionId;
+      }
+    });
 
     adTimerRef.current = setInterval(() => {
       // Non-skippable enforcement: pause countdown while user is tabbed away
@@ -454,14 +468,25 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
             clearInterval(adTimerRef.current);
             adTimerRef.current = null;
           }
-          if (chosenAd?.id) {
-            void recordSponsorAdMetric(chosenAd.id, 'completions', {
-              hostVideoId: video.id,
-              hostCreator: video.author,
+          const completedSessionId = adSessionIdRef.current;
+          adSessionIdRef.current = null;
+          const isFinalStep = stepNumber >= totalSteps;
+
+          if (completedSessionId) {
+            void completeSponsorAdSession({
+              sessionId: completedSessionId,
+              videoId: video.id,
+              deviceId,
+              grantUnlock: isFinalStep,
+            }).then((res) => {
+              if (res.ok && res.rewardToken) {
+                attachRewardUnlockToken(video.id, res.rewardToken, res.expiresAt);
+              }
             });
           }
+
           // If this extra episode requires 2 non-skippable ads, launch Ad 2 of 2 next!
-          if (stepNumber < totalSteps) {
+          if (!isFinalStep) {
             setTimeout(() => runAdStep(stepNumber + 1, totalSteps), 250);
             return stepDuration;
           }
@@ -499,7 +524,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     runAdStep(1, totalAdsNeeded);
   };
 
-  const handleStreakUnlock = () => {
+  const handleStreakUnlock = async () => {
     if (!video?.id) return;
     setErrorMessage('');
     let currentCredits = streakState.bonusUnlockCredits;
@@ -514,9 +539,17 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     setStreakState(spent.state);
     if (spent.unlocked) {
       setStatus('completed');
+      const res = await claimServerRewardUnlock({
+        videoId: video.id,
+        deviceId: getOrCreateDeviceId(),
+        source: 'streak',
+      });
+      if (res.ok && res.rewardToken) {
+        attachRewardUnlockToken(video.id, res.rewardToken, res.expiresAt);
+      }
       completeTimerRef.current = setTimeout(() => {
         onSuccess();
-      }, 650);
+      }, 350);
     }
   };
 
@@ -528,6 +561,16 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     const result = grantShareUnlock(video.id, currentSeriesId, seriesEpisodeCount);
     setUnlockStatus(getSeriesUnlockStatus(currentSeriesId, seriesEpisodeCount));
     if (!result.unlocked) return;
+
+    void claimServerRewardUnlock({
+      videoId: video.id,
+      deviceId: getOrCreateDeviceId(),
+      source: 'share',
+    }).then((res) => {
+      if (res.ok && res.rewardToken) {
+        attachRewardUnlockToken(video.id, res.rewardToken, res.expiresAt);
+      }
+    });
 
     trackEvent('share_unlock_completed', {
       videoId: video.id,

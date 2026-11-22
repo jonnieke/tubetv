@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   AD_UNLOCK_DURATION_SECONDS,
+  attachRewardUnlockToken,
   getRemainingAdUnlocksToday,
   getRemainingShareUnlocksToday,
   getRewardUnlockedVideoIds,
+  getRewardUnlockToken,
   getSeriesUnlockPolicy,
   getSeriesUnlockStatus,
   grantAdUnlock,
@@ -79,5 +81,13 @@ describe('unlockRewards (30s Non-Skippable Ads & Tiered Series Caps)', () => {
     // 4th ad unlock is blocked -> must buy Pass
     expect(grantAdUnlock('ep-6', series, 20).unlocked).toBe(false);
     expect(getRewardUnlockedVideoIds()).toContain('ep-5');
+  });
+
+  it('attaches and retrieves server-signed reward unlock tokens', () => {
+    expect(grantAdUnlock('ep-signed', 'signed-series', 8).unlocked).toBe(true);
+    expect(getRewardUnlockToken('ep-signed')).toBeNull();
+
+    attachRewardUnlockToken('ep-signed', 'rw1.payload.signature', Date.now() + 60_000);
+    expect(getRewardUnlockToken('ep-signed')).toBe('rw1.payload.signature');
   });
 });

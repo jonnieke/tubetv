@@ -3,22 +3,24 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, isOriginAllowed, jsonReply } from "../_shared/cors.ts";
 import { publicItem } from "../_shared/publicCatalog.ts";
 import { verifyPassToken } from "../_shared/passToken.ts";
+import { verifyRewardToken } from "../_shared/rewardToken.ts";
 import { buildBunnyPlaybackUrl } from "../_shared/bunnyToken.ts";
 
 const METHODS = "GET, OPTIONS";
-const VALID_REWARD_SOURCES = new Set(["ad", "share", "streak"]);
-const MAX_DAILY_REWARD_EPISODES_PER_DEVICE = 6;
-const rewardDeviceUsage = new Map<string, { videoIds: Set<string>; resetAt: number }>();
 
-function hasValidRewardUnlock(
+/**
+ * Verifies a server-issued, HMAC-signed reward unlock token against the persistent
+ * `reward_unlock_grants` ledger. Rejects spoofed query params and expired/mismatched tokens.
+ */
+async function hasValidRewardUnlock(
   req: Request,
   item: { metaTags?: Array<{ property?: string; value?: string }>; title?: unknown },
   videoId: string,
-): boolean {
+): Promise<boolean> {
   const url = new URL(req.url);
-  const rewardSource = (url.searchParams.get("rewardUnlock") || "").trim().toLowerCase();
+  const rewardToken = (req.headers.get("X-Reward-Token") || url.searchParams.get("rewardToken") || "").trim();
   const deviceId = (url.searchParams.get("deviceId") || "").trim();
-  if (!VALID_REWARD_SOURCES.has(rewardSource) || deviceId.length < 6) {
+  if (!rewardToken || deviceId.length < 6) {
     return false;
   }
 
@@ -35,32 +37,67 @@ function hasValidRewardUnlock(
     return false;
   }
 
-  const now = Date.now();
-  if (rewardDeviceUsage.size > 5000) {
-    for (const [k, v] of rewardDeviceUsage.entries()) {
-      if (now > v.resetAt) rewardDeviceUsage.delete(k);
-    }
-  }
-
-  const clientIp =
-    req.headers.get("cf-connecting-ip") ||
-    req.headers.get("x-real-ip") ||
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "anon";
-  const bucketKey = `${deviceId.slice(0, 64)}:${clientIp}`;
-  let record = rewardDeviceUsage.get(bucketKey);
-  if (!record || now > record.resetAt) {
-    record = { videoIds: new Set<string>(), resetAt: now + 24 * 60 * 60 * 1000 };
-    rewardDeviceUsage.set(bucketKey, record);
-  }
-  if (record.videoIds.has(videoId)) {
-    return true;
-  }
-  if (record.videoIds.size >= MAX_DAILY_REWARD_EPISODES_PER_DEVICE) {
+  const verified = await verifyRewardToken(rewardToken);
+  if (!verified || verified.videoId !== videoId || verified.deviceId !== deviceId) {
     return false;
   }
-  record.videoIds.add(videoId);
-  return true;
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!supabaseUrl || !serviceKey) return false;
+
+  const service = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: grant } = await service
+    .from("reward_unlock_grants")
+    .select("id, expires_at")
+    .eq("id", verified.grantId)
+    .eq("video_id", videoId)
+    .eq("device_id", deviceId)
+    .maybeSingle();
+
+  return Boolean(grant && Date.parse(grant.expires_at) > Date.now());
+}
+
+/**
+ * Checks whether a B2B brand has sponsored this series with a "Free Season Unlock"
+ * campaign in `public.show_sponsorships`, making all episodes free during the campaign window.
+ */
+async function getActiveBrandSponsorUnlock(
+  item: { metaTags?: Array<{ property?: string; value?: string }> },
+): Promise<string | null> {
+  const tags = Array.isArray(item.metaTags) ? item.metaTags : [];
+  const seriesId = getTag(tags, "seriesid");
+  const seriesTitle = getTag(tags, "seriestitle") || getTag(tags, "series");
+  const normalizedTitle = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const candidateKeys = Array.from(
+    new Set([seriesId, seriesTitle.toLowerCase(), normalizedTitle].filter((k) => k && k.length > 0)),
+  );
+  if (candidateKeys.length === 0) return null;
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!supabaseUrl || !serviceKey) return null;
+
+  const service = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const nowIso = new Date().toISOString();
+  const { data } = await service
+    .from("show_sponsorships")
+    .select("sponsor_name")
+    .in("series_key", candidateKeys)
+    .eq("is_active", true)
+    .eq("unlocks_free_viewing", true)
+    .lte("starts_at", nowIso)
+    .or(`ends_at.is.null,ends_at.gt.${nowIso}`)
+    .limit(1)
+    .maybeSingle();
+
+  return data?.sponsor_name || null;
 }
 
 function getTag(tags: Array<{ property?: string; value?: string }>, name: string): string {
@@ -211,7 +248,16 @@ serve(async (req) => {
     }
 
     const locked = isCatalogueItemLocked(published);
-    if (locked && !(await hasValidEntitlement(req)) && !hasValidRewardUnlock(req, published, videoId)) {
+    let sponsoredBy: string | null = null;
+    if (locked) {
+      sponsoredBy = await getActiveBrandSponsorUnlock(published);
+    }
+    if (
+      locked &&
+      !sponsoredBy &&
+      !(await hasValidEntitlement(req)) &&
+      !(await hasValidRewardUnlock(req, published, videoId))
+    ) {
       return jsonReply(
         req,
         { locked: true, error: "An active TubeTV pass is required to watch this title." },
@@ -229,6 +275,7 @@ serve(async (req) => {
         playbackUrl: signedPlayback.url,
         signed: signedPlayback.signed,
         expiresAt: signedPlayback.expiresAt,
+        ...(sponsoredBy ? { sponsoredBy } : {}),
       },
       200,
       METHODS,

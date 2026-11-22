@@ -286,20 +286,87 @@ export async function deleteSponsorAd(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function recordSponsorAdMetric(
-  adId: string,
-  metric: 'impressions' | 'completions',
-  host?: { hostVideoId?: string; hostCreator?: string },
-): Promise<void> {
-  if (!isSupabaseConfigured || !adId) return;
+export async function startSponsorAdSession(params: {
+  videoId: string;
+  deviceId: string;
+  adId?: string;
+  hostCreator?: string;
+}): Promise<{ sessionId: string; requiredSeconds: number } | null> {
+  if (!isSupabaseConfigured || !params.videoId || !params.deviceId) return null;
   try {
-    await supabase.rpc('increment_sponsor_ad_metric', {
-      p_ad_id: adId,
-      p_metric: metric,
-      p_host_video_id: host?.hostVideoId || null,
-      p_host_creator: host?.hostCreator || null,
+    const { data, error } = await supabase.functions.invoke('reward-unlock', {
+      body: {
+        action: 'start_ad',
+        videoId: params.videoId,
+        deviceId: params.deviceId,
+        adId: params.adId || undefined,
+        hostCreator: params.hostCreator || undefined,
+      },
     });
+    if (error || !data?.ok || typeof data.sessionId !== 'string') return null;
+    return {
+      sessionId: data.sessionId,
+      requiredSeconds: Number(data.requiredSeconds) || 27,
+    };
   } catch {
-    // Best-effort telemetry
+    return null;
+  }
+}
+
+export async function completeSponsorAdSession(params: {
+  sessionId: string;
+  videoId: string;
+  deviceId: string;
+  grantUnlock: boolean;
+}): Promise<{ ok: boolean; rewardToken?: string; expiresAt?: number }> {
+  if (!isSupabaseConfigured || !params.sessionId || !params.videoId || !params.deviceId) {
+    return { ok: false };
+  }
+  try {
+    const { data, error } = await supabase.functions.invoke('reward-unlock', {
+      body: {
+        action: 'complete_ad',
+        sessionId: params.sessionId,
+        videoId: params.videoId,
+        deviceId: params.deviceId,
+        grantUnlock: params.grantUnlock,
+      },
+    });
+    if (error || !data?.ok) return { ok: false };
+    return {
+      ok: true,
+      rewardToken: typeof data.rewardToken === 'string' ? data.rewardToken : undefined,
+      expiresAt: typeof data.expiresAt === 'number' ? data.expiresAt : undefined,
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function claimServerRewardUnlock(params: {
+  videoId: string;
+  deviceId: string;
+  source: 'share' | 'streak';
+}): Promise<{ ok: boolean; rewardToken?: string; expiresAt?: number }> {
+  if (!isSupabaseConfigured || !params.videoId || !params.deviceId) {
+    return { ok: false };
+  }
+  try {
+    const { data, error } = await supabase.functions.invoke('reward-unlock', {
+      body: {
+        action: 'claim_reward',
+        videoId: params.videoId,
+        deviceId: params.deviceId,
+        source: params.source,
+      },
+    });
+    if (error || !data?.ok) return { ok: false };
+    return {
+      ok: true,
+      rewardToken: typeof data.rewardToken === 'string' ? data.rewardToken : undefined,
+      expiresAt: typeof data.expiresAt === 'number' ? data.expiresAt : undefined,
+    };
+  } catch {
+    return { ok: false };
   }
 }
