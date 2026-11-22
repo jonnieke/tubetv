@@ -5,6 +5,7 @@ import {
   isDynamicChunkLoadError,
   triggerChunkRecoveryReload,
 } from '../lib/chunkRecovery';
+import { reportClientError } from '../lib/errorReporting';
 
 interface Props {
   children?: ReactNode;
@@ -34,7 +35,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
     console.error('Uncaught error:', error, errorInfo);
     if (isDynamicChunkLoadError(error)) {
       triggerChunkRecoveryReload();
+      return;
     }
+    reportClientError(error, {
+      source: 'root_error_boundary',
+      componentStack: errorInfo.componentStack || undefined,
+    });
   }
 
   public render() {
@@ -121,7 +127,12 @@ export class SectionErrorBoundary extends React.Component<SectionProps, SectionS
     console.error('Section error:', error, errorInfo);
     if (isDynamicChunkLoadError(error)) {
       triggerChunkRecoveryReload();
+      return;
     }
+    reportClientError(error, {
+      source: `section:${this.props.label || 'unknown'}`,
+      componentStack: errorInfo.componentStack || undefined,
+    });
   }
 
   public render() {

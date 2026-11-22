@@ -34,6 +34,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/reward-unlock/index.ts"
 
+[functions.ops-monitor]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/ops-monitor/index.ts"
+
 [functions.admin-ai]
 enabled = true
 verify_jwt = true
