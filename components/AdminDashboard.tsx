@@ -10,6 +10,7 @@ import RoyaltiesDashboard from './RoyaltiesDashboard';
 import FilmmakerSubmissionsQueue from './FilmmakerSubmissionsQueue';
 import PassNotificationsPanel from './PassNotificationsPanel';
 import SponsorAdsManager from './SponsorAdsManager';
+import OpsHealthPanel from './OpsHealthPanel';
 import { NavItem, Video } from '../types';
 import { isContentFree } from '../lib/monetization';
 import { normalizeContentRating, ratingDescription, type ContentRating } from '../lib/contentRating';
@@ -550,7 +551,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddCategory = () => {},
   onRemoveCategory = () => {},
 }) => {
-  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties' | 'submissions' | 'alerts' | 'ads'>('analytics');
+  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties' | 'submissions' | 'alerts' | 'ads' | 'ops'>('analytics');
   const [items, setItems] = useState<BunnyVideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -959,7 +960,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'royalties', label: 'Royalties & Payouts', subtitle: 'Creator splits, statements & M-Pesa payouts', icon: Coins },
     { id: 'submissions', label: 'Submissions', subtitle: 'Review filmmaker pitches & screeners', icon: Inbox },
     { id: 'alerts', label: 'Pass Alerts', subtitle: 'Subscriber pass & expiry notifications', icon: BellRing },
-    { id: 'ads', label: 'Sponsor Ads', subtitle: '30s non-skippable video ads & impressions', icon: Megaphone },
+    { id: 'ads', label: 'Sponsor Ads', subtitle: '30s non-skippable video ads & show sponsors', icon: Megaphone },
+    { id: 'ops', label: 'System Ops', subtitle: 'Bunny->Postgres sync, health & payment recovery', icon: Shield },
   ];
   const currentSection = navItems.find((n) => n.id === activeTab) || navItems[0];
 
@@ -1124,6 +1126,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'ads' && (
         <div className="animate-in fade-in duration-500">
           <SponsorAdsManager />
+        </div>
+      )}
+
+      {activeTab === 'ops' && (
+        <div className="animate-in fade-in duration-500">
+          <OpsHealthPanel />
         </div>
       )}
 
