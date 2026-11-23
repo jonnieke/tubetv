@@ -872,14 +872,14 @@ const App: React.FC = () => {
     // Only auto-advance modal playback, never hijack screen when an inline browse card ends
     if (!activeHeroVideo || activeHeroVideo.id !== videoId) return;
     setIsVideoFinished(true);
-    if (!preferences.autoplay || shouldSaveData(preferences.dataSaver)) return;
+    if (!preferences.autoplay) return;
     const nextVideo = nextEpisode(ratingFilteredVideos, videoId);
     if (nextVideo) {
       if (isItemLocked(nextVideo)) {
         openPaywallForVideo(nextVideo);
       } else {
         trackEvent('episode_next', { fromVideoId: videoId, toVideoId: nextVideo.id, automatic: true });
-        openVideo(nextVideo);
+        openVideo(nextVideo, { autoPlay: true, strictEpisode: true });
       }
     }
   };
@@ -2117,7 +2117,7 @@ const App: React.FC = () => {
             : [];
           const playerNode = (
             <VideoCard
-              key={`${activeHeroVideo.id}:${replayNonce}`}
+              key={`modal-player:${replayNonce}`}
               video={activeHeroVideo}
               autoPlay={modalAutoPlay}
               playerOnly
@@ -2136,7 +2136,7 @@ const App: React.FC = () => {
                       toVideoId: next.id,
                       automatic: false,
                     });
-                    openVideo(next);
+                    openVideo(next, { autoPlay: true, strictEpisode: true });
                   }
                 }
               }}
@@ -2167,7 +2167,7 @@ const App: React.FC = () => {
                     if (isItemLocked(ep)) {
                       openPaywallForVideo(ep);
                     } else {
-                      openVideo(ep);
+                      openVideo(ep, { autoPlay: true, strictEpisode: true });
                     }
                   }}
                   onStartPlayback={() => setModalAutoPlay(true)}

@@ -183,11 +183,27 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const qualities = ['Auto', '1080p', '720p', '480p', '360p'];
 
   useEffect(() => {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
     setAuthorizedSrc(needsSignedUrl ? '' : video.url || '');
+    setProgress(0);
+    setCurrentTime(0);
+    setDuration(0);
+    setPlaybackError(false);
+    setIsBuffering(false);
+    startedRef.current = false;
+    firstFrameRef.current = false;
+    bufferAtRef.current = null;
     authFetchedRef.current = null;
     qualifiedViewFiredRef.current = false;
     setSavedOffline(isVideoSavedOffline(video.id));
-  }, [video.id, video.url, needsSignedUrl]);
+    if (autoPlay && !isRatingLocked && !locked) {
+      setHasActivatedPlayback(true);
+      setIsPlaying(true);
+    }
+  }, [video.id, video.url, needsSignedUrl, autoPlay, isRatingLocked, locked]);
 
   useEffect(() => {
     const syncOffline = () => setSavedOffline(isVideoSavedOffline(video.id));
@@ -347,15 +363,30 @@ const VideoCard: React.FC<VideoCardProps> = ({
     videoEl.muted = wantMuted;
     videoEl.volume = volume;
 
+    const playWithAutoplayFallback = (el: HTMLVideoElement) => {
+      el.play().catch((err) => {
+        if (cancelled) return;
+        const isNotAllowed = err && typeof err === 'object' && (err as { name?: string }).name === 'NotAllowedError';
+        if (isNotAllowed && !el.muted) {
+          el.muted = true;
+          setIsMuted(true);
+          el.play().catch(() => {
+            if (!cancelled) {
+              setIsPlaying(false);
+              setIsHoverPlay(false);
+            }
+          });
+          return;
+        }
+        setIsPlaying(false);
+        setIsHoverPlay(false);
+      });
+    };
+
     // Resume already-initialized stream instead of re-creating HLS on pause -> play!
     if (hlsRef.current) {
       hlsRef.current.startLoad();
-      videoEl.play().catch(() => {
-        if (!cancelled) {
-          setIsPlaying(false);
-          setIsHoverPlay(false);
-        }
-      });
+      playWithAutoplayFallback(videoEl);
       return;
     }
 
@@ -369,12 +400,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       if (videoEl.src !== activeVideoSrc) {
         videoEl.src = activeVideoSrc;
       }
-      videoEl.play().catch(() => {
-        if (!cancelled) {
-          setIsPlaying(false);
-          setIsHoverPlay(false);
-        }
-      });
+      playWithAutoplayFallback(videoEl);
       return;
     }
 
@@ -385,12 +411,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
         if (!Hls.isSupported()) {
           currentEl.src = activeVideoSrc;
-          currentEl.play().catch(() => {
-            if (!cancelled) {
-              setIsPlaying(false);
-              setIsHoverPlay(false);
-            }
-          });
+          playWithAutoplayFallback(currentEl);
           return;
         }
 
@@ -428,12 +449,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
             }
           }
           videoRef.current.muted = isHoverPlay && !isPlaying ? true : isMuted;
-          videoRef.current.play().catch(() => {
-            if (!cancelled) {
-              setIsPlaying(false);
-              setIsHoverPlay(false);
-            }
-          });
+          playWithAutoplayFallback(videoRef.current);
         });
 
         hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -474,12 +490,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       if (!videoEl.src || videoEl.src !== activeVideoSrc) {
         videoEl.src = activeVideoSrc;
       }
-      videoEl.play().catch(() => {
-        if (!cancelled) {
-          setIsPlaying(false);
-          setIsHoverPlay(false);
-        }
-      });
+      playWithAutoplayFallback(videoEl);
     }
 
     return () => {
