@@ -366,12 +366,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
     const playWithAutoplayFallback = (el: HTMLVideoElement) => {
       el.play().catch((err) => {
         if (cancelled) return;
-        const isNotAllowed = err && typeof err === 'object' && (err as { name?: string }).name === 'NotAllowedError';
-        if (isNotAllowed && !el.muted) {
+        const errName = err && typeof err === 'object' ? (err as { name?: string }).name : '';
+        // Ignore AbortError caused by a new source/episode load or if the element is already playing.
+        if (errName === 'AbortError' || !el.paused) return;
+        if (errName === 'NotAllowedError' && !el.muted) {
           el.muted = true;
           setIsMuted(true);
           el.play().catch(() => {
-            if (!cancelled) {
+            if (!cancelled && el.paused) {
               setIsPlaying(false);
               setIsHoverPlay(false);
             }
@@ -857,6 +859,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
     const current = videoRef.current.currentTime;
     const total = videoRef.current.duration;
 
+    // Keep UI state in sync with real playback so buffering/play overlays can never get stuck over playing video
+    if (!videoRef.current.paused && videoRef.current.readyState >= 3) {
+      if (isBuffering) setIsBuffering(false);
+      if (isAuthorizing) setIsAuthorizing(false);
+      if (!isPlaying && !isHoverPlay) setIsPlaying(true);
+    }
+
     // Enforce 30-second free preview for all long-format videos on both hover-play and click-to-play
     if (requiresThirtySecondPaywall && current >= LONG_FORMAT_PREVIEW_SECONDS) {
       triggerThirtySecondPaywall();
@@ -1227,17 +1236,19 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 saveCurrentProgress();
               }}
               onWaiting={() => {
-                if (hlsRef.current) {
-                  hlsRef.current.startLoad();
-                }
                 if (firstFrameRef.current && bufferAtRef.current === null) bufferAtRef.current = performance.now();
                 if (isPlaying || (isHovering && isHoverPlay)) {
                   setIsBuffering(true);
                 }
               }}
+              onCanPlay={() => {
+                setIsBuffering(false);
+              }}
               onPlaying={() => {
                 document.dispatchEvent(new CustomEvent('tubetv:player-start', { detail: playerInstanceRef.current }));
                 setIsBuffering(false);
+                setIsAuthorizing(false);
+                if (!isHoverPlay) setIsPlaying(true);
                 onPlay?.();
                 if (bufferAtRef.current !== null) {
                   trackEvent('playback_buffer', {
@@ -1319,7 +1330,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
             </video>
 
             {/* Paused Center Resume Button */}
-            {!isPlaying && !isHoverPlay && !playbackError && (
+            {!isPlaying && !isHoverPlay && !playbackError && !isBuffering && !isAuthorizing && (
               <button
                 type="button"
                 onClick={togglePlay}
