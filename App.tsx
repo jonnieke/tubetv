@@ -1675,7 +1675,7 @@ const App: React.FC = () => {
               if (!resumeItem) return null;
               const prog = watchProgress[resumeItem.id];
               const fraction =
-                prog && prog.duration > 0 ? Math.min(1, Math.max(0, prog.seconds / prog.duration)) : 0;
+                prog && prog.durationSeconds > 0 ? Math.min(1, Math.max(0, prog.positionSeconds / prog.durationSeconds)) : 0;
               const upcoming = nextEpisode(ratingFilteredVideos, resumeItem.id);
               return (
                 <ContinueBingeBar

@@ -16,7 +16,7 @@ import {
   Sliders,
   AlertCircle
 } from 'lucide-react';
-import { BunnyVideoItem } from '../services/bunnyService';
+import { BunnyVideoItem, bunnyVideoToVideo } from '../services/bunnyService';
 import CreatorPayoutDisbursement from './CreatorPayoutDisbursement';
 import CreatorPromoLinkCard from './CreatorPromoLinkCard';
 import { supabase } from '../lib/supabase';
@@ -514,7 +514,7 @@ export default function RoyaltiesDashboard({ videos = [] }: RoyaltiesDashboardPr
         </div>
       )}
 
-      {videos.length > 0 && <CreatorPromoLinkCard videos={videos} />}
+      {videos.length > 0 && <CreatorPromoLinkCard videos={videos.map(bunnyVideoToVideo)} />}
 
       {payoutSuccessMessage && (
         <div className="bg-emerald-950/60 border border-emerald-500/50 text-emerald-200 px-5 py-3.5 rounded-xl text-sm flex items-center justify-between">

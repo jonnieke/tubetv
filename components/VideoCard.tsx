@@ -43,6 +43,7 @@ interface VideoCardProps {
   autoPlay?: boolean;
   playerOnly?: boolean;
   onPlay?: () => void;
+  onEnded?: (videoId: string) => void;
   isLocked?: (video: Video) => boolean;
   uniformAspect?: 'video' | 'portrait';
 }
