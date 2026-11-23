@@ -198,11 +198,20 @@ function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; val
     return false;
   }
 
+  const isMicroDramaCat =
+    category === "micro dramas" || getTag(tags, "seriesformat").toLowerCase() === "micro-drama";
+  const isSeriesOrMovieCat = category === "series" || category === "movies";
+  const accessTier = getTag(tags, "accesstier").toLowerCase();
+
   const freeStr = getTag(tags, "freeepisodes");
   const rawFree = freeStr !== "" ? Number(freeStr) : NaN;
   const totalSeriesEpsStr = getTag(tags, "totalseriesepisodes") || getTag(tags, "seriesepisodecount");
   const totalSeriesEps = totalSeriesEpsStr !== "" ? Number(totalSeriesEpsStr) : NaN;
-  const defaultFreeCount = Number.isFinite(totalSeriesEps) && totalSeriesEps >= 30 ? 5 : 2;
+  const defaultFreeCount = isSeriesOrMovieCat && !isMicroDramaCat
+    ? 0
+    : Number.isFinite(totalSeriesEps) && totalSeriesEps >= 30
+      ? 5
+      : 2;
   const freeCount = Number.isFinite(rawFree) && rawFree >= 0 ? rawFree : defaultFreeCount;
 
   const epStr = getTag(tags, "episode");
@@ -216,17 +225,23 @@ function isCatalogueItemLocked(item: { metaTags?: Array<{ property?: string; val
       ? Number(titleMatch[1])
       : undefined;
 
-  // Enforced: Episodic content triggers paywall after episode 2 (episode 3+)
   if (episodeNum !== undefined && episodeNum > 0) {
+    if (isSeriesOrMovieCat && !isMicroDramaCat && accessTier === "free") {
+      return false;
+    }
     return episodeNum > freeCount;
   }
 
-  const accessTier = getTag(tags, "accesstier").toLowerCase();
+  if (isSeriesOrMovieCat) {
+    // Movies & Series are locked to Premium by default unless explicitly marked accessTier=free
+    return accessTier !== "free";
+  }
+
   if (accessTier === "free" || getTag(tags, "ispremium").toLowerCase() === "false") {
     return false;
   }
 
-  // By default: all videos are premium except shorts and episodes 1 & 2
+  // By default: all videos are premium except shorts and Micro Drama opening episodes
   return true;
 }
 

@@ -500,6 +500,8 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     Number.isFinite(parsedFreeEpisodes) && parsedFreeEpisodes >= 0 ? parsedFreeEpisodes : undefined;
   const effectiveFreeEpisodes = explicitFreeEpisodes ?? (isMicroDramaCat ? 2 : 0);
 
+  const isSeriesOrMovieCat = category === 'Series' || category === 'Movies';
+
   let isPremium: boolean;
   if (isShort) {
     isPremium = false;
@@ -508,8 +510,11 @@ export const bunnyVideoToVideo = (item: BunnyVideoItem) => {
     isPremium = parsedEpisode !== undefined
       ? parsedEpisode > effectiveFreeEpisodes
       : rawTier !== 'free' && rawIsPremium !== 'false';
+  } else if (isSeriesOrMovieCat) {
+    // Series & Movies are locked to Premium by default (ignoring legacy isPremium=false without explicit accessTier=free)
+    isPremium = rawTier === 'free' ? false : true;
   } else {
-    // Except Shorts and Micro Dramas, everything else is Premium by default unless explicitly free.
+    // Everything else is Premium by default unless explicitly free.
     isPremium = rawTier === 'free' || rawIsPremium === 'false' ? false : true;
   }
   const accessTier = isPremium ? ('premium' as const) : ('free' as const);

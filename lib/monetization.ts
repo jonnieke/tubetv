@@ -30,6 +30,12 @@ export function getFreeEpisodeCount(video: Video, totalSeriesEpisodes?: number):
   if (typeof video.freeEpisodes === 'number' && Number.isFinite(video.freeEpisodes) && video.freeEpisodes >= 0) {
     return video.freeEpisodes;
   }
+  const isMicroDramaCat = video.seriesFormat === 'micro-drama' || video.category === 'Micro Dramas';
+  // Series & Movies are locked to Premium by default (0 free opening episodes).
+  // Only Micro Dramas get 2 free opening episodes (expanding to 5 at 30+ episodes).
+  if (!isMicroDramaCat && (video.category === 'Series' || video.category === 'Movies')) {
+    return 0;
+  }
   if (typeof totalSeriesEpisodes === 'number' && totalSeriesEpisodes >= EXPANDED_FREE_EPISODE_THRESHOLD) {
     return EXPANDED_FREE_EPISODES;
   }

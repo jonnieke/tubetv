@@ -161,6 +161,48 @@ describe('monetization rules', () => {
       expect(isContentFree(defaultMovie)).toBe(false);
     });
 
+    it('locks Series episodes 1 and 2 and legacy isPremium=false Movies/Series to Premium by default', () => {
+      const seriesEp1: Video = {
+        ...baseVideo,
+        id: 'series-ep-1',
+        category: 'Series',
+        seriesTitle: 'Nairobi Hustle',
+        episode: 1,
+        isPremium: true,
+      };
+      const seriesEp2: Video = {
+        ...baseVideo,
+        id: 'series-ep-2',
+        category: 'Series',
+        seriesTitle: 'Nairobi Hustle',
+        episode: 2,
+        isPremium: true,
+      };
+      expect(isVideoLocked(seriesEp1, false)).toBe(true);
+      expect(isVideoLocked(seriesEp2, false)).toBe(true);
+      expect(isContentFree(seriesEp1)).toBe(false);
+      expect(isContentFree(seriesEp2)).toBe(false);
+
+      const legacyMovie = bunnyVideoToVideo({
+        guid: 'legacy-movie-1',
+        title: 'Trapped to Love',
+        length: 5400,
+        views: 10,
+        status: 4,
+        encodeProgress: 100,
+        thumbnailFileName: 'thumb.jpg',
+        dateUploaded: '2026-11-16T00:00:00Z',
+        storageSize: 1000,
+        metaTags: [
+          { property: 'category', value: 'Movies' },
+          { property: 'isPremium', value: 'false' },
+        ],
+      });
+      expect(legacyMovie.isPremium).toBe(true);
+      expect(legacyMovie.accessTier).toBe('premium');
+      expect(isVideoLocked(legacyMovie, false)).toBe(true);
+    });
+
     it('keeps shorts free by default', () => {
       const shortVideoByCategory: Video = { ...baseVideo, id: 'short-1', category: 'Shorts', isPremium: false };
       const shortVideoByProp: Video = { ...baseVideo, id: 'short-2', category: 'Shorts', isShort: true, isPremium: true };
