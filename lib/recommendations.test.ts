@@ -52,4 +52,20 @@ describe('viewer recommendations', () => {
     expect(related.map(v => v.id)).toEqual(['rel1', 'rel2', 'other']);
     expect(related.map(v => v.id)).not.toContain('main');
   });
+
+  it('orders Continue Watching by most recently watched and deduplicates per series', () => {
+    const library = [
+      video('lekuta-1', { category: 'Micro Dramas', seriesId: 'lekuta', episode: 1 }),
+      video('lekuta-2', { category: 'Micro Dramas', seriesId: 'lekuta', episode: 2 }),
+      video('woman-1', { category: 'Micro Dramas', seriesId: 'woman', episode: 1 }),
+      video('movie-a', { category: 'Movies' }),
+    ];
+    const result = recommendVideos(library, {
+      'lekuta-1': { positionSeconds: 45, durationSeconds: 90, completed: false, updatedAt: 1000 },
+      'lekuta-2': { positionSeconds: 30, durationSeconds: 90, completed: false, updatedAt: 2000 },
+      'woman-1': { positionSeconds: 40, durationSeconds: 80, completed: false, updatedAt: 3000 },
+      'movie-a': { positionSeconds: 600, durationSeconds: 1800, completed: false, updatedAt: 4000 },
+    }, []);
+    expect(result.continueWatching.map((v) => v.id)).toEqual(['movie-a', 'woman-1', 'lekuta-2']);
+  });
 });

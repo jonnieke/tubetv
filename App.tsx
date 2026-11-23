@@ -504,8 +504,9 @@ const App: React.FC = () => {
   };
 
   const handleWatchProgress = (videoId: string, progress: WatchProgress) => {
-    setWatchProgress((current) => ({ ...current, [videoId]: progress }));
-    void saveProgress(currentUser?.id, videoId, progress);
+    const stamped: WatchProgress = { ...progress, updatedAt: progress.updatedAt ?? Date.now() };
+    setWatchProgress((current) => ({ ...current, [videoId]: stamped }));
+    void saveProgress(currentUser?.id, videoId, stamped);
   };
 
   const isAdmin = isAdminUser(currentUser);
@@ -1670,8 +1671,7 @@ const App: React.FC = () => {
             )}
 
             {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && recommendations.continueWatching.length > 0 && (() => {
-              const resumeItem =
-                recommendations.continueWatching.find(isMicroDrama) || recommendations.continueWatching[0];
+              const resumeItem = recommendations.continueWatching[0];
               if (!resumeItem) return null;
               const prog = watchProgress[resumeItem.id];
               const fraction =

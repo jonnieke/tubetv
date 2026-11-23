@@ -14,6 +14,7 @@ export interface WatchProgress {
   positionSeconds: number;
   durationSeconds: number;
   completed: boolean;
+  updatedAt?: number;
 }
 
 export const DEFAULT_PLAYBACK_PREFERENCES: PlaybackPreferences = {
@@ -178,20 +179,24 @@ export async function loadProgress(userId?: string): Promise<Record<string, Watc
   try {
     const { data, error } = await supabase
       .from('watch_progress')
-      .select('video_id, position_seconds, duration_seconds, completed')
-      .eq('user_id', userId);
+      .select('video_id, position_seconds, duration_seconds, completed, updated_at')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
     if (error || !data) return local;
-    const remote = Object.fromEntries(
-      data.map((row) => [
-        row.video_id,
-        {
+    const merged: Record<string, WatchProgress> = { ...local };
+    for (const row of data) {
+      const remoteTs = row.updated_at ? Date.parse(row.updated_at) : 0;
+      const existing = merged[row.video_id];
+      const localTs = existing?.updatedAt || 0;
+      if (!existing || remoteTs >= localTs) {
+        merged[row.video_id] = {
           positionSeconds: Number(row.position_seconds),
           durationSeconds: Number(row.duration_seconds),
           completed: Boolean(row.completed),
-        },
-      ]),
-    );
-    const merged = { ...local, ...remote };
+          updatedAt: Number.isFinite(remoteTs) && remoteTs > 0 ? remoteTs : undefined,
+        };
+      }
+    }
     writeLocal(progressKey(userId), merged);
     return merged;
   } catch {
@@ -204,8 +209,10 @@ export async function saveProgress(
   videoId: string,
   progress: WatchProgress,
 ) {
+  const updatedAt = progress.updatedAt ?? Date.now();
+  const stamped: WatchProgress = { ...progress, updatedAt };
   const current = readLocal<Record<string, WatchProgress>>(progressKey(userId), {});
-  writeLocal(progressKey(userId), { ...current, [videoId]: progress });
+  writeLocal(progressKey(userId), { ...current, [videoId]: stamped });
   if (!userId || isLocalAuthUserId(userId)) {
     schedulePassCloudSync(videoId);
     return;
@@ -215,10 +222,10 @@ export async function saveProgress(
     const { error } = await supabase.from('watch_progress').upsert({
       user_id: userId,
       video_id: videoId,
-      position_seconds: progress.positionSeconds,
-      duration_seconds: progress.durationSeconds,
-      completed: progress.completed,
-      updated_at: new Date().toISOString(),
+      position_seconds: stamped.positionSeconds,
+      duration_seconds: stamped.durationSeconds,
+      completed: stamped.completed,
+      updated_at: new Date(updatedAt).toISOString(),
     });
     if (error) console.warn('Could not sync watch progress:', error.message);
   } catch {

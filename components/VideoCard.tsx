@@ -834,6 +834,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
     });
   };
 
+  const saveCurrentProgressRef = useRef<() => void>(() => {});
+  saveCurrentProgressRef.current = () => saveCurrentProgress();
+
+  // Save watch progress whenever closing the modal or switching to another episode
+  useEffect(() => {
+    return () => {
+      saveCurrentProgressRef.current();
+    };
+  }, [video.id]);
+
   const triggerThirtySecondPaywall = () => {
     if (videoRef.current) {
       videoRef.current.pause();
@@ -875,7 +885,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     setCurrentTime(current);
     setDuration(total || 0);
     setProgress(total > 0 ? (current / total) * 100 : 0);
-    if (!isHoverPlay && total > 0 && Math.abs(current - lastProgressSaveRef.current) >= 10) {
+    if (!isHoverPlay && total > 0 && Math.abs(current - lastProgressSaveRef.current) >= 5) {
       saveCurrentProgress();
     }
 

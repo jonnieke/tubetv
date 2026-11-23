@@ -17,20 +17,29 @@ export function recommendVideos(
   const byId = new Map(videos.map(video => [video.id, video]));
   const continueWatching: Video[] = [];
   const continuationIds = new Set<string>();
-  const progressEntries = Object.entries(progress);
+  const continuedSeries = new Set<string>();
+  // Sort progress entries most-recently-watched first (newest updatedAt first; preserve insertion order when unstamped)
+  const progressEntries = Object.entries(progress)
+    .map((entry, idx) => ({ entry, idx }))
+    .sort((a, b) => ((b.entry[1].updatedAt || 0) - (a.entry[1].updatedAt || 0)) || (a.idx - b.idx))
+    .map(({ entry }) => entry);
 
   for (const [id, state] of progressEntries) {
     const video = byId.get(id);
     if (!video || state.positionSeconds <= 0) continue;
     const continuation = state.completed ? nextEpisode(videos, id) : video;
     if (!continuation || progress[continuation.id]?.completed || continuationIds.has(continuation.id)) continue;
+    // Deduplicate per series so multiple episodes of one show don't crowd out other shows
+    const sKey = seriesKey(continuation);
+    if (sKey && continuedSeries.has(sKey)) continue;
+    if (sKey) continuedSeries.add(sKey);
     continuationIds.add(continuation.id);
     continueWatching.push(continuation);
   }
 
   const interests = [...new Set([...watchLater, ...progressEntries.filter(([, state]) => state.positionSeconds > 0).map(([id]) => id)])]
     .map(id => byId.get(id)).filter((video): video is Video => Boolean(video));
-  if (!interests.length) return { continueWatching: continueWatching.slice(0, 6), forYou: [] };
+  if (!interests.length) return { continueWatching: continueWatching.slice(0, 12), forYou: [] };
 
   const saved = new Set(watchLater);
   const seenSeries = new Set<string>();
@@ -65,7 +74,7 @@ export function recommendVideos(
     if (key) seenSeries.add(key);
     return true;
   }).slice(0, 12).map(({ video }) => video);
-  return { continueWatching: continueWatching.slice(0, 6), forYou };
+  return { continueWatching: continueWatching.slice(0, 12), forYou };
 }
 
 /** Find related recommendations for a specific finished video (movie or series). */
