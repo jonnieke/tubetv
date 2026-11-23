@@ -101,6 +101,21 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
   const [dismissedForVideoId, setDismissedForVideoId] = useState<string | null>(null);
   const [mobileSheet, setMobileSheet] = useState<'none' | 'episodes' | 'comments'>('none');
   const [desktopTab, setDesktopTab] = useState<'episodes' | 'comments'>('episodes');
+  // Mount playerSlot ONLY in the active viewport layout (never mount both mobile & desktop <video> elements!)
+  const [isDesktopLayout, setIsDesktopLayout] = useState<boolean>(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(min-width: 1024px)').matches
+      : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = (e: MediaQueryListEvent) => setIsDesktopLayout(e.matches);
+    setIsDesktopLayout(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   // Real engagement state (Supabase-backed with optimistic local fallback)
   const [isLiked, setIsLiked] = useState(false);
@@ -653,7 +668,7 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
 
         {/* Center Edge-to-Edge Vertical Video Stage */}
         <div className="relative flex-1 flex items-center justify-center w-full h-full bg-black">
-          <div className="w-full max-w-[460px] mx-auto">{playerSlot}</div>
+          <div className="w-full max-w-[460px] mx-auto">{!isDesktopLayout ? playerSlot : null}</div>
         </div>
 
         {/* Right-Edge Floating Vertical Action Rail (DramaBox / TikTok style) */}
@@ -853,7 +868,7 @@ export const MicroDramaPlayerLayout: React.FC<MicroDramaPlayerLayoutProps> = ({
           </button>
 
           <div className="w-full max-w-[360px] mx-auto rounded-xl overflow-hidden shadow-2xl border border-zinc-800/70 bg-black">
-            {playerSlot}
+            {isDesktopLayout ? playerSlot : null}
           </div>
         </div>
 
