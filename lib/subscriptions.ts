@@ -896,6 +896,13 @@ export async function restoreMpesaPass(mpesaReceipt: string, phone: string): Pro
   throw new Error(result.message || 'Could not restore pass with those details.');
 }
 
+const AUTHORIZED_URL_CACHE_TTL_MS = 15 * 60 * 1000;
+const authorizedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
+export function clearAuthorizedPlaybackCache(): void {
+  authorizedUrlCache.clear();
+}
+
 export async function resolveAuthorizedPlaybackUrl(
   videoId: string,
   fallbackUrl?: string,
@@ -912,6 +919,11 @@ export async function resolveAuthorizedPlaybackUrl(
   }
 
   const storedPass = getStoredPass();
+  const cacheKey = `${videoId}:${storedPass?.token || 'anon'}`;
+  const cached = authorizedUrlCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { locked: false, url: cached.url };
+  }
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -956,6 +968,10 @@ export async function resolveAuthorizedPlaybackUrl(
         setPlaySessionToken(videoId, payload.playSessionToken);
       }
       if (typeof payload?.playbackUrl === 'string' && payload.playbackUrl) {
+        authorizedUrlCache.set(cacheKey, {
+          url: payload.playbackUrl,
+          expiresAt: Date.now() + AUTHORIZED_URL_CACHE_TTL_MS,
+        });
         return { locked: false, url: payload.playbackUrl };
       }
     }

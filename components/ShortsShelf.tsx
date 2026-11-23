@@ -3,6 +3,7 @@ import { Play, Zap, VolumeX } from 'lucide-react';
 import type Hls from 'hls.js';
 import { ShortVideo } from '../types';
 import { loadHls } from '../lib/hlsLoader';
+import { buildHlsConfig } from '../lib/hlsConfig';
 import { shouldSaveData } from '../lib/network';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -70,16 +71,7 @@ const ShortItem: React.FC<{
           videoRef.current.play().catch(() => setShouldPlay(false));
           return;
         }
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          backBufferLength: 5,
-          maxBufferLength: 8,
-          maxMaxBufferLength: 15,
-          maxBufferSize: 8 * 1000 * 1000,
-          capLevelToPlayerSize: true,
-          abrEwmaDefaultEstimate: 500_000,
-        });
+        const hls = new Hls(buildHlsConfig({ profile: 'preview' }));
         hlsRef.current = hls;
         hls.loadSource(src);
         hls.attachMedia(videoRef.current);

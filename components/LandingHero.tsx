@@ -4,6 +4,7 @@ import type Hls from 'hls.js';
 import { Video } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { loadHls } from '../lib/hlsLoader';
+import { buildHlsConfig } from '../lib/hlsConfig';
 import { getFreeEpisodeCount, LONG_FORMAT_PREVIEW_SECONDS } from '../lib/monetization';
 import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
 import { isMicroDrama } from '../lib/series';
@@ -168,8 +169,7 @@ export default function LandingHero({
           if (cancelled || !videoRef.current) return;
           if (HlsClass && HlsClass.isSupported()) {
             const hls = new HlsClass({
-              enableWorker: true,
-              maxBufferLength: 15,
+              ...buildHlsConfig({ profile: 'preview' }),
               startPosition: isMicro ? 0 : HERO_START_OFFSET_SECONDS,
             });
             hlsRef.current = hls;

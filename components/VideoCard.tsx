@@ -21,6 +21,8 @@ import { Video } from '../types';
 import { CONTENT_RATING_ENFORCED } from '../constants';
 import type Hls from 'hls.js';
 import { loadHls } from '../lib/hlsLoader';
+import { buildHlsConfig } from '../lib/hlsConfig';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { canWatchContent, normalizeContentRating, ratingDescription } from '../lib/contentRating';
@@ -96,12 +98,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const effectiveDataSaver = shouldSaveData(preferences.dataSaver);
   const preferredQuality = effectiveDataSaver ? '360p' : preferences.quality === 'auto' ? 'Auto' : preferences.quality;
 
+  const isBunnyGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(video.id);
+  const needsSignedUrl = isBunnyGuid && isSupabaseConfigured;
   const canAutoStart = Boolean(autoPlay && !isRatingLocked && !locked);
   const [isPlaying, setIsPlaying] = useState(canAutoStart);
   const [hasActivatedPlayback, setHasActivatedPlayback] = useState(
     Boolean(canAutoStart && !isRatingLocked && !locked),
   );
-  const [authorizedSrc, setAuthorizedSrc] = useState<string>(video.url || '');
+  const [authorizedSrc, setAuthorizedSrc] = useState<string>(needsSignedUrl ? '' : video.url || '');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -173,17 +177,16 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const hlsRef = useRef<Hls | null>(null);
 
   const rawVideoSrc = video.url || '';
-  const activeVideoSrc = authorizedSrc || rawVideoSrc;
-  const isBunnyGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(video.id);
+  const activeVideoSrc = needsSignedUrl ? authorizedSrc : authorizedSrc || rawVideoSrc;
   const hasPlayableSource = Boolean(rawVideoSrc || authorizedSrc || isBunnyGuid);
   const qualities = ['Auto', '1080p', '720p', '480p', '360p'];
 
   useEffect(() => {
-    setAuthorizedSrc(video.url || '');
+    setAuthorizedSrc(needsSignedUrl ? '' : video.url || '');
     authFetchedRef.current = null;
     qualifiedViewFiredRef.current = false;
     setSavedOffline(isVideoSavedOffline(video.id));
-  }, [video.id, video.url]);
+  }, [video.id, video.url, needsSignedUrl]);
 
   useEffect(() => {
     const syncOffline = () => setSavedOffline(isVideoSavedOffline(video.id));
@@ -269,7 +272,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
     if (authFetchedRef.current === video.id) return;
     authFetchedRef.current = video.id;
 
-    if (!authorizedSrc && !video.url) {
+    if (needsSignedUrl && !authorizedSrc) {
+      setIsAuthorizing(true);
+    } else if (!authorizedSrc && !video.url) {
       setIsAuthorizing(true);
     }
     const requiresEntitlement = isVideoLocked(video, false);
@@ -393,24 +398,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
           hlsRef.current = null;
         }
 
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          backBufferLength: 15,
-          maxBufferLength: effectiveDataSaver ? 15 : 30,
-          maxMaxBufferLength: effectiveDataSaver ? 30 : 60,
-          maxBufferSize: (effectiveDataSaver ? 12 : 30) * 1000 * 1000,
-          maxBufferHole: 0.5,
-          nudgeOffset: 0.2,
-          nudgeMaxRetry: 5,
-          capLevelToPlayerSize: true,
-          abrEwmaDefaultEstimate: effectiveDataSaver ? 350_000 : 600_000,
-          startLevel: 0,
-          fragLoadingTimeOut: 12000,
-          fragLoadingMaxRetry: 4,
-          levelLoadingTimeOut: 8000,
-          manifestLoadingTimeOut: 8000,
-        });
+        const hls = new Hls(buildHlsConfig({ dataSaver: effectiveDataSaver, profile: 'standard' }));
+        let fatalNetworkRetries = 0;
         hlsRef.current = hls;
         hls.loadSource(activeVideoSrc);
         hls.attachMedia(currentEl);
@@ -449,12 +438,20 @@ const VideoCard: React.FC<VideoCardProps> = ({
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (cancelled) return;
           if (!data.fatal) {
-            if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
-              hls.startLoad();
+            // Do NOT call hls.startLoad() on non-fatal BUFFER_STALLED_ERROR:
+            // aborting an in-flight segment download causes an infinite rebuffer loop.
+            // Instead, step down one quality rung if ABR is on Auto so the next segment loads faster.
+            if (
+              data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR &&
+              hls.autoLevelEnabled &&
+              hls.currentLevel > 0
+            ) {
+              hls.nextAutoLevel = Math.max(0, hls.currentLevel - 1);
             }
             return;
           }
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && fatalNetworkRetries < 3) {
+            fatalNetworkRetries += 1;
             console.warn('HLS network error, recovering stream...', data);
             hls.startLoad();
             return;

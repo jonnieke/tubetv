@@ -4,6 +4,7 @@ import { ShortVideo } from '../types';
 import { MOCK_SHORTS } from '../constants';
 import type Hls from 'hls.js';
 import { loadHls } from '../lib/hlsLoader';
+import { buildHlsConfig } from '../lib/hlsConfig';
 import { shouldSaveData } from '../lib/network';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -363,18 +364,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, isNearby, dataSa
             hlsRef.current = null;
           }
 
-          const hls = new Hls({
-            enableWorker: true,
-            lowLatencyMode: false,
-            backBufferLength: 10,
-            maxBufferLength: 15,
-            maxMaxBufferLength: 30,
-            maxBufferSize: 20 * 1000 * 1000,
-            capLevelToPlayerSize: true,
-            abrEwmaDefaultEstimate: 800_000,
-            fragLoadingTimeOut: 15000,
-            fragLoadingMaxRetry: 4,
-          });
+          const hls = new Hls(buildHlsConfig({ dataSaver, profile: 'short' }));
           hlsRef.current = hls;
           hls.loadSource(videoSrc);
           hls.attachMedia(videoRef.current);
