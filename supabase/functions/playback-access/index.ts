@@ -46,12 +46,10 @@ async function fetchPublishedVideoMeta(
           .select("is_published, raw_public_item")
           .eq("guid", videoId)
           .maybeSingle();
-        if (epRow) {
-          const item = epRow.is_published && epRow.raw_public_item
-            ? (epRow.raw_public_item as ReturnType<typeof publicItem>)
-            : null;
+        if (epRow && epRow.is_published && epRow.raw_public_item) {
+          const item = epRow.raw_public_item as ReturnType<typeof publicItem>;
           videoMetaCache.set(videoId, { item, cachedAt: Date.now() });
-          return { status: item ? 200 : 404, item };
+          return { status: 200, item };
         }
       } catch {
         // Fall through to Bunny Management API on transient DB error
