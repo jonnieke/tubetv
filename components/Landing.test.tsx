@@ -2,6 +2,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import LandingHero from './LandingHero';
+import LandingCrossCta from './LandingCrossCta';
 import LandingFooter from './LandingFooter';
 import MicroDramaComingSoon from './MicroDramaComingSoon';
 import ViewerWelcome from './ViewerWelcome';
@@ -49,5 +50,18 @@ describe('Landing presentation preserves the platform', () => {
     expect(html).toContain('No account needed');
     expect(html).toContain('Skip introduction');
     expect(html).toContain('aria-expanded="false"');
+  });
+
+  it('renders high-visibility cross-CTAs between the Micro Dramas and Movies & Series landing pages', () => {
+    const toCinema = renderToStaticMarkup(
+      <LandingCrossCta target="cinema" previewVideos={[video]} totalCount={120} onSwitch={() => {}} />,
+    );
+    const toMicro = renderToStaticMarkup(
+      <LandingCrossCta target="micro-dramas" previewVideos={[video]} totalCount={80} onSwitch={() => {}} />,
+    );
+    expect(toCinema).toContain('Want unlimited Movies &amp; Series? Click here!');
+    expect(toCinema).toContain('Explore Movies &amp; Series');
+    expect(toMicro).toContain('Want addictive Micro Dramas? Click here!');
+    expect(toMicro).toContain('Explore Micro Dramas');
   });
 });
