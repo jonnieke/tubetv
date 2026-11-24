@@ -73,7 +73,7 @@ import {
   type PlaybackPreferences,
   type WatchProgress,
 } from './lib/viewerState';
-import { setVideoMetadata, videoPath } from './lib/seo';
+import { setLandingMetadata, setVideoMetadata, videoPath } from './lib/seo';
 import LegalPage from './components/LegalPage';
 import { trackEvent } from './lib/analytics';
 import { buildComingSoonSchedule, compareEpisodes, isMicroDrama, isNewEpisode, nextEpisode, seriesKey, seriesSlug } from './lib/series';
@@ -1062,8 +1062,12 @@ const App: React.FC = () => {
   useEffect(() => {
     const pathname = window.location.pathname;
     if (pathname === '/privacy' || pathname === '/terms') return;
-    setVideoMetadata(activeHeroVideo || undefined);
-  }, [activeHeroVideo]);
+    if (activeHeroVideo) {
+      setVideoMetadata(activeHeroVideo);
+    } else {
+      setLandingMetadata(landingMode);
+    }
+  }, [activeHeroVideo, landingMode]);
 
   useEffect(() => {
     if (!activeHeroVideo) return;
@@ -1243,6 +1247,16 @@ const App: React.FC = () => {
   }, []);
 
   const handleNavigate = (view: ViewStateOrString, category?: string) => {
+    // Route top-nav Movies / Series directly to the Long-Format Cinema landing page (/movies),
+    // and Micro Dramas directly to the Micro Dramas landing page (/).
+    if (view === ViewState.MICRO_DRAMAS && !category) {
+      switchLandingMode('micro-dramas');
+      return;
+    }
+    if (view === ViewState.ORIGINALS && (category === 'Movies' || category === 'Series')) {
+      switchLandingMode('cinema');
+      return;
+    }
     if (view === ViewState.SETTINGS) {
       const validTabs: SettingsTabId[] = ['general', 'pass', 'account', 'privacy'];
       setSettingsInitialTab(validTabs.includes(category as SettingsTabId) ? (category as SettingsTabId) : 'general');

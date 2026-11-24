@@ -127,8 +127,9 @@ interface AnalyticsDashboardProps {
   onAddCategory?: (name: string, iconName: string) => void;
   onRemoveCategory?: (id: string) => void;
   videos?: BunnyVideoItem[];
-  /** When mounted inside AdminDashboard, Royalties & Payouts is its own sidebar tab, so the inner copy is hidden. */
+  /** When mounted inside AdminDashboard, Royalties & Menu Manager are their own sidebar tabs. */
   embedded?: boolean;
+  initialTab?: 'overview' | 'menu' | 'royalties';
   onOpenRoyalties?: () => void;
 }
 
@@ -138,10 +139,15 @@ export default function AnalyticsDashboard({
   onRemoveCategory = () => { },
   videos,
   embedded = false,
+  initialTab = 'overview',
   onOpenRoyalties,
 }: AnalyticsDashboardProps) {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'overview' | 'menu' | 'royalties'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'menu' | 'royalties'>(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [newCatName, setNewCatName] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('Star');
   const [loadedVideos, setLoadedVideos] = useState<BunnyVideoItem[]>([]);
@@ -360,25 +366,25 @@ export default function AnalyticsDashboard({
           <h1 className="text-3xl font-bold text-white mb-2">{t('studio.welcome')}</h1>
           <p className="text-zinc-400">{t('studio.subtitle')}</p>
         </div>
-        <div className="flex gap-4">
-          <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-            <button
-              type="button"
-              onClick={() => setActiveTab('overview')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'overview' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-white'
-                }`}
-            >
-              {t('studio.overview')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('menu')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'menu' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-white'
-                }`}
-            >
-              {t('studio.menu')}
-            </button>
-            {!embedded && (
+        {!embedded && (
+          <div className="flex gap-4">
+            <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setActiveTab('overview')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'overview' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-white'
+                  }`}
+              >
+                {t('studio.overview')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('menu')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'menu' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-white'
+                  }`}
+              >
+                {t('studio.menu')}
+              </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('royalties')}
@@ -389,9 +395,9 @@ export default function AnalyticsDashboard({
                 <Coins className="w-4 h-4 text-amber-400" />
                 <span>Performance &amp; Royalties</span>
               </button>
-            )}
+            </div>
           </div>
-        </div>
+        )}
       </header>
 
       {activeTab === 'overview' && (

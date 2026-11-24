@@ -551,7 +551,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddCategory = () => {},
   onRemoveCategory = () => {},
 }) => {
-  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties' | 'submissions' | 'alerts' | 'ads' | 'ops'>('analytics');
+  const [activeTab, setActiveTab] = useState<'content' | 'upload' | 'analytics' | 'royalties' | 'menu' | 'submissions' | 'alerts' | 'ads' | 'ops'>('analytics');
   const [items, setItems] = useState<BunnyVideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -958,6 +958,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'content', label: 'Content & Paywall', subtitle: 'Manage episodes, lock status & metadata', icon: Film, badge: items.length || undefined },
     { id: 'upload', label: 'Upload Video', subtitle: 'Publish new episodes, series or originals', icon: UploadCloud },
     { id: 'royalties', label: 'Royalties & Payouts', subtitle: 'Creator splits, statements & M-Pesa payouts', icon: Coins },
+    { id: 'menu', label: 'Menu Manager', subtitle: 'Customize viewer navigation & categories', icon: Tag },
     { id: 'submissions', label: 'Submissions', subtitle: 'Review filmmaker pitches & screeners', icon: Inbox },
     { id: 'alerts', label: 'Pass Alerts', subtitle: 'Subscriber pass & expiry notifications', icon: BellRing },
     { id: 'ads', label: 'Sponsor Ads', subtitle: '30s non-skippable video ads & show sponsors', icon: Megaphone },
@@ -1152,7 +1153,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {activeTab === 'analytics' && (
+      {(activeTab === 'analytics' || activeTab === 'menu') && (
         <div className="animate-in fade-in duration-500">
           <AnalyticsDashboard 
             currentNavItems={currentNavItems} 
@@ -1160,6 +1161,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onRemoveCategory={onRemoveCategory} 
             videos={items}
             embedded
+            initialTab={activeTab === 'menu' ? 'menu' : 'overview'}
             onOpenRoyalties={() => setActiveTab('royalties')}
           />
         </div>

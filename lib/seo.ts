@@ -94,6 +94,26 @@ export function setPageMetadata({
   upsertCanonical(path);
 }
 
+export function setLandingMetadata(mode: 'micro-dramas' | 'cinema') {
+  if (typeof document === 'undefined') return;
+  if (mode === 'cinema') {
+    setPageMetadata({
+      title: 'TubeTV Cinema | Unlimited Kenyan Movies & Series',
+      description:
+        'Watch full-length Kenyan movies, drama series, School Flix, Kids, and Originals on TubeTV Cinema.',
+      path: '/movies',
+    });
+  } else {
+    setPageMetadata({
+      title: 'TubeTV | Kenyan Micro Dramas — Bite-Sized Vertical Series',
+      description:
+        'Binge addictive 1-minute Kenyan vertical Micro Dramas on TubeTV. Episodes 1 & 2 free on every show.',
+      path: '/',
+    });
+  }
+  document.getElementById('tubetv-video-schema')?.remove();
+}
+
 export function setVideoMetadata(video?: Video) {
   if (typeof document === 'undefined') return;
   const title = video ? `${video.seriesTitle || video.title} | TubeTV` : 'TubeTV | Kenyan videos, news, comedy and education';
