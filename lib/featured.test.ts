@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Video } from '../types';
-import { featuredMovies, featuredMicroDramas } from './featured';
+import { featuredMovies, featuredMicroDramas, featuredLongFormat } from './featured';
 
 const movie = (id: string, uploadDate: string, views: number, extra: Partial<Video> = {}): Video => ({
   id, title: id, category: 'Movies', author: 'Studio', thumbnail: '/art.jpg', duration: '90m', views, isPremium: false, uploadDate, ...extra,
@@ -61,6 +61,36 @@ describe('micro drama hero spotlight', () => {
 
     const featured = featuredMicroDramas(videos, 3);
     expect(featured.map(v => v.id)).toEqual(['drama-1', 'film-top', 'film-low']);
+  });
+
+  it('pins admin-featured shows first and reserves spotlight slots for brand-new 0-view launches', () => {
+    const videos = [
+      micro('hit-1', 'series-hit-1', 1, 90000, { uploadDate: '2026-01-01' }),
+      micro('hit-2', 'series-hit-2', 1, 80000, { uploadDate: '2026-01-02' }),
+      micro('hit-3', 'series-hit-3', 1, 70000, { uploadDate: '2026-01-03' }),
+      micro('hit-4', 'series-hit-4', 1, 60000, { uploadDate: '2026-01-04' }),
+      micro('hit-5', 'series-hit-5', 1, 50000, { uploadDate: '2026-01-05' }),
+      micro('new-launch', 'series-new-launch', 1, 0, { uploadDate: '2026-11-25' }),
+      micro('pinned-ep2', 'series-pinned', 2, 10, { uploadDate: '2026-02-01', featured: true }),
+      micro('pinned-ep1', 'series-pinned', 1, 5, { uploadDate: '2026-02-01' }),
+    ];
+
+    const featured = featuredMicroDramas(videos, 5);
+    expect(featured[0]?.id).toBe('pinned-ep1');
+    expect(featured.map((v) => v.id)).toContain('new-launch');
+    expect(featured).toHaveLength(5);
+  });
+
+  it('deduplicates series and honors pinned items in featuredLongFormat', () => {
+    const videos = [
+      movie('film-1', '2026-01-01', 5000),
+      movie('series-ep1', '2026-02-01', 4000, { category: 'Series', seriesTitle: 'Nairobi Heat', episode: 1 }),
+      movie('series-ep2', '2026-02-02', 4500, { category: 'Series', seriesTitle: 'Nairobi Heat', episode: 2 }),
+      movie('pinned-film', '2026-01-15', 10, { featured: true }),
+    ];
+    const hero = featuredLongFormat(videos, 4);
+    expect(hero[0]?.id).toBe('pinned-film');
+    expect(hero.filter((v) => v.seriesTitle === 'Nairobi Heat')).toHaveLength(1);
   });
 });
 

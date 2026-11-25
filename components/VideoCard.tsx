@@ -630,10 +630,6 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const handleCatalogueCardClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isRatingLocked) return;
-    if (locked) {
-      onRequireUnlock?.(video);
-      return;
-    }
 
     if (!playerOnly && onSelectVideo) {
       const now = Date.now();
@@ -644,7 +640,11 @@ const VideoCard: React.FC<VideoCardProps> = ({
         }
         lastClickTimeRef.current = 0;
         stopCardHoverPreview();
-        onSelectVideo(video, { autoPlay: true });
+        if (locked) {
+          onRequireUnlock?.(video);
+        } else {
+          onSelectVideo(video, { autoPlay: true });
+        }
         return;
       }
 
@@ -655,8 +655,15 @@ const VideoCard: React.FC<VideoCardProps> = ({
       cardClickTimerRef.current = setTimeout(() => {
         cardClickTimerRef.current = null;
         stopCardHoverPreview();
+        // Single-click always opens the Title Details modal (synopsis, rating, trailer, unlock CTA)
+        // even for locked Movies & Series so viewers can inspect the story before paying.
         onSelectVideo(video, { autoPlay: false });
       }, 220);
+      return;
+    }
+
+    if (locked) {
+      onRequireUnlock?.(video);
       return;
     }
 

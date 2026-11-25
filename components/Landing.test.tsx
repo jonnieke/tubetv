@@ -15,6 +15,7 @@ describe('Landing presentation preserves the platform', () => {
     expect(html).toContain('Real catalogue title');
     expect(html).toContain('Published synopsis');
     expect(html).toContain('Watch now');
+    expect(html).toContain('Movie Info');
     expect(html).toContain('Watch later');
     expect(html).toContain('aria-label="Featured titles"');
     expect(html).toContain('Show featured title 2');

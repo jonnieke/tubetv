@@ -139,9 +139,12 @@ export default function LandingHero({
 
     const startTimer = window.setTimeout(async () => {
       if (cancelled) return;
+      const publicTrailer = publicMediaUrl(video.seriesTrailerUrl || video.trailerUrl);
       const resolved = await resolveAuthorizedPlaybackUrl(video.id, video.url, false);
       if (cancelled) return;
-      const streamUrl = resolved.url || video.url;
+      // Only fall back to public trailer when playback-access reports the title is locked,
+      // avoiding failed 403 fetches against token-protected Bunny streams.
+      const streamUrl = resolved.url || (resolved.locked ? publicTrailer : video.url) || '';
       const el = videoRef.current;
       if (!el || !streamUrl) return;
 
@@ -228,6 +231,8 @@ export default function LandingHero({
   };
 
   const isMicro = isMicroDrama(video);
+  const heroArtSrc = video.seriesPosterUrl || video.thumbnail;
+  const isStandaloneMovie = !isMicro && !video.episode && !video.seriesTitle;
 
   return (
     <section
@@ -235,30 +240,49 @@ export default function LandingHero({
       aria-label="Featured content"
       onDoubleClick={onPlay}
     >
-      <CatalogueArtwork
-        src={video.seriesPosterUrl || video.thumbnail}
-        priority
-        className={`landing-hero-art transition-opacity duration-700 ${
-          trailerReady ? 'opacity-25 scale-105' : 'opacity-100'
-        }`}
-      />
-      {!dataSaver && (video.url || video.id) && (
-        <video
-          ref={videoRef}
-          muted={isMuted}
-          playsInline
-          preload="metadata"
-          onPlaying={() => setTrailerReady(true)}
-          onTimeUpdate={handleTimeUpdate}
-          onEnded={() => {
-            setTrailerReady(false);
-            advanceToNextSlide();
-          }}
-          className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-700 ${
-            trailerReady ? 'opacity-90' : 'opacity-0'
-          }`}
+      {/* Ambient blurred widescreen backdrop on desktop when showcasing vertical 9:16 Micro Dramas */}
+      {isMicro && heroArtSrc && (
+        <img
+          src={heroArtSrc}
+          alt=""
+          aria-hidden="true"
+          className="hidden md:block absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-45 pointer-events-none"
         />
       )}
+
+      {/* Stage container: full-bleed widescreen for Movies/Series & mobile, crisp uncropped 9:16 frame on desktop for Micro Dramas */}
+      <div
+        className={
+          isMicro
+            ? 'absolute inset-0 md:inset-auto md:right-[clamp(32px,7vw,120px)] md:top-5 md:bottom-20 md:aspect-[9/16] md:rounded-2xl md:overflow-hidden md:border md:border-white/15 md:shadow-2xl md:shadow-black/80 md:bg-zinc-950 md:z-10'
+            : 'absolute inset-0'
+        }
+      >
+        <CatalogueArtwork
+          src={heroArtSrc}
+          priority
+          className={`landing-hero-art ${isMicro ? '!object-[50%_20%] md:!object-center' : ''} transition-opacity duration-700 ${
+            trailerReady ? 'opacity-25 scale-105' : 'opacity-100'
+          }`}
+        />
+        {!dataSaver && (video.url || video.id) && (
+          <video
+            ref={videoRef}
+            muted={isMuted}
+            playsInline
+            preload="metadata"
+            onPlaying={() => setTrailerReady(true)}
+            onTimeUpdate={handleTimeUpdate}
+            onEnded={() => {
+              setTrailerReady(false);
+              advanceToNextSlide();
+            }}
+            className={`absolute inset-0 w-full h-full object-cover ${isMicro ? 'object-[50%_20%] md:object-center' : ''} pointer-events-none transition-opacity duration-700 ${
+              trailerReady ? 'opacity-90' : 'opacity-0'
+            }`}
+          />
+        )}
+      </div>
       <div className="landing-hero-shade" />
 
       {/* Top-Right Live Motion Controls & 30s Slide Countdown */}
@@ -360,7 +384,13 @@ export default function LandingHero({
             onClick={onMoreInfo || onPlay}
           >
             <Info size={16} />
-            {language === 'sw' ? 'Maelezo & Vipindi' : 'Episodes & Info'}
+            {isStandaloneMovie
+              ? language === 'sw'
+                ? 'Maelezo ya Filamu'
+                : 'Movie Info'
+              : language === 'sw'
+                ? 'Maelezo & Vipindi'
+                : 'Episodes & Info'}
           </button>
           {(() => {
             const trailerLink = publicMediaUrl(video.seriesTrailerUrl || video.trailerUrl);
@@ -429,13 +459,14 @@ export default function LandingHero({
         >
           {featuredVideos.slice(0, 5).map((item, idx) => {
             const active = idx === index;
+            const itemIsMicro = isMicroDrama(item);
             return (
               <button
                 type="button"
                 key={item.id}
                 onClick={() => onSelect(idx)}
                 onDoubleClick={onPlay}
-                className={`group/dock relative w-24 aspect-video rounded-lg overflow-hidden border transition-all duration-300 text-left ${
+                className={`group/dock relative ${itemIsMicro ? 'w-14 aspect-[2/3]' : 'w-24 aspect-video'} rounded-lg overflow-hidden border transition-all duration-300 text-left ${
                   active
                     ? 'border-red-500 ring-2 ring-red-500/40 scale-105'
                     : 'border-white/15 opacity-65 hover:opacity-100'

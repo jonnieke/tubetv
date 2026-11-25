@@ -9,12 +9,14 @@ import { triggerPwaPrompt } from './PWAInstallBanner';
 interface Props {
   view: ViewStateOrString;
   subcategory: string;
+  landingMode?: 'micro-dramas' | 'cinema';
   items: NavItem[];
   authenticated: boolean;
   admin: boolean;
   search: string;
   onSearch: (event: React.ChangeEvent<HTMLInputElement>) => void;
   navigate: (view: ViewStateOrString, category?: string) => void;
+  onSwitchLandingMode?: (mode: 'micro-dramas' | 'cinema') => void;
   login: () => void;
   logout: () => void;
   onOpenBuyPass?: () => void;
@@ -65,14 +67,33 @@ export default function CinemaNavigation(props: Props) {
       }}
     >
       <div className="cinema-nav-row">
-        <button type="button" className="cinema-logo" aria-label="TubeTV home" onClick={() => navigate(ViewState.HOME)}>
+        <button
+          type="button"
+          className="cinema-logo"
+          aria-label="TubeTV home"
+          onClick={() => {
+            if (props.onSwitchLandingMode) {
+              props.onSwitchLandingMode('micro-dramas');
+              setMore(false);
+            } else {
+              navigate(ViewState.HOME);
+            }
+          }}
+        >
           Tube<span>TV</span>
         </button>
         <nav className="cinema-nav-links" aria-label="Main navigation">
           <button
             type="button"
-            aria-current={props.view === ViewState.HOME ? 'page' : undefined}
-            onClick={() => navigate(ViewState.HOME)}
+            aria-current={props.view === ViewState.HOME && props.landingMode !== 'cinema' ? 'page' : undefined}
+            onClick={() => {
+              if (props.onSwitchLandingMode) {
+                props.onSwitchLandingMode('micro-dramas');
+                setMore(false);
+              } else {
+                navigate(ViewState.HOME);
+              }
+            }}
           >
             {t('nav.discover')}
           </button>
@@ -101,7 +122,12 @@ export default function CinemaNavigation(props: Props) {
           </button>
           <button
             type="button"
-            aria-current={props.view === ViewState.ORIGINALS && props.subcategory === 'Movies' ? 'page' : undefined}
+            aria-current={
+              (props.view === ViewState.ORIGINALS && props.subcategory === 'Movies') ||
+              (props.view === ViewState.HOME && props.landingMode === 'cinema')
+                ? 'page'
+                : undefined
+            }
             onClick={() => navigate(ViewState.ORIGINALS, 'Movies')}
           >
             {t('nav.movies')}

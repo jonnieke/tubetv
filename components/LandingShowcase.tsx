@@ -15,6 +15,7 @@ import {
 import { Video } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { detectDefaultRegion, REGIONAL_PRICING } from '../lib/subscriptions';
+import { seriesKey } from '../lib/series';
 import CatalogueArtwork from './CatalogueArtwork';
 
 const VideoCard = lazy(() => import('./VideoCard'));
@@ -69,8 +70,8 @@ export const TopTenCarousel: React.FC<TopTenCarouselProps> = ({
             </h2>
             <p className="text-[11px] text-zinc-400">
               {language === 'sw'
-                ? 'Bofya mara moja kuona maelezo · Bofya mara mbili kutazama filamu moja kwa moja'
-                : 'Hover for 30s preview · Single-click for details · Double-click to stream immediately'}
+                ? 'Bofya mara moja kuona hadithi & trela · Fungua filamu zote kuanzia KSh 10'
+                : 'Single-click for story & trailer · Double-click to stream or unlock from KSh 10'}
             </p>
           </div>
         </div>
@@ -142,7 +143,18 @@ export const CreatorOriginalsSpotlight: React.FC<CreatorSpotlightProps> = ({
   const { language } = useLanguage();
 
   const spotlightVideos = useMemo(() => {
-    return videos.slice(0, 3);
+    const seenSeries = new Set<string>();
+    const unique: Video[] = [];
+    for (const v of videos) {
+      const key = seriesKey(v);
+      if (key) {
+        if (seenSeries.has(key)) continue;
+        seenSeries.add(key);
+      }
+      unique.push(v);
+      if (unique.length >= 3) break;
+    }
+    return unique;
   }, [videos]);
 
   if (spotlightVideos.length === 0) return null;

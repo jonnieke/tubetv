@@ -568,6 +568,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [visibilitySavingIds, setVisibilitySavingIds] = useState<Set<string>>(new Set());
   const [tierSavingIds, setTierSavingIds] = useState<Set<string>>(new Set());
+  const [featuredSavingIds, setFeaturedSavingIds] = useState<Set<string>>(new Set());
   const [showBackToTop, setShowBackToTop] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
@@ -886,6 +887,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       alert('Failed to update access tier. Please try again.');
     } finally {
       setTierSavingIds((current) => {
+        const next = new Set(current);
+        next.delete(item.guid);
+        return next;
+      });
+    }
+  };
+
+  const toggleFeatured = async (item: BunnyVideoItem) => {
+    if (featuredSavingIds.has(item.guid)) return;
+    const currentlyPinned = getMeta(item.metaTags, 'featured').toLowerCase() === 'true';
+    const nextPinned = !currentlyPinned;
+    setFeaturedSavingIds((current) => new Set(current).add(item.guid));
+
+    const filtered = (item.metaTags || []).filter(
+      (t) => !['featured', 'editorialupdatedat'].includes(t.property.toLowerCase()),
+    );
+    const newMetaTags = [
+      ...filtered,
+      ...(nextPinned ? [{ property: 'featured', value: 'true' }] : []),
+      { property: 'editorialUpdatedAt', value: new Date().toISOString() },
+    ];
+
+    setItems((current) =>
+      current.map((video) => (video.guid === item.guid ? { ...video, metaTags: newMetaTags } : video)),
+    );
+
+    try {
+      const updated = await updateVideoMetadata(item.guid, { metaTags: newMetaTags });
+      if (!updated) {
+        setItems((current) =>
+          current.map((video) => (video.guid === item.guid ? { ...video, metaTags: item.metaTags } : video)),
+        );
+        alert('Failed to update Hero pin status. Please try again.');
+        return;
+      }
+      window.dispatchEvent(new Event('tube-catalogue-change'));
+    } catch (err) {
+      console.error('Failed to toggle featured:', err);
+      setItems((current) =>
+        current.map((video) => (video.guid === item.guid ? { ...video, metaTags: item.metaTags } : video)),
+      );
+      alert('Failed to update Hero pin status. Please try again.');
+    } finally {
+      setFeaturedSavingIds((current) => {
         const next = new Set(current);
         next.delete(item.guid);
         return next;
@@ -1359,6 +1404,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         : isFreeHook
                                           ? `FREE HOOK (Ep 1–${mapped.freeEpisodes ?? 2})`
                                           : '✓ FREE'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void toggleFeatured(item)}
+                                    disabled={featuredSavingIds.has(item.guid)}
+                                    title={
+                                      mapped.featured
+                                        ? 'Pinned to Landing Hero — click to unpin'
+                                        : 'Pin this show/movie to the Landing Hero banner'
+                                    }
+                                    className={`text-[9px] px-2 py-0.5 rounded font-bold border transition-all inline-flex items-center gap-1 ${
+                                      mapped.featured
+                                        ? 'bg-rose-500/25 text-rose-200 border-rose-400/60 hover:bg-rose-500/35'
+                                        : 'bg-zinc-800/80 text-zinc-400 border-zinc-700 hover:text-amber-300 hover:border-amber-500/40'
+                                    }`}
+                                  >
+                                    {featuredSavingIds.has(item.guid) ? (
+                                      '...'
+                                    ) : (
+                                      <>
+                                        <Star size={9} fill={mapped.featured ? 'currentColor' : 'none'} />
+                                        {mapped.featured ? 'HERO PINNED' : 'Pin Hero'}
+                                      </>
+                                    )}
                                   </button>
                                 </>
                               );

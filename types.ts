@@ -78,6 +78,7 @@ export interface Video {
   genre?: string;         // e.g. "Drama"
   productionYear?: number;
   trailerUrl?: string;
+  featured?: boolean;     // Pinned by an admin to the landing Hero spotlight
   muted?: boolean;        // Hidden from the public catalogue by an admin
 }
 

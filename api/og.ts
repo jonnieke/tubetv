@@ -11,6 +11,49 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
   const url = new URL(req.url || '', 'https://www.tube.co.ke');
   const id = (url.searchParams.get('id') || '').trim();
   const seriesParam = (url.searchParams.get('series') || '').trim().toLowerCase();
+  const landingParam = (url.searchParams.get('landing') || '').trim().toLowerCase();
+
+  if (landingParam === 'cinema') {
+    const rawSiteUrl = (process.env.VITE_SITE_URL || 'https://www.tube.co.ke').replace(/\/$/, '');
+    const siteUrl = /^https:\/\//i.test(rawSiteUrl) ? rawSiteUrl : 'https://www.tube.co.ke';
+    const cinemaUrl = `${siteUrl}/movies`;
+    const cinemaTitle = 'TubeTV Cinema | Unlimited Kenyan Movies & Series';
+    const cinemaDesc =
+      'Stream full-length Kenyan Movies, Drama Series, School Flix, Kids & Originals on TubeTV Cinema — unlock unlimited access from KSh 10 via M-Pesa.';
+    let cinemaThumb = `${siteUrl}/og-default.png`;
+    const supabaseUrl =
+      process.env.VITE_SUPABASE_URL ||
+      process.env.SUPABASE_URL ||
+      'https://bbwtdnsgojztxckmkhpz.supabase.co';
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+    if (supabaseUrl && anonKey) {
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/public-catalogue?page=1&itemsPerPage=40&compact=1`, {
+          headers: { apikey: anonKey, Accept: 'application/json' },
+          signal: AbortSignal.timeout(3000),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const items = Array.isArray(data?.items) ? data.items : [];
+          const movieItem = items.find((it: { metaTags?: Array<{ property?: string; value?: string }>; signedThumbnailUrl?: string }) => {
+            const tags = Array.isArray(it.metaTags) ? it.metaTags : [];
+            const cat = tags.find((t) => t.property?.toLowerCase() === 'category')?.value?.toLowerCase() || '';
+            return (cat === 'movies' || cat === 'series') && typeof it.signedThumbnailUrl === 'string' && it.signedThumbnailUrl.startsWith('https://');
+          });
+          if (movieItem?.signedThumbnailUrl) {
+            cinemaThumb = movieItem.signedThumbnailUrl;
+          }
+        }
+      } catch {
+        // Fall back to default OG image
+      }
+    }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400');
+    res.end(`<!doctype html><html lang="en-KE"><head><meta charset="utf-8" /><title>${escapeHtml(cinemaTitle)}</title><meta name="description" content="${escapeHtml(cinemaDesc)}" /><link rel="canonical" href="${escapeHtml(cinemaUrl)}" /><meta property="og:type" content="website" /><meta property="og:url" content="${escapeHtml(cinemaUrl)}" /><meta property="og:title" content="${escapeHtml(cinemaTitle)}" /><meta property="og:description" content="${escapeHtml(cinemaDesc)}" /><meta property="og:image" content="${escapeHtml(cinemaThumb)}" /><meta property="og:image:secure_url" content="${escapeHtml(cinemaThumb)}" /><meta property="og:locale" content="en_KE" /><meta property="og:site_name" content="TubeTV" /><meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="${escapeHtml(cinemaTitle)}" /><meta name="twitter:description" content="${escapeHtml(cinemaDesc)}" /><meta name="twitter:image" content="${escapeHtml(cinemaThumb)}" /></head><body style="background:#09090b;color:#fff;font-family:system-ui,sans-serif;padding:2rem;text-align:center;"><h1>${escapeHtml(cinemaTitle)}</h1><p>${escapeHtml(cinemaDesc)}</p><p><a href="/movies" style="color:#ef4444;font-weight:bold;">Open TubeTV Cinema &rarr;</a></p></body></html>`);
+    return;
+  }
 
   if (!seriesParam && (!id || !UUID_RE.test(id))) {
     res.statusCode = 302;

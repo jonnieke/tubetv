@@ -50,6 +50,7 @@ import {
   Anchor,
   Zap,
   Film,
+  Lock,
   Shield,
   type LucideIcon,
 } from 'lucide-react';
@@ -57,7 +58,7 @@ import { fetchBunnyVideos, fetchBunnyVideoById, bunnyVideoToVideo } from './serv
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useLanguage } from './contexts/LanguageContext';
 import { isAdminUser } from './lib/authorization';
-import { featuredMicroDramas, featuredMovies } from './lib/featured';
+import { featuredMicroDramas, featuredMovies, featuredLongFormat } from './lib/featured';
 import { clearLocalAuthSession } from './lib/localAuth';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { verifiedActiveAdminUser } from './lib/adminSession';
@@ -721,7 +722,7 @@ const App: React.FC = () => {
       (v) => v.category === 'Movies' || v.category === 'Series' || v.category === 'Originals',
     );
     const pool = moviesAndSeries.length > 0 ? moviesAndSeries : longFormatVideos;
-    return getTrendingVideos(pool, 6);
+    return featuredLongFormat(pool, 6);
   }, [longFormatVideos]);
 
   // Pre-compute 3 balanced, distinct Micro Drama series orderings so each row feels fresh
@@ -747,7 +748,7 @@ const App: React.FC = () => {
     const byNewest = [...entries].sort((a, b) => {
       const aLead = topTrendingLead.has(a.key) ? 1 : 0;
       const bLead = topTrendingLead.has(b.key) ? 1 : 0;
-      if (entries.length >= 6 && aLead !== bLead) return aLead - bLead;
+      if (entries.length >= 4 && aLead !== bLead) return aLead - bLead;
       return b.latestTs - a.latestTs || b.totalViews - a.totalViews;
     });
     const topNewestLead = new Set(byNewest.slice(0, Math.min(4, Math.floor(entries.length / 2))).map((e) => e.key));
@@ -755,11 +756,12 @@ const App: React.FC = () => {
     const byBinge = [...entries].sort((a, b) => {
       const aSeen = topTrendingLead.has(a.key) || topNewestLead.has(a.key) ? 1 : 0;
       const bSeen = topTrendingLead.has(b.key) || topNewestLead.has(b.key) ? 1 : 0;
-      if (entries.length >= 8 && aSeen !== bSeen) return aSeen - bSeen;
+      if (entries.length >= 7 && aSeen !== bSeen) return aSeen - bSeen;
       return b.count - a.count || b.totalViews - a.totalViews;
     });
 
     return {
+      seriesCount: entries.length,
       trending: byTrending.flatMap((e) => e.eps),
       newest: byNewest.flatMap((e) => e.eps),
       binge: byBinge.flatMap((e) => e.eps),
@@ -845,6 +847,7 @@ const App: React.FC = () => {
   const openVideo = useCallback(
     (video: Video, options?: { autoPlay?: boolean; strictEpisode?: boolean }) => {
       let targetVideo = video;
+      const wantsDetailsFirst = options?.autoPlay === false;
       if (isItemLocked(targetVideo)) {
         if (!options?.strictEpisode && isMicroDrama(targetVideo)) {
           const key = seriesKey(targetVideo);
@@ -856,7 +859,7 @@ const App: React.FC = () => {
             : undefined;
           if (freeOpener && freeOpener.id !== targetVideo.id) {
             targetVideo = freeOpener;
-          } else {
+          } else if (!wantsDetailsFirst) {
             try {
               sessionStorage.setItem('tubetv_paywall_target_video_id', targetVideo.id);
               localStorage.setItem('tubetv_last_watched_video_id', targetVideo.id);
@@ -864,7 +867,7 @@ const App: React.FC = () => {
             openPaywallForVideo(targetVideo);
             return;
           }
-        } else {
+        } else if (!wantsDetailsFirst) {
           try {
             sessionStorage.setItem('tubetv_paywall_target_video_id', targetVideo.id);
             localStorage.setItem('tubetv_last_watched_video_id', targetVideo.id);
@@ -889,10 +892,10 @@ const App: React.FC = () => {
   const closeVideo = useCallback(() => {
     setIsVideoFinished(false);
     if (window.location.pathname.startsWith('/watch/')) {
-      window.history.pushState({}, '', '/');
+      window.history.pushState({}, '', landingMode === 'cinema' ? '/movies' : '/');
     }
     setActiveHeroVideo(null);
-  }, []);
+  }, [landingMode]);
 
   useEffect(() => {
     if (!pendingResumeVideoId || videos.length === 0) return;
@@ -1921,26 +1924,30 @@ const App: React.FC = () => {
                         isAuthenticated={isAuthenticated}
                         onPlay={openVideo}
                       />
-                      <SeriesCarousel
-                        key="MicroRow2-New"
-                        title={language === 'sw' ? 'Micro Dramas Mpya' : 'New Micro Drama Releases'}
-                        videos={microDramaThreeRows.newest}
-                        maxSeries={20}
-                        watchLaterIds={watchLater}
-                        onToggleWatchLater={toggleWatchLater}
-                        isAuthenticated={isAuthenticated}
-                        onPlay={openVideo}
-                      />
-                      <SeriesCarousel
-                        key="MicroRow3-Binge"
-                        title={language === 'sw' ? 'Misimu Kamili ya Micro Dramas' : 'Binge-Worthy Micro Dramas'}
-                        videos={microDramaThreeRows.binge}
-                        maxSeries={20}
-                        watchLaterIds={watchLater}
-                        onToggleWatchLater={toggleWatchLater}
-                        isAuthenticated={isAuthenticated}
-                        onPlay={openVideo}
-                      />
+                      {microDramaThreeRows.seriesCount >= 4 && (
+                        <SeriesCarousel
+                          key="MicroRow2-New"
+                          title={language === 'sw' ? 'Micro Dramas Mpya' : 'New Micro Drama Releases'}
+                          videos={microDramaThreeRows.newest}
+                          maxSeries={20}
+                          watchLaterIds={watchLater}
+                          onToggleWatchLater={toggleWatchLater}
+                          isAuthenticated={isAuthenticated}
+                          onPlay={openVideo}
+                        />
+                      )}
+                      {microDramaThreeRows.seriesCount >= 7 && (
+                        <SeriesCarousel
+                          key="MicroRow3-Binge"
+                          title={language === 'sw' ? 'Misimu Kamili ya Micro Dramas' : 'Binge-Worthy Micro Dramas'}
+                          videos={microDramaThreeRows.binge}
+                          maxSeries={20}
+                          watchLaterIds={watchLater}
+                          onToggleWatchLater={toggleWatchLater}
+                          isAuthenticated={isAuthenticated}
+                          onPlay={openVideo}
+                        />
+                      )}
                     </>
                   )}
 
@@ -2112,26 +2119,30 @@ const App: React.FC = () => {
                         isAuthenticated={isAuthenticated}
                         onPlay={openVideo}
                       />
-                      <SeriesCarousel
-                        key="CinemaMicroRow2-New"
-                        title={language === 'sw' ? 'Micro Dramas Mpya' : 'New Micro Drama Releases'}
-                        videos={microDramaThreeRows.newest}
-                        maxSeries={20}
-                        watchLaterIds={watchLater}
-                        onToggleWatchLater={toggleWatchLater}
-                        isAuthenticated={isAuthenticated}
-                        onPlay={openVideo}
-                      />
-                      <SeriesCarousel
-                        key="CinemaMicroRow3-Binge"
-                        title={language === 'sw' ? 'Misimu Kamili ya Micro Dramas' : 'Binge-Worthy Micro Dramas'}
-                        videos={microDramaThreeRows.binge}
-                        maxSeries={20}
-                        watchLaterIds={watchLater}
-                        onToggleWatchLater={toggleWatchLater}
-                        isAuthenticated={isAuthenticated}
-                        onPlay={openVideo}
-                      />
+                      {microDramaThreeRows.seriesCount >= 4 && (
+                        <SeriesCarousel
+                          key="CinemaMicroRow2-New"
+                          title={language === 'sw' ? 'Micro Dramas Mpya' : 'New Micro Drama Releases'}
+                          videos={microDramaThreeRows.newest}
+                          maxSeries={20}
+                          watchLaterIds={watchLater}
+                          onToggleWatchLater={toggleWatchLater}
+                          isAuthenticated={isAuthenticated}
+                          onPlay={openVideo}
+                        />
+                      )}
+                      {microDramaThreeRows.seriesCount >= 7 && (
+                        <SeriesCarousel
+                          key="CinemaMicroRow3-Binge"
+                          title={language === 'sw' ? 'Misimu Kamili ya Micro Dramas' : 'Binge-Worthy Micro Dramas'}
+                          videos={microDramaThreeRows.binge}
+                          maxSeries={20}
+                          watchLaterIds={watchLater}
+                          onToggleWatchLater={toggleWatchLater}
+                          isAuthenticated={isAuthenticated}
+                          onPlay={openVideo}
+                        />
+                      )}
                     </>
                   )}
 
@@ -2620,14 +2631,32 @@ const App: React.FC = () => {
                     </p>
                   )}
                   <div className="mt-4 flex flex-wrap items-center gap-2.5">
-                    {!modalAutoPlay && (
+                    {(!modalAutoPlay || isItemLocked(activeHeroVideo)) && (
                       <button
                         type="button"
                         className="cinema-primary w-full sm:w-auto px-6 py-2.5 font-bold flex items-center justify-center gap-2 cursor-pointer"
-                        onClick={() => setModalAutoPlay(true)}
+                        onClick={() => {
+                          if (isItemLocked(activeHeroVideo)) {
+                            openPaywallForVideo(activeHeroVideo);
+                          } else {
+                            setModalAutoPlay(true);
+                          }
+                        }}
                       >
-                        <Play size={16} fill="currentColor" />
-                        <span>{seriesKey(activeHeroVideo) ? t('home.watchEpisode') : t('home.watchMovie')}</span>
+                        {isItemLocked(activeHeroVideo) ? (
+                          <Lock size={16} />
+                        ) : (
+                          <Play size={16} fill="currentColor" />
+                        )}
+                        <span>
+                          {isItemLocked(activeHeroVideo)
+                            ? language === 'sw'
+                              ? 'Fungua kwa M-Pesa · Kuanzia KSh 10'
+                              : 'Unlock with M-Pesa · From KSh 10'
+                            : seriesKey(activeHeroVideo)
+                              ? t('home.watchEpisode')
+                              : t('home.watchMovie')}
+                        </span>
                       </button>
                     )}
                     {(activeHeroVideo.seriesTrailerUrl || activeHeroVideo.trailerUrl) && (
@@ -2879,12 +2908,14 @@ const App: React.FC = () => {
           <CinemaNavigation
             view={currentView}
             subcategory={activeSubCategory}
+            landingMode={landingMode}
             items={translatedNavItems}
             authenticated={isAuthenticated}
             admin={isAdmin}
             search={searchQuery}
             onSearch={handleSearch}
             navigate={handleNavigate}
+            onSwitchLandingMode={switchLandingMode}
             login={() => setShowLogin(true)}
             logout={handleLogout}
             onOpenBuyPass={() => setShowBuyPassModal(true)}
