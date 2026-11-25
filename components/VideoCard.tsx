@@ -27,7 +27,7 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { canWatchContent, normalizeContentRating, ratingDescription } from '../lib/contentRating';
 import { isLongFormatVideo, isVideoLocked, LONG_FORMAT_PREVIEW_SECONDS } from '../lib/monetization';
-import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
+import { getRegionalPassCopy, resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
 import { isVideoSavedOffline, removeOfflineVideo, saveVideoForOfflineCommute } from '../lib/offlineCache';
 import { trackEvent } from '../lib/analytics';
 import { getQualifiedViewThresholdSeconds } from '../lib/royalties';
@@ -1235,7 +1235,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
                   >
                     {nextEpisode && onNextEpisode
                       ? isLocked?.(nextEpisode)
-                        ? `Unlock Ep ${nextEpisode.episode || 'next'} • KSh 10`
+                        ? `Unlock Ep ${nextEpisode.episode || 'next'} • ${getRegionalPassCopy().entryPrice}`
                         : 'Play next episode'
                       : 'Skip outro'}
                   </button>

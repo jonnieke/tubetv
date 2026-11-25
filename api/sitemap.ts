@@ -45,6 +45,7 @@ export default async function handler(_req: IncomingMessage, res: ServerResponse
 
   const entries: SitemapEntry[] = [
     { loc: `${siteUrl}/`, changefreq: 'daily', priority: '1.0' },
+    { loc: `${siteUrl}/movies`, changefreq: 'daily', priority: '0.95' },
     { loc: `${siteUrl}/privacy`, changefreq: 'monthly', priority: '0.4' },
     { loc: `${siteUrl}/terms`, changefreq: 'monthly', priority: '0.4' },
   ];

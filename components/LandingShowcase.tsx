@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useMemo, useRef } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Award,
   ChevronLeft,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { Video } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
-import { detectDefaultRegion, REGIONAL_PRICING } from '../lib/subscriptions';
+import { detectDefaultRegion, getRegionalPassCopy, REGIONAL_PRICING, type RegionCode } from '../lib/subscriptions';
 import { seriesKey } from '../lib/series';
 import CatalogueArtwork from './CatalogueArtwork';
 
@@ -42,6 +42,15 @@ export const TopTenCarousel: React.FC<TopTenCarouselProps> = ({
 }) => {
   const { language } = useLanguage();
   const rowRef = useRef<HTMLDivElement>(null);
+  const [regionCode, setRegionCode] = useState<RegionCode>(() => detectDefaultRegion());
+
+  useEffect(() => {
+    const syncRegion = () => setRegionCode(detectDefaultRegion());
+    window.addEventListener('tubetv:region-updated', syncRegion);
+    return () => window.removeEventListener('tubetv:region-updated', syncRegion);
+  }, []);
+
+  const passCopy = getRegionalPassCopy(regionCode, language);
 
   const topTen = useMemo(() => {
     return [...videos]
@@ -70,8 +79,8 @@ export const TopTenCarousel: React.FC<TopTenCarouselProps> = ({
             </h2>
             <p className="text-[11px] text-zinc-400">
               {language === 'sw'
-                ? 'Bofya mara moja kuona hadithi & trela · Fungua filamu zote kuanzia KSh 10'
-                : 'Single-click for story & trailer · Double-click to stream or unlock from KSh 10'}
+                ? `Bofya mara moja kuona hadithi & trela · Fungua filamu zote kuanzia ${passCopy.entryPrice}`
+                : `Single-click for story & trailer · Double-click to stream or unlock from ${passCopy.entryPrice}`}
             </p>
           </div>
         </div>

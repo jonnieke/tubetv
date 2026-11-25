@@ -142,7 +142,7 @@ export function detectDefaultRegion(): RegionCode {
     if (tz.includes('Johannesburg')) return 'ZA';
     if (tz.includes('Accra')) return 'GH';
     if (tz.includes('London')) return 'GB';
-    if (tz.startsWith('America/')) return 'US';
+    if (tz.startsWith('America/') || tz.startsWith('Australia/') || tz.includes('Dubai') || tz.includes('Qatar') || tz.includes('Riyadh')) return 'US';
     if (tz.startsWith('Europe/')) return 'EU';
   } catch {
     // Default to Kenya
@@ -155,6 +155,72 @@ export function savePreferredRegion(region: RegionCode) {
   try {
     localStorage.setItem(REGION_STORAGE_KEY, region);
   } catch {}
+  window.dispatchEvent(new CustomEvent<RegionCode>('tubetv:region-updated', { detail: region }));
+}
+
+export interface RegionalPassCopy {
+  code: RegionCode;
+  entryPrice: string;
+  navPill: string;
+  navPillTitle: string;
+  heroBadge: string;
+  unlockCta: string;
+  fromPrice: string;
+  drawerSub: string;
+}
+
+export function getRegionalPassCopy(regionCode: RegionCode = detectDefaultRegion(), language = 'en'): RegionalPassCopy {
+  const region = REGIONAL_PRICING[regionCode] || REGIONAL_PRICING.KE;
+  const isSw = language === 'sw';
+  const entryPrice = region.prices.daily;
+
+  if (region.supportsMpesaStk) {
+    return {
+      code: region.code,
+      entryPrice,
+      navPill: isSw ? `Pasi ya M-Pesa · ${entryPrice}` : `${entryPrice} M-Pesa Pass`,
+      navPillTitle: `Get or restore your TubeTV M-Pesa Pass from ${entryPrice}`,
+      heroBadge: isSw ? `Fungua yote kuanzia ${entryPrice} · M-Pesa` : `Unlock all from ${entryPrice} via M-Pesa`,
+      unlockCta: isSw ? `Fungua kwa M-Pesa · Kuanzia ${entryPrice}` : `Unlock with M-Pesa · From ${entryPrice}`,
+      fromPrice: isSw ? `Kuanzia ${entryPrice}` : `From ${entryPrice}`,
+      drawerSub: isSw ? 'M-Pesa ya papo hapo · Filamu & drama zote' : 'Instant M-Pesa · All micro-dramas & movies',
+    };
+  }
+
+  const isDiaspora = region.code === 'US' || region.code === 'GB' || region.code === 'EU';
+  if (isDiaspora) {
+    return {
+      code: region.code,
+      entryPrice,
+      navPill: `${region.flag} ${isSw ? `Pasi · ${entryPrice}` : `Pass · From ${entryPrice}`}`,
+      navPillTitle: `Get or restore your TubeTV Pass from ${entryPrice} (Apple Pay, Google Pay & Card)`,
+      heroBadge: isSw
+        ? `Fungua yote kuanzia ${entryPrice} · Apple Pay & Kadi`
+        : `Unlock all from ${entryPrice} · Apple Pay & Card`,
+      unlockCta: isSw
+        ? `Fungua Pasi · Kuanzia ${entryPrice} (Apple Pay / Kadi)`
+        : `Unlock Pass · From ${entryPrice} · Apple Pay & Card`,
+      fromPrice: isSw ? `Kuanzia ${entryPrice}` : `From ${entryPrice}`,
+      drawerSub: isSw
+        ? 'Apple Pay, Google Pay & Kadi · Filamu & drama zote'
+        : 'Apple Pay, Google Pay & Card · All micro-dramas & movies',
+    };
+  }
+
+  return {
+    code: region.code,
+    entryPrice,
+    navPill: `${region.flag} ${isSw ? `Pasi · ${entryPrice}` : `Pass · ${entryPrice}`}`,
+    navPillTitle: `Get or restore your TubeTV Pass from ${entryPrice} (${region.paymentMethodsLabel})`,
+    heroBadge: isSw
+      ? `Fungua yote kuanzia ${entryPrice} · ${region.paymentMethodsLabel}`
+      : `Unlock all from ${entryPrice} · ${region.paymentMethodsLabel}`,
+    unlockCta: isSw ? `Fungua Pasi · Kuanzia ${entryPrice}` : `Unlock Pass · From ${entryPrice}`,
+    fromPrice: isSw ? `Kuanzia ${entryPrice}` : `From ${entryPrice}`,
+    drawerSub: isSw
+      ? `${region.paymentMethodsLabel} · Filamu & drama zote`
+      : `${region.paymentMethodsLabel} · All micro-dramas & movies`,
+  };
 }
 
 export interface ActiveSubscription {

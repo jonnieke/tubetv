@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -64,5 +65,24 @@ describe('Landing presentation preserves the platform', () => {
     expect(toCinema).toContain('Explore Movies &amp; Series');
     expect(toMicro).toContain('Want addictive Micro Dramas? Click here!');
     expect(toMicro).toContain('Explore Micro Dramas');
+  });
+
+  it('localizes landing pass badges for Kenya (M-Pesa) vs Diaspora (Apple Pay & Card) and indexes /movies in sitemap', () => {
+    const keHero = renderToStaticMarkup(
+      <LandingHero video={video} real saved={false} regionCode="KE" onPlay={() => {}} onSave={() => {}} count={1} index={0} onSelect={() => {}} />,
+    );
+    const usHero = renderToStaticMarkup(
+      <LandingHero video={video} real saved={false} regionCode="US" onPlay={() => {}} onSave={() => {}} count={1} index={0} onSelect={() => {}} />,
+    );
+    const gbHero = renderToStaticMarkup(
+      <LandingHero video={video} real saved={false} regionCode="GB" onPlay={() => {}} onSave={() => {}} count={1} index={0} onSelect={() => {}} />,
+    );
+
+    expect(keHero).toContain('Unlock all from KSh 10 via M-Pesa');
+    expect(usHero).toContain('Unlock all from $2.99 · Apple Pay &amp; Card');
+    expect(gbHero).toContain('Unlock all from £2.49 · Apple Pay &amp; Card');
+
+    const sitemapSource = readFileSync(new URL('../api/sitemap.ts', import.meta.url), 'utf8');
+    expect(sitemapSource).toContain('${siteUrl}/movies');
   });
 });

@@ -98,12 +98,15 @@ import { captureSessionAttribution } from './lib/attribution';
 import { installGlobalMediaGuard, pauseAllPageMedia, setOverlayMediaBlocked } from './lib/mediaGuard';
 import {
   clearStoredPass,
+  detectDefaultRegion,
   fetchActiveSubscription,
+  getRegionalPassCopy,
   getRememberedPhone,
   getStoredPass,
   resolveAuthorizedPlaybackUrl,
   restorePassByPhone,
   restorePaystackPass,
+  type RegionCode,
 } from './lib/subscriptions';
 import type { SettingsTabId } from './components/SettingsSection';
 import { TranslationKey } from './translations';
@@ -317,16 +320,21 @@ const App: React.FC = () => {
   const [preferences, setPreferences] = useState<PlaybackPreferences>(DEFAULT_PLAYBACK_PREFERENCES);
   const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
   const [hasActivePass, setHasActivePass] = useState<boolean>(() => Boolean(getStoredPass()));
+  const [regionCode, setRegionCode] = useState<RegionCode>(() => detectDefaultRegion());
   const [rewardUnlockedIds, setRewardUnlockedIds] = useState<string[]>(() => getRewardUnlockedVideoIds());
+  const regionalPassCopy = getRegionalPassCopy(regionCode, language);
 
   useEffect(() => {
     captureSessionAttribution();
     const uninstallMediaGuard = installGlobalMediaGuard();
     const syncUnlocks = () => setRewardUnlockedIds(getRewardUnlockedVideoIds());
+    const syncRegion = () => setRegionCode(detectDefaultRegion());
     window.addEventListener('tubetv:unlocks-updated', syncUnlocks);
+    window.addEventListener('tubetv:region-updated', syncRegion);
     return () => {
       uninstallMediaGuard();
       window.removeEventListener('tubetv:unlocks-updated', syncUnlocks);
+      window.removeEventListener('tubetv:region-updated', syncRegion);
     };
   }, []);
 
@@ -2650,9 +2658,7 @@ const App: React.FC = () => {
                         )}
                         <span>
                           {isItemLocked(activeHeroVideo)
-                            ? language === 'sw'
-                              ? 'Fungua kwa M-Pesa · Kuanzia KSh 10'
-                              : 'Unlock with M-Pesa · From KSh 10'
+                            ? regionalPassCopy.unlockCta
                             : seriesKey(activeHeroVideo)
                               ? t('home.watchEpisode')
                               : t('home.watchMovie')}
@@ -3085,7 +3091,7 @@ const App: React.FC = () => {
             >
               <Ticket size={20} />
               <span className="text-[10px] font-extrabold">
-                {hasActivePass ? (language === 'sw' ? 'Pasi ✓' : 'Pass ✓') : 'KSh 10'}
+                {hasActivePass ? (language === 'sw' ? 'Pasi ✓' : 'Pass ✓') : regionalPassCopy.entryPrice}
               </span>
             </button>
             {isAdmin && (

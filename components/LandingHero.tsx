@@ -6,7 +6,12 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { loadHls } from '../lib/hlsLoader';
 import { buildHlsConfig } from '../lib/hlsConfig';
 import { getFreeEpisodeCount, LONG_FORMAT_PREVIEW_SECONDS } from '../lib/monetization';
-import { resolveAuthorizedPlaybackUrl } from '../lib/subscriptions';
+import {
+  detectDefaultRegion,
+  getRegionalPassCopy,
+  resolveAuthorizedPlaybackUrl,
+  type RegionCode,
+} from '../lib/subscriptions';
 import { isMicroDrama } from '../lib/series';
 import { publicMediaUrl } from '../lib/mediaUrl';
 import CatalogueArtwork from './CatalogueArtwork';
@@ -21,6 +26,7 @@ interface Props {
   real: boolean;
   saved: boolean;
   hasActivePass?: boolean;
+  regionCode?: RegionCode;
   dataSaver?: boolean;
   onPlay: () => void;
   onMoreInfo?: () => void;
@@ -39,6 +45,7 @@ export default function LandingHero({
   real,
   saved,
   hasActivePass = false,
+  regionCode,
   dataSaver = false,
   onPlay,
   onMoreInfo,
@@ -58,6 +65,19 @@ export default function LandingHero({
   const [isMuted, setIsMuted] = useState(true);
   const [previewRemaining, setPreviewRemaining] = useState<number | null>(null);
   const [slideProgress, setSlideProgress] = useState<number>(0);
+  const [detectedRegion, setDetectedRegion] = useState<RegionCode>(() => regionCode || detectDefaultRegion());
+
+  useEffect(() => {
+    if (regionCode) {
+      setDetectedRegion(regionCode);
+      return;
+    }
+    const onRegionUpdate = () => setDetectedRegion(detectDefaultRegion());
+    window.addEventListener('tubetv:region-updated', onRegionUpdate);
+    return () => window.removeEventListener('tubetv:region-updated', onRegionUpdate);
+  }, [regionCode]);
+
+  const passCopy = getRegionalPassCopy(regionCode || detectedRegion, language);
 
   // Preload the next hero slide artwork so carousel transitions happen without a flash.
   useEffect(() => {
@@ -412,7 +432,7 @@ export default function LandingHero({
           </button>
           {!hasActivePass && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/35 bg-emerald-950/60 px-3 py-1.5 text-[11px] font-bold text-emerald-300">
-              {language === 'sw' ? 'Fungua yote kuanzia KSh 10 · M-Pesa' : 'Unlock all from KSh 10 via M-Pesa'}
+              {passCopy.heroBadge}
             </span>
           )}
         </div>

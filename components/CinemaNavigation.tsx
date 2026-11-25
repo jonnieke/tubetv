@@ -2,7 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Baby, CheckCircle2, ChevronDown, Flame, Globe, Search, Smartphone, Ticket, UserRound, X } from 'lucide-react';
 import { NavItem, ViewState, ViewStateOrString } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
-import { getStoredPass, type StoredPass } from '../lib/subscriptions';
+import {
+  detectDefaultRegion,
+  getRegionalPassCopy,
+  getStoredPass,
+  type RegionCode,
+  type StoredPass,
+} from '../lib/subscriptions';
 import type { TranslationKey } from '../translations';
 import { triggerPwaPrompt } from './PWAInstallBanner';
 
@@ -27,16 +33,22 @@ export default function CinemaNavigation(props: Props) {
   const [more, setMore] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [activePass, setActivePass] = useState<StoredPass | null>(() => getStoredPass());
+  const [regionCode, setRegionCode] = useState<RegionCode>(() => detectDefaultRegion());
 
   useEffect(() => {
     const syncPass = () => setActivePass(getStoredPass());
+    const syncRegion = () => setRegionCode(detectDefaultRegion());
     window.addEventListener('tubetv:pass-updated', syncPass);
+    window.addEventListener('tubetv:region-updated', syncRegion);
     const interval = setInterval(syncPass, 60_000);
     return () => {
       window.removeEventListener('tubetv:pass-updated', syncPass);
+      window.removeEventListener('tubetv:region-updated', syncRegion);
       clearInterval(interval);
     };
   }, []);
+
+  const passCopy = getRegionalPassCopy(regionCode, language);
 
   const formatRemainingPassTime = (expiresAt: number): string => {
     const diffMs = Math.max(0, expiresAt - Date.now());
@@ -202,12 +214,12 @@ export default function CinemaNavigation(props: Props) {
                   navigate(ViewState.SETTINGS, 'pass');
                 }
               }}
-              title="Get or restore your TubeTV M-Pesa Pass from KSh 10"
+              title={passCopy.navPillTitle}
               className="relative inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 font-bold text-xs px-3.5 py-1.5 shadow-lg shadow-emerald-950/40 border border-emerald-500/50 hover:border-emerald-400 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
             >
               <Ticket size={13} className="text-emerald-400 group-hover:rotate-12 transition-transform" />
               <span className="tracking-wide text-[11px] font-extrabold">
-                {language === 'sw' ? 'Pasi ya M-Pesa · KSh 10' : 'KSh 10 M-Pesa Pass'}
+                {passCopy.navPill}
               </span>
               <span className="relative flex h-2 w-2 ml-0.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -318,14 +330,14 @@ export default function CinemaNavigation(props: Props) {
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 text-[10px] font-extrabold text-amber-300 uppercase tracking-wider">
-                        {language === 'sw' ? 'Kuanzia KSh 10' : 'From KSh 10'}
+                        {passCopy.fromPrice}
                       </span>
                     )}
                   </div>
                   <p className="text-[11px] text-zinc-300 mt-0.5 leading-snug truncate">
                     {activePass
                       ? (language === 'sw' ? 'Pasi inatumika · Bonyeza kudhibiti' : 'Pass active on this device · Click to manage')
-                      : (language === 'sw' ? 'M-Pesa ya papo hapo · Filamu & drama zote' : 'Instant M-Pesa · All micro-dramas & movies')}
+                      : passCopy.drawerSub}
                   </p>
                 </div>
               </div>
