@@ -16,6 +16,7 @@ interface Props {
   isAuthenticated?: boolean;
   onPlay: (video: Video) => void;
   uniformAspect?: 'video';
+  maxSeries?: number;
 }
 
 function formatCompactViews(views: number): string {
@@ -239,19 +240,19 @@ const SeriesCard: React.FC<{
   );
 };
 
-export default function SeriesCarousel({ title = 'Series', videos, ...props }: Props) {
+export default function SeriesCarousel({ title = 'Series', videos, maxSeries = 24, ...props }: Props) {
   const { t, language } = useLanguage();
   const ref = useRef<HTMLDivElement>(null);
   const [selectedEpisodes, setSelectedEpisodes] = useState<Video[] | null>(null);
   const groups = useMemo(() => {
     const result = new Map<string, Video[]>();
     for (const video of videos) {
-      const key = seriesKey(video);
+      const key = seriesKey(video) || (isMicroDrama(video) ? `micro-single:${video.id}` : undefined);
       if (!key) continue;
       result.set(key, [...(result.get(key) || []), video]);
     }
-    return [...result.values()].map((episodes) => episodes.sort(compareEpisodes));
-  }, [videos]);
+    return [...result.values()].slice(0, maxSeries).map((episodes) => episodes.sort(compareEpisodes));
+  }, [videos, maxSeries]);
 
   const hasMicro = useMemo(() => groups.some((epList) => epList[0] && isMicroDrama(epList[0])), [groups]);
   const forceVideoAspect = useMemo(() => {
@@ -305,7 +306,7 @@ export default function SeriesCarousel({ title = 'Series', videos, ...props }: P
       <div ref={ref} className="flex items-start gap-3 md:gap-4 overflow-x-auto snap-x snap-mandatory py-2 md:py-3 pb-4 md:pb-5 no-scrollbar">
         {groups.map((episodes) => (
           <SeriesCard
-            key={seriesKey(episodes[0])}
+            key={seriesKey(episodes[0]) || episodes[0].id}
             episodes={episodes}
             watchLaterIds={props.watchLaterIds}
             onToggleWatchLater={props.onToggleWatchLater}

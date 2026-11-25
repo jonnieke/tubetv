@@ -723,6 +723,70 @@ const App: React.FC = () => {
     const pool = moviesAndSeries.length > 0 ? moviesAndSeries : longFormatVideos;
     return getTrendingVideos(pool, 6);
   }, [longFormatVideos]);
+
+  // Pre-compute 3 balanced, distinct Micro Drama series orderings so each row feels fresh
+  // and adding 100s of new episodes only grows horizontal scroll (never pushes categories down).
+  const microDramaThreeRows = useMemo(() => {
+    const grouped = new Map<string, Video[]>();
+    for (const v of microDramaVideos) {
+      const k = seriesKey(v) || `micro-single:${v.id}`;
+      grouped.set(k, [...(grouped.get(k) || []), v]);
+    }
+    const entries = [...grouped.entries()].map(([key, eps]) => {
+      const totalViews = eps.reduce((s, e) => s + (e.views || 0), 0);
+      const latestTs = eps.reduce((max, e) => {
+        const ts = Date.parse(e.uploadDate || e.editorialUpdatedAt || '');
+        return Number.isFinite(ts) && ts > max ? ts : max;
+      }, 0);
+      return { key, eps, totalViews, latestTs, count: eps.length };
+    });
+
+    const byTrending = [...entries].sort((a, b) => b.totalViews - a.totalViews || b.count - a.count);
+    const topTrendingLead = new Set(byTrending.slice(0, Math.min(4, Math.floor(entries.length / 2))).map((e) => e.key));
+
+    const byNewest = [...entries].sort((a, b) => {
+      const aLead = topTrendingLead.has(a.key) ? 1 : 0;
+      const bLead = topTrendingLead.has(b.key) ? 1 : 0;
+      if (entries.length >= 6 && aLead !== bLead) return aLead - bLead;
+      return b.latestTs - a.latestTs || b.totalViews - a.totalViews;
+    });
+    const topNewestLead = new Set(byNewest.slice(0, Math.min(4, Math.floor(entries.length / 2))).map((e) => e.key));
+
+    const byBinge = [...entries].sort((a, b) => {
+      const aSeen = topTrendingLead.has(a.key) || topNewestLead.has(a.key) ? 1 : 0;
+      const bSeen = topTrendingLead.has(b.key) || topNewestLead.has(b.key) ? 1 : 0;
+      if (entries.length >= 8 && aSeen !== bSeen) return aSeen - bSeen;
+      return b.count - a.count || b.totalViews - a.totalViews;
+    });
+
+    return {
+      trending: byTrending.flatMap((e) => e.eps),
+      newest: byNewest.flatMap((e) => e.eps),
+      binge: byBinge.flatMap((e) => e.eps),
+    };
+  }, [microDramaVideos]);
+
+  const movieVideos = useMemo(
+    () =>
+      longFormatVideos.filter(
+        (v) => v.category === 'Movies' || (v.category === 'Originals' && !seriesKey(v)),
+      ),
+    [longFormatVideos],
+  );
+  const latestMovieVideos = useMemo(
+    () =>
+      [...movieVideos]
+        .sort((a, b) => (Date.parse(b.uploadDate || '') || 0) - (Date.parse(a.uploadDate || '') || 0))
+        .slice(0, 20),
+    [movieVideos],
+  );
+  const longSeriesVideos = useMemo(
+    () =>
+      longFormatVideos.filter(
+        (v) => v.category === 'Series' || (v.category === 'Originals' && Boolean(seriesKey(v))),
+      ),
+    [longFormatVideos],
+  );
   const [activeHeroVideo, setActiveHeroVideo] = useState<Video | null>(null);
 
   useEffect(() => {
@@ -1779,7 +1843,7 @@ const App: React.FC = () => {
             {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && (() => {
               const modeContinue =
                 landingMode === 'micro-dramas'
-                  ? recommendations.continueWatching.filter(isMicroDrama)
+                  ? recommendations.continueWatching
                   : recommendations.continueWatching.filter((v) => !isMicroDrama(v));
               const resumeItem = modeContinue[0];
               if (!resumeItem) return null;
@@ -1798,85 +1862,6 @@ const App: React.FC = () => {
                 />
               );
             })()}
-
-            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && landingMode === 'micro-dramas' && !hasMicroDramas && (
-              <MicroDramaComingSoon compact onExplore={() => handleNavigate(ViewState.MICRO_DRAMAS)} />
-            )}
-            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && landingMode === 'micro-dramas' && hasMicroDramas && (
-              <SeriesCarousel
-                title={t('shelf.microDramas')}
-                videos={microDramaVideos}
-                watchLaterIds={watchLater}
-                onToggleWatchLater={toggleWatchLater}
-                isAuthenticated={isAuthenticated}
-                onPlay={openVideo}
-              />
-            )}
-
-            {currentView === ViewState.HOME && !searchQuery && !isLoadingVideos && landingMode === 'micro-dramas' && (
-              <LandingCrossCta
-                target="cinema"
-                previewVideos={longFormatHeroVideos}
-                totalCount={longFormatVideos.length}
-                onSwitch={() => switchLandingMode('cinema')}
-              />
-            )}
-
-            {currentView === ViewState.HOME && !searchQuery && (
-              <SponsorBanner hasActivePass={hasActivePass} />
-            )}
-
-            {currentView === ViewState.HOME && !searchQuery && (() => {
-              const modeContinue =
-                landingMode === 'micro-dramas'
-                  ? recommendations.continueWatching.filter(isMicroDrama)
-                  : recommendations.continueWatching.filter((v) => !isMicroDrama(v));
-              if (modeContinue.length === 0) return null;
-              return (
-                <VideoCarousel
-                  title={t('shelf.continueWatching')}
-                  videos={modeContinue}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={isAuthenticated}
-                />
-              );
-            })()}
-            {currentView === ViewState.HOME && !searchQuery && (() => {
-              const modeForYou =
-                landingMode === 'micro-dramas'
-                  ? recommendations.forYou.filter(isMicroDrama)
-                  : recommendations.forYou.filter((v) => !isMicroDrama(v));
-              if (modeForYou.length === 0) return null;
-              return (
-                <VideoCarousel
-                  title={t('shelf.forYou')}
-                  videos={modeForYou}
-                  watchLaterIds={watchLater}
-                  onToggleWatchLater={toggleWatchLater}
-                  isAuthenticated={isAuthenticated}
-                />
-              );
-            })()}
-            {currentView === ViewState.HOME && !searchQuery && landingMode === 'cinema' && latestVideos.filter((v) => !isMicroDrama(v)).length > 0 && (
-              <VideoCarousel
-                title={language === 'sw' ? 'Mpya Zaidi' : 'Latest Movies & Series'}
-                videos={latestVideos.filter((v) => !isMicroDrama(v))}
-                watchLaterIds={watchLater}
-                onToggleWatchLater={toggleWatchLater}
-                isAuthenticated={isAuthenticated}
-              />
-            )}
-
-            {currentView === ViewState.HOME && !searchQuery && landingMode === 'micro-dramas' && realShorts.length > 0 && (
-              <ShortsShelf
-                shorts={realShorts}
-                onShortClick={(shortId) => {
-                  setSelectedShortId(shortId);
-                  setCurrentView(ViewState.SHORTS);
-                }}
-              />
-            )}
 
             {(searchQuery ||
               (currentView === ViewState.HOME && activeSubCategory !== 'Trending') ||
@@ -1921,49 +1906,192 @@ const App: React.FC = () => {
             ) : currentView === ViewState.HOME && !searchQuery && activeSubCategory === 'Trending' ? (
               landingMode === 'micro-dramas' ? (
                 <div className="space-y-2 animate-in fade-in duration-500">
-                  {microDramaVideos.length > 0 && (
-                    <TopTenCarousel
-                      videos={microDramaVideos}
-                      watchLaterIds={watchLater}
-                      onToggleWatchLater={toggleWatchLater}
-                    />
+                  {/* First 3 Dedicated Micro Drama Rows (fixed-height horizontal carousels so new uploads never push below sections down) */}
+                  {!hasMicroDramas ? (
+                    <MicroDramaComingSoon compact onExplore={() => handleNavigate(ViewState.MICRO_DRAMAS)} />
+                  ) : (
+                    <>
+                      <SeriesCarousel
+                        key="MicroRow1-Trending"
+                        title={language === 'sw' ? 'Micro Dramas Zinazovuma' : 'Trending Micro Dramas'}
+                        videos={microDramaThreeRows.trending}
+                        maxSeries={20}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        isAuthenticated={isAuthenticated}
+                        onPlay={openVideo}
+                      />
+                      <SeriesCarousel
+                        key="MicroRow2-New"
+                        title={language === 'sw' ? 'Micro Dramas Mpya' : 'New Micro Drama Releases'}
+                        videos={microDramaThreeRows.newest}
+                        maxSeries={20}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        isAuthenticated={isAuthenticated}
+                        onPlay={openVideo}
+                      />
+                      <SeriesCarousel
+                        key="MicroRow3-Binge"
+                        title={language === 'sw' ? 'Misimu Kamili ya Micro Dramas' : 'Binge-Worthy Micro Dramas'}
+                        videos={microDramaThreeRows.binge}
+                        maxSeries={20}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        isAuthenticated={isAuthenticated}
+                        onPlay={openVideo}
+                      />
+                    </>
                   )}
 
-                  {microDramaVideos.length > 0 && (
+                  {/* Dedicated Movies & Series CTA */}
+                  <LandingCrossCta
+                    target="cinema"
+                    previewVideos={longFormatHeroVideos}
+                    totalCount={longFormatVideos.length}
+                    onSwitch={() => switchLandingMode('cinema')}
+                  />
+
+                  {/* Followed by Movies Carousels */}
+                  {movieVideos.length > 0 && (
                     <VideoCarousel
-                      key="TrendingMicroDramas"
-                      title={language === 'sw' ? 'Micro Dramas Zinazovuma' : 'Trending Micro Dramas'}
-                      videos={getTrendingVideos(microDramaVideos, 20)}
+                      key="HomeMoviesTrending"
+                      title={t('shelf.kenyanMovies')}
+                      videos={getTrendingVideos(movieVideos, 20)}
+                      watchLaterIds={watchLater}
+                      onToggleWatchLater={toggleWatchLater}
+                      isAuthenticated={isAuthenticated}
+                    />
+                  )}
+                  {latestMovieVideos.length > 4 && (
+                    <VideoCarousel
+                      key="HomeMoviesLatest"
+                      title={language === 'sw' ? 'Filamu Mpya Zaidi' : 'Latest Movie Releases'}
+                      videos={latestMovieVideos}
                       watchLaterIds={watchLater}
                       onToggleWatchLater={toggleWatchLater}
                       isAuthenticated={isAuthenticated}
                     />
                   )}
 
-                  {microDramaVideos.length > 0 && (
-                    <VideoCarousel
-                      key="LatestMicroDramas"
-                      title={language === 'sw' ? 'Micro Dramas Mpya' : 'New Micro Drama Releases'}
-                      videos={[...microDramaVideos]
-                        .sort((a, b) => Date.parse(b.uploadDate || '') - Date.parse(a.uploadDate || ''))
-                        .slice(0, 20)}
+                  {/* Followed by Series Carousel */}
+                  {longSeriesVideos.length > 0 && (
+                    <SeriesCarousel
+                      key="HomeLongSeries"
+                      title={t('nav.series')}
+                      onPlay={openVideo}
+                      videos={longSeriesVideos}
+                      maxSeries={20}
                       watchLaterIds={watchLater}
                       onToggleWatchLater={toggleWatchLater}
                       isAuthenticated={isAuthenticated}
                     />
                   )}
 
-                  {hasMicroDramas &&
-                    renderOrganizedSection(microDramaVideos, t('nav.microDramas'), true)}
+                  {/* Personalized & Supporting Bounded Shelves */}
+                  {recommendations.continueWatching.length > 0 && (
+                    <VideoCarousel
+                      title={t('shelf.continueWatching')}
+                      videos={recommendations.continueWatching}
+                      watchLaterIds={watchLater}
+                      onToggleWatchLater={toggleWatchLater}
+                      isAuthenticated={isAuthenticated}
+                    />
+                  )}
+
+                  {realShorts.length > 0 && (
+                    <ShortsShelf
+                      shorts={realShorts}
+                      onShortClick={(shortId) => {
+                        setSelectedShortId(shortId);
+                        setCurrentView(ViewState.SHORTS);
+                      }}
+                    />
+                  )}
+
+                  <SponsorBanner hasActivePass={hasActivePass} />
+
+                  <CreatorOriginalsSpotlight
+                    videos={ratingFilteredVideos}
+                    onSelectVideo={openVideo}
+                    onApplyToPublish={() => setShowFilmmakerForm(true)}
+                  />
+
+                  {['School Flix', 'Kids', 'Farmers', 'Education', 'Faith', 'Diaspora'].map((cat) => {
+                    const catVideos =
+                      cat === 'Kids'
+                        ? longFormatVideos.filter(isKidsVideo)
+                        : longFormatVideos.filter((v) => v.category === cat);
+                    const label =
+                      cat === 'School Flix'
+                        ? 'School Flix'
+                        : cat === 'Kids'
+                          ? t('shelf.watotoKids')
+                          : cat === 'Farmers'
+                            ? t('nav.farmers')
+                            : cat === 'Education'
+                              ? t('nav.education')
+                              : cat === 'Faith'
+                                ? t('nav.faith')
+                                : t('nav.diaspora');
+                    if (catVideos.length === 0) return null;
+                    return (
+                      <VideoCarousel
+                        key={cat}
+                        title={label}
+                        videos={catVideos.slice(0, 20)}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        isAuthenticated={isAuthenticated}
+                      />
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="space-y-2 animate-in fade-in duration-500">
+                  {/* Primary Movies & Series Carousels */}
                   <TopTenCarousel
                     videos={longFormatVideos}
                     watchLaterIds={watchLater}
                     onToggleWatchLater={toggleWatchLater}
                   />
 
+                  {movieVideos.length > 0 && (
+                    <VideoCarousel
+                      key="CinemaMoviesTrending"
+                      title={t('shelf.kenyanMovies')}
+                      videos={getTrendingVideos(movieVideos, 20)}
+                      watchLaterIds={watchLater}
+                      onToggleWatchLater={toggleWatchLater}
+                      isAuthenticated={isAuthenticated}
+                    />
+                  )}
+
+                  {latestVideos.filter((v) => !isMicroDrama(v)).length > 0 && (
+                    <VideoCarousel
+                      key="CinemaLatest"
+                      title={language === 'sw' ? 'Filamu & Tamthilia Mpya' : 'Latest Movies & Series'}
+                      videos={latestVideos.filter((v) => !isMicroDrama(v))}
+                      watchLaterIds={watchLater}
+                      onToggleWatchLater={toggleWatchLater}
+                      isAuthenticated={isAuthenticated}
+                    />
+                  )}
+
+                  {longSeriesVideos.length > 0 && (
+                    <SeriesCarousel
+                      key="CinemaLongSeries"
+                      title={t('nav.series')}
+                      onPlay={openVideo}
+                      videos={longSeriesVideos}
+                      maxSeries={20}
+                      watchLaterIds={watchLater}
+                      onToggleWatchLater={toggleWatchLater}
+                      isAuthenticated={isAuthenticated}
+                    />
+                  )}
+
+                  {/* Dedicated Micro Dramas CTA */}
                   <LandingCrossCta
                     target="micro-dramas"
                     previewVideos={heroDramas.length > 0 ? heroDramas : microDramaVideos}
@@ -1971,29 +2099,53 @@ const App: React.FC = () => {
                     onSwitch={() => switchLandingMode('micro-dramas')}
                   />
 
-                  <VideoCarousel
-                    key="TrendingCinema"
-                    title={t('shelf.trendingNow')}
-                    videos={getTrendingVideos(longFormatVideos, 20)}
-                    watchLaterIds={watchLater}
-                    onToggleWatchLater={toggleWatchLater}
-                    isAuthenticated={isAuthenticated}
-                  />
+                  {/* 3 Dedicated Micro Drama Carousels Below the Movies/Series Carousels */}
+                  {hasMicroDramas && (
+                    <>
+                      <SeriesCarousel
+                        key="CinemaMicroRow1-Trending"
+                        title={language === 'sw' ? 'Micro Dramas Zinazovuma' : 'Trending Micro Dramas'}
+                        videos={microDramaThreeRows.trending}
+                        maxSeries={20}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        isAuthenticated={isAuthenticated}
+                        onPlay={openVideo}
+                      />
+                      <SeriesCarousel
+                        key="CinemaMicroRow2-New"
+                        title={language === 'sw' ? 'Micro Dramas Mpya' : 'New Micro Drama Releases'}
+                        videos={microDramaThreeRows.newest}
+                        maxSeries={20}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        isAuthenticated={isAuthenticated}
+                        onPlay={openVideo}
+                      />
+                      <SeriesCarousel
+                        key="CinemaMicroRow3-Binge"
+                        title={language === 'sw' ? 'Misimu Kamili ya Micro Dramas' : 'Binge-Worthy Micro Dramas'}
+                        videos={microDramaThreeRows.binge}
+                        maxSeries={20}
+                        watchLaterIds={watchLater}
+                        onToggleWatchLater={toggleWatchLater}
+                        isAuthenticated={isAuthenticated}
+                        onPlay={openVideo}
+                      />
+                    </>
+                  )}
 
-                  {longFormatVideos.some(
-                    (v) => v.category === 'Series' || (v.category === 'Originals' && Boolean(seriesKey(v))),
-                  ) && (
-                    <SeriesCarousel
-                      title={t('nav.series')}
-                      onPlay={openVideo}
-                      videos={longFormatVideos.filter(
-                        (v) => v.category === 'Series' || (v.category === 'Originals' && Boolean(seriesKey(v))),
-                      )}
+                  {recommendations.continueWatching.filter((v) => !isMicroDrama(v)).length > 0 && (
+                    <VideoCarousel
+                      title={t('shelf.continueWatching')}
+                      videos={recommendations.continueWatching.filter((v) => !isMicroDrama(v))}
                       watchLaterIds={watchLater}
                       onToggleWatchLater={toggleWatchLater}
                       isAuthenticated={isAuthenticated}
                     />
                   )}
+
+                  <SponsorBanner hasActivePass={hasActivePass} />
 
                   <CreatorOriginalsSpotlight
                     videos={longFormatVideos}
@@ -2001,31 +2153,29 @@ const App: React.FC = () => {
                     onApplyToPublish={() => setShowFilmmakerForm(true)}
                   />
 
-                  {['Movies', 'School Flix', 'Farmers', 'Education', 'Faith', 'Kids', 'Diaspora'].map((cat) => {
+                  {['School Flix', 'Kids', 'Farmers', 'Education', 'Faith', 'Diaspora'].map((cat) => {
                     const catVideos =
                       cat === 'Kids'
                         ? longFormatVideos.filter(isKidsVideo)
-                        : longFormatVideos.filter((v) => v.category === cat || (cat === 'Movies' && v.category === 'Originals'));
+                        : longFormatVideos.filter((v) => v.category === cat);
                     const label =
-                      cat === 'Movies'
-                        ? t('shelf.kenyanMovies')
-                        : cat === 'School Flix'
-                          ? 'School Flix'
-                          : cat === 'Kids'
-                            ? t('shelf.watotoKids')
-                            : cat === 'Farmers'
-                              ? t('nav.farmers')
-                              : cat === 'Education'
-                                ? t('nav.education')
-                                : cat === 'Faith'
-                                  ? t('nav.faith')
-                                  : t('nav.diaspora');
+                      cat === 'School Flix'
+                        ? 'School Flix'
+                        : cat === 'Kids'
+                          ? t('shelf.watotoKids')
+                          : cat === 'Farmers'
+                            ? t('nav.farmers')
+                            : cat === 'Education'
+                              ? t('nav.education')
+                              : cat === 'Faith'
+                                ? t('nav.faith')
+                                : t('nav.diaspora');
                     if (catVideos.length === 0) return null;
                     return (
                       <VideoCarousel
                         key={cat}
                         title={label}
-                        videos={catVideos}
+                        videos={catVideos.slice(0, 20)}
                         watchLaterIds={watchLater}
                         onToggleWatchLater={toggleWatchLater}
                         isAuthenticated={isAuthenticated}
