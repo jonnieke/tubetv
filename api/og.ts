@@ -13,14 +13,98 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
   const seriesParam = (url.searchParams.get('series') || '').trim().toLowerCase();
   const landingParam = (url.searchParams.get('landing') || '').trim().toLowerCase();
 
-  if (landingParam === 'cinema') {
+  const LANDING_OG: Record<
+    string,
+    { path: string; title: string; description: string; categories: string[]; cta: string }
+  > = {
+    cinema: {
+      path: '/movies',
+      title: 'TubeTV Cinema | Unlimited Kenyan Movies & Series',
+      description:
+        'Stream full-length Kenyan Movies, Drama Series, School Flix, Kids & Originals on TubeTV Cinema — unlock unlimited access from KSh 10 via M-Pesa or Apple Pay / Card.',
+      categories: ['movies', 'series'],
+      cta: 'Open TubeTV Cinema',
+    },
+    'school-flix': {
+      path: '/school-flix',
+      title: 'TubeTV School Flix | Kenyan High School, Campus & Youth Films',
+      description:
+        'Watch Kenyan high school drama, campus stories, music, comedy, and next-gen student cinema on TubeTV School Flix.',
+      categories: ['school flix'],
+      cta: 'Explore School Flix',
+    },
+    kids: {
+      path: '/kids',
+      title: 'TubeTV Watoto Kids | Safe Kenyan Cartoons, Stories & Learning',
+      description:
+        'Family-safe GE-rated Kenyan cartoons, bedtime stories, songs, and kids learning programmes on TubeTV Watoto.',
+      categories: ['kids'],
+      cta: 'Open TubeTV Kids',
+    },
+    diaspora: {
+      path: '/diaspora',
+      title: 'TubeTV Diaspora | Kenyan & East African Stories Worldwide',
+      description:
+        'Stream Kenyan dramas, movies, culture, and Diaspora stories anywhere in the US, UK, Europe & worldwide — Apple Pay & Card supported.',
+      categories: ['diaspora', 'movies'],
+      cta: 'Explore TubeTV Diaspora',
+    },
+    shorts: {
+      path: '/shorts',
+      title: 'TubeTV Shorts | Free Viral Kenyan Clips & Teasers',
+      description:
+        'Watch free bite-sized Kenyan video clips, behind-the-scenes reels, and drama teasers on TubeTV Shorts.',
+      categories: ['shorts'],
+      cta: 'Watch Free Shorts',
+    },
+    education: {
+      path: '/education',
+      title: 'TubeTV Education | CBC, High School Revision & AI Learning',
+      description:
+        'Stream Kenyan CBC lessons, KCSE revision tutorials, teacher guides, and AI learning videos on TubeTV Education.',
+      categories: ['education'],
+      cta: 'Explore TubeTV Education',
+    },
+    farmers: {
+      path: '/farmers',
+      title: 'TubeTV Farmers | Kenyan Agribusiness, Crops, Dairy & Livestock',
+      description:
+        'Practical Kenyan farming guides, agribusiness tips, climate-smart crops, dairy, and livestock programmes on TubeTV Farmers.',
+      categories: ['farmers'],
+      cta: 'Explore TubeTV Farmers',
+    },
+    faith: {
+      path: '/faith',
+      title: 'TubeTV Faith | Sermons, Worship, Devotion & Kids Bible',
+      description:
+        'Watch inspiring Kenyan sermons, gospel worship, daily devotions, and family faith stories on TubeTV Faith.',
+      categories: ['faith'],
+      cta: 'Explore TubeTV Faith',
+    },
+    live: {
+      path: '/live',
+      title: 'TubeTV Live | Kenyan Live Streams, Events & News',
+      description:
+        'Watch live Kenyan events, sports, news, and community broadcasts streaming in real time on TubeTV Live.',
+      categories: ['live'],
+      cta: 'Watch TubeTV Live',
+    },
+    genres: {
+      path: '/genres',
+      title: 'TubeTV Genres | Drama, Comedy, Action, Romance & Swahili',
+      description:
+        'Explore Kenyan and East African dramas, comedies, thrillers, romance, animations, and Swahili stories by genre on TubeTV.',
+      categories: ['movies', 'series', 'micro dramas'],
+      cta: 'Browse Genres',
+    },
+  };
+
+  if (landingParam && landingParam in LANDING_OG) {
+    const cfg = LANDING_OG[landingParam];
     const rawSiteUrl = (process.env.VITE_SITE_URL || 'https://www.tube.co.ke').replace(/\/$/, '');
     const siteUrl = /^https:\/\//i.test(rawSiteUrl) ? rawSiteUrl : 'https://www.tube.co.ke';
-    const cinemaUrl = `${siteUrl}/movies`;
-    const cinemaTitle = 'TubeTV Cinema | Unlimited Kenyan Movies & Series';
-    const cinemaDesc =
-      'Stream full-length Kenyan Movies, Drama Series, School Flix, Kids & Originals on TubeTV Cinema — unlock unlimited access from KSh 10 via M-Pesa.';
-    let cinemaThumb = `${siteUrl}/og-default.png`;
+    const canonicalUrl = `${siteUrl}${cfg.path}`;
+    let landingThumb = `${siteUrl}/og-default.png`;
     const supabaseUrl =
       process.env.VITE_SUPABASE_URL ||
       process.env.SUPABASE_URL ||
@@ -28,20 +112,20 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
     const anonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
     if (supabaseUrl && anonKey) {
       try {
-        const response = await fetch(`${supabaseUrl}/functions/v1/public-catalogue?page=1&itemsPerPage=40&compact=1`, {
+        const response = await fetch(`${supabaseUrl}/functions/v1/public-catalogue?page=1&itemsPerPage=60&compact=1`, {
           headers: { apikey: anonKey, Accept: 'application/json' },
           signal: AbortSignal.timeout(3000),
         });
         if (response.ok) {
           const data = await response.json();
           const items = Array.isArray(data?.items) ? data.items : [];
-          const movieItem = items.find((it: { metaTags?: Array<{ property?: string; value?: string }>; signedThumbnailUrl?: string }) => {
+          const matchedItem = items.find((it: { metaTags?: Array<{ property?: string; value?: string }>; signedThumbnailUrl?: string }) => {
             const tags = Array.isArray(it.metaTags) ? it.metaTags : [];
             const cat = tags.find((t) => t.property?.toLowerCase() === 'category')?.value?.toLowerCase() || '';
-            return (cat === 'movies' || cat === 'series') && typeof it.signedThumbnailUrl === 'string' && it.signedThumbnailUrl.startsWith('https://');
+            return cfg.categories.includes(cat) && typeof it.signedThumbnailUrl === 'string' && it.signedThumbnailUrl.startsWith('https://');
           });
-          if (movieItem?.signedThumbnailUrl) {
-            cinemaThumb = movieItem.signedThumbnailUrl;
+          if (matchedItem?.signedThumbnailUrl) {
+            landingThumb = matchedItem.signedThumbnailUrl;
           }
         }
       } catch {
@@ -51,7 +135,7 @@ export default async function handler(req: RequestWithQuery, res: ServerResponse
     res.statusCode = 200;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400');
-    res.end(`<!doctype html><html lang="en-KE"><head><meta charset="utf-8" /><title>${escapeHtml(cinemaTitle)}</title><meta name="description" content="${escapeHtml(cinemaDesc)}" /><link rel="canonical" href="${escapeHtml(cinemaUrl)}" /><meta property="og:type" content="website" /><meta property="og:url" content="${escapeHtml(cinemaUrl)}" /><meta property="og:title" content="${escapeHtml(cinemaTitle)}" /><meta property="og:description" content="${escapeHtml(cinemaDesc)}" /><meta property="og:image" content="${escapeHtml(cinemaThumb)}" /><meta property="og:image:secure_url" content="${escapeHtml(cinemaThumb)}" /><meta property="og:locale" content="en_KE" /><meta property="og:site_name" content="TubeTV" /><meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="${escapeHtml(cinemaTitle)}" /><meta name="twitter:description" content="${escapeHtml(cinemaDesc)}" /><meta name="twitter:image" content="${escapeHtml(cinemaThumb)}" /></head><body style="background:#09090b;color:#fff;font-family:system-ui,sans-serif;padding:2rem;text-align:center;"><h1>${escapeHtml(cinemaTitle)}</h1><p>${escapeHtml(cinemaDesc)}</p><p><a href="/movies" style="color:#ef4444;font-weight:bold;">Open TubeTV Cinema &rarr;</a></p></body></html>`);
+    res.end(`<!doctype html><html lang="en-KE"><head><meta charset="utf-8" /><title>${escapeHtml(cfg.title)}</title><meta name="description" content="${escapeHtml(cfg.description)}" /><link rel="canonical" href="${escapeHtml(canonicalUrl)}" /><meta property="og:type" content="website" /><meta property="og:url" content="${escapeHtml(canonicalUrl)}" /><meta property="og:title" content="${escapeHtml(cfg.title)}" /><meta property="og:description" content="${escapeHtml(cfg.description)}" /><meta property="og:image" content="${escapeHtml(landingThumb)}" /><meta property="og:image:secure_url" content="${escapeHtml(landingThumb)}" /><meta property="og:locale" content="en_KE" /><meta property="og:site_name" content="TubeTV" /><meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="${escapeHtml(cfg.title)}" /><meta name="twitter:description" content="${escapeHtml(cfg.description)}" /><meta name="twitter:image" content="${escapeHtml(landingThumb)}" /></head><body style="background:#09090b;color:#fff;font-family:system-ui,sans-serif;padding:2rem;text-align:center;"><h1>${escapeHtml(cfg.title)}</h1><p>${escapeHtml(cfg.description)}</p><p><a href="${escapeHtml(cfg.path)}" style="color:#ef4444;font-weight:bold;">${escapeHtml(cfg.cta)} &rarr;</a></p></body></html>`);
     return;
   }
 

@@ -114,6 +114,16 @@ export function setLandingMetadata(mode: 'micro-dramas' | 'cinema') {
   document.getElementById('tubetv-video-schema')?.remove();
 }
 
+export function setCategoryMetadata(route: { title: string; description: string; path: string }) {
+  if (typeof document === 'undefined') return;
+  setPageMetadata({
+    title: route.title,
+    description: route.description,
+    path: route.path,
+  });
+  document.getElementById('tubetv-video-schema')?.remove();
+}
+
 export function setVideoMetadata(video?: Video) {
   if (typeof document === 'undefined') return;
   const title = video ? `${video.seriesTitle || video.title} | TubeTV` : 'TubeTV | Kenyan videos, news, comedy and education';

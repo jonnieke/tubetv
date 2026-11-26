@@ -47,7 +47,7 @@ export const CreatorPromoLinkCard: React.FC<Props> = ({ videos, defaultCreatorCo
   const [selectedId, setSelectedId] = useState<string>(() => seriesOptions[0]?.opener.id || '');
   const [channel, setChannel] = useState<PromoChannel>('tiktok');
   const [captionLang, setCaptionLang] = useState<'en' | 'sw'>('en');
-  const [copiedMode, setCopiedMode] = useState<'none' | 'link' | 'caption'>('none');
+  const [copiedMode, setCopiedMode] = useState<'none' | 'link' | 'caption' | 'tiktok'>('none');
 
   const activeOption = useMemo(
     () => seriesOptions.find((s) => s.opener.id === selectedId) || seriesOptions[0],
@@ -78,7 +78,15 @@ export const CreatorPromoLinkCard: React.FC<Props> = ({ videos, defaultCreatorCo
     totalSeriesEpisodes: activeOption.episodeCount,
   });
 
-  const copyText = async (text: string, mode: 'link' | 'caption') => {
+  const tiktokCaption = buildViralCaption({
+    video: activeOption.opener,
+    link: promoLink,
+    language: captionLang,
+    totalSeriesEpisodes: activeOption.episodeCount,
+    includeHashtags: true,
+  });
+
+  const copyText = async (text: string, mode: 'link' | 'caption' | 'tiktok') => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedMode(mode);
@@ -201,6 +209,15 @@ export const CreatorPromoLinkCard: React.FC<Props> = ({ videos, defaultCreatorCo
         >
           {copiedMode === 'caption' ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
           <span>{copiedMode === 'caption' ? 'Caption Copied!' : 'Copy Caption + Link'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => void copyText(tiktokCaption, 'tiktok')}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/15 hover:bg-fuchsia-500/25 px-3.5 py-2 text-xs font-bold text-fuchsia-200 transition-colors"
+        >
+          {copiedMode === 'tiktok' ? <Check size={14} className="text-emerald-400" /> : <Sparkles size={14} />}
+          <span>{copiedMode === 'tiktok' ? 'TikTok Post Copied!' : 'Copy TikTok / Reels + Hashtags'}</span>
         </button>
 
         <a

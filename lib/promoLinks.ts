@@ -30,11 +30,21 @@ export function buildViralCaption(params: {
   link: string;
   language?: 'en' | 'sw';
   totalSeriesEpisodes?: number;
+  includeHashtags?: boolean;
 }): string {
   const showName = params.video.seriesTitle || params.video.title;
   const freeCount = getFreeEpisodeCount(params.video, params.totalSeriesEpisodes);
-  if (params.language === 'sw') {
-    return `🔥 Usikose mabadiliko ya "${showName}"! Tazama Vipindi 1–${freeCount} BURE (bila kujisajili) kwenye TubeTV sasa: ${params.link}`;
+  const hashtags = params.includeHashtags
+    ? ' #TubeTV #KenyanDrama #KenyanCinema #MicroDrama #Nairobi'
+    : '';
+  if (freeCount <= 0) {
+    if (params.language === 'sw') {
+      return `🎬 Tazama "${showName}" kamili kwenye TubeTV Cinema (kuanzia KSh 10): ${params.link}${hashtags}`;
+    }
+    return `🎬 Stream "${showName}" now on TubeTV Cinema (from KSh 10 / $2.99): ${params.link}${hashtags}`;
   }
-  return `😭🔥 Wait till you see the twist in "${showName}"! Watch Ep 1–${freeCount} FREE (no signup) on TubeTV right now: ${params.link}`;
+  if (params.language === 'sw') {
+    return `🔥 Usikose mabadiliko ya "${showName}"! Tazama Vipindi 1–${freeCount} BURE (bila kujisajili) kwenye TubeTV sasa: ${params.link}${hashtags}`;
+  }
+  return `😭🔥 Wait till you see the twist in "${showName}"! Watch Ep 1–${freeCount} FREE (no signup) on TubeTV right now: ${params.link}${hashtags}`;
 }

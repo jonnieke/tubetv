@@ -97,6 +97,17 @@
       "destination": "/api/og?landing=cinema"
     },
     {
+      "source": "/(school-flix|kids|diaspora|shorts|education|farmers|faith|live|genres)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|WhatsApp|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Discordbot|SkypeUriPreview|Applebot|Googlebot|bingbot|BingPreview|Pinterest|redditbot|TikTokBot|Bytespider|Meta-ExternalAgent|GPTBot|OAI-SearchBot|ChatGPT-User|PerplexityBot|ClaudeBot|anthropic-ai|Google-Extended|DuckAssistBot).*"
+        }
+      ],
+      "destination": "/api/og?landing=$1"
+    },
+    {
       "source": "/watch/(.*)",
       "has": [
         {

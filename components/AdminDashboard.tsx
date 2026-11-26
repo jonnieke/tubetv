@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Edit2, Save, X, Loader2, RefreshCcw, Film, Image, Play,
-  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, Shield, ShieldAlert, Star, Coins, Inbox, BellRing, Megaphone, Lock, LayoutDashboard
+  ChevronDown, ChevronUp, BarChart2, Eye, EyeOff, Tag, User, UploadCloud, Shield, ShieldAlert, Star, Coins, Inbox, BellRing, Megaphone, Lock, LayoutDashboard, Share2, Check
 } from 'lucide-react';
 import { fetchBunnyVideos, bunnyVideoToVideo, BunnyVideoItem, getThumbnailUrl, uploadCustomThumbnail, updateVideoMetadata, setVideoMuted } from '../services/bunnyService';
+import { buildCreatorPromoLink, buildViralCaption } from '../lib/promoLinks';
+import { generateDefaultPortalCode } from '../lib/royalties';
 import UploadSection from './UploadSection';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import RoyaltiesDashboard from './RoyaltiesDashboard';
@@ -569,6 +571,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [visibilitySavingIds, setVisibilitySavingIds] = useState<Set<string>>(new Set());
   const [tierSavingIds, setTierSavingIds] = useState<Set<string>>(new Set());
   const [featuredSavingIds, setFeaturedSavingIds] = useState<Set<string>>(new Set());
+  const [copiedPromoId, setCopiedPromoId] = useState<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
@@ -1457,6 +1460,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {item.dateUploaded ? new Date(item.dateUploaded).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                     </td>
                     <td className="p-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const code = generateDefaultPortalCode(mapped.author || 'TubeTV');
+                          const link = buildCreatorPromoLink({
+                            video: mapped,
+                            channel: 'whatsapp',
+                            creatorCode: code,
+                          });
+                          const caption = buildViralCaption({ video: mapped, link, includeHashtags: true });
+                          if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                            void navigator.clipboard.writeText(caption).catch(() => {});
+                          }
+                          setCopiedPromoId(item.guid);
+                          window.setTimeout(() => setCopiedPromoId((cur) => (cur === item.guid ? null : cur)), 2000);
+                        }}
+                        aria-label={`Copy promo teaser link for ${mapped.title}`}
+                        title="Copy tracked TikTok / WhatsApp viral caption & link"
+                        className={`mr-2 inline-flex items-center justify-center rounded-lg border p-2 transition-all ${
+                          copiedPromoId === item.guid
+                            ? 'border-emerald-500/60 bg-emerald-500/20 text-emerald-300'
+                            : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-rose-500/60 hover:text-rose-300'
+                        }`}
+                      >
+                        {copiedPromoId === item.guid ? <Check size={13} /> : <Share2 size={13} />}
+                      </button>
                       <button
                         type="button"
                         onClick={() => void toggleVisibility(item)}

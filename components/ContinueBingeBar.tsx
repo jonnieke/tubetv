@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Play, X } from 'lucide-react';
+import { Lock, Play, Sparkles, X } from 'lucide-react';
 import type { Video } from '../types';
 import { publicMediaUrl } from '../lib/mediaUrl';
 
@@ -8,6 +8,8 @@ interface ContinueBingeBarProps {
   nextVideo?: Video;
   progressFraction?: number;
   isNextLocked?: boolean;
+  upgradeWeeklyLabel?: string;
+  onUpgradeWeekly?: () => void;
   language: string;
   onResume: (target: Video) => void;
 }
@@ -17,6 +19,8 @@ export const ContinueBingeBar: React.FC<ContinueBingeBarProps> = ({
   nextVideo,
   progressFraction = 0,
   isNextLocked = false,
+  upgradeWeeklyLabel,
+  onUpgradeWeekly,
   language,
   onResume,
 }) => {
@@ -77,26 +81,38 @@ export const ContinueBingeBar: React.FC<ContinueBingeBarProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onResume(target)}
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-red-600 hover:bg-red-500 px-3.5 py-2 text-xs font-extrabold text-white shadow-lg shadow-red-950/50 active:scale-95 transition"
-        >
-          {almostDone && isNextLocked ? (
-            <Lock size={13} />
-          ) : (
-            <Play size={13} fill="currentColor" />
+        <div className="flex items-center gap-1.5 shrink-0">
+          {upgradeWeeklyLabel && onUpgradeWeekly && (
+            <button
+              type="button"
+              onClick={onUpgradeWeekly}
+              className="hidden sm:inline-flex items-center gap-1 rounded-xl border border-amber-400/50 bg-amber-500/15 hover:bg-amber-500/25 px-3 py-2 text-[11px] font-extrabold text-amber-200 transition cursor-pointer"
+            >
+              <Sparkles size={12} className="text-amber-400" />
+              <span>{upgradeWeeklyLabel}</span>
+            </button>
           )}
-          <span>
-            {almostDone
-              ? language === 'sw'
-                ? `Ep ${epNum}`
-                : `Ep ${epNum}`
-              : language === 'sw'
-                ? 'Endelea'
-                : 'Resume'}
-          </span>
-        </button>
+          <button
+            type="button"
+            onClick={() => onResume(target)}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-red-600 hover:bg-red-500 px-3.5 py-2 text-xs font-extrabold text-white shadow-lg shadow-red-950/50 active:scale-95 transition"
+          >
+            {almostDone && isNextLocked ? (
+              <Lock size={13} />
+            ) : (
+              <Play size={13} fill="currentColor" />
+            )}
+            <span>
+              {almostDone
+                ? language === 'sw'
+                  ? `Ep ${epNum}`
+                  : `Ep ${epNum}`
+                : language === 'sw'
+                  ? 'Endelea'
+                  : 'Resume'}
+            </span>
+          </button>
+        </div>
 
         <button
           type="button"
@@ -107,6 +123,16 @@ export const ContinueBingeBar: React.FC<ContinueBingeBarProps> = ({
           <X size={14} />
         </button>
       </div>
+      {upgradeWeeklyLabel && onUpgradeWeekly && (
+        <button
+          type="button"
+          onClick={onUpgradeWeekly}
+          className="sm:hidden mt-2 w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400/45 bg-amber-500/15 hover:bg-amber-500/25 px-3 py-1.5 text-[11px] font-extrabold text-amber-200 transition cursor-pointer"
+        >
+          <Sparkles size={12} className="text-amber-400" />
+          <span>{upgradeWeeklyLabel}</span>
+        </button>
+      )}
     </aside>
   );
 };

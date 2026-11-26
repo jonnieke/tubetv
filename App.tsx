@@ -74,7 +74,8 @@ import {
   type PlaybackPreferences,
   type WatchProgress,
 } from './lib/viewerState';
-import { setLandingMetadata, setVideoMetadata, videoPath } from './lib/seo';
+import { setCategoryMetadata, setLandingMetadata, setVideoMetadata, videoPath } from './lib/seo';
+import { categoryRouteFromPath, categoryRouteFromView } from './lib/categoryRoutes';
 import LegalPage from './components/LegalPage';
 import { trackEvent } from './lib/analytics';
 import { buildComingSoonSchedule, compareEpisodes, isMicroDrama, isNewEpisode, nextEpisode, seriesKey, seriesSlug } from './lib/series';
@@ -100,6 +101,7 @@ import {
   clearStoredPass,
   detectDefaultRegion,
   fetchActiveSubscription,
+  getRecentlyExpiredDailyPass,
   getRegionalPassCopy,
   getRememberedPhone,
   getStoredPass,
@@ -107,6 +109,7 @@ import {
   restorePassByPhone,
   restorePaystackPass,
   type RegionCode,
+  type SubscriptionPlanCode,
 } from './lib/subscriptions';
 import type { SettingsTabId } from './components/SettingsSection';
 import { TranslationKey } from './translations';
@@ -212,6 +215,10 @@ const App: React.FC = () => {
     if (typeof window === 'undefined') return ViewState.HOME;
     if (window.location.pathname === '/admin') {
       return ViewState.ADMIN;
+    }
+    const catRoute = categoryRouteFromPath(window.location.pathname);
+    if (catRoute) {
+      return catRoute.view;
     }
     const params = new URLSearchParams(window.location.search);
     if (params.get('creator_code')) {
@@ -339,6 +346,7 @@ const App: React.FC = () => {
   }, []);
 
   const [paywallVideo, setPaywallVideo] = useState<Video | null>(null);
+  const [paywallInitialPlan, setPaywallInitialPlan] = useState<SubscriptionPlanCode | undefined>(undefined);
   const [pendingResumeVideoId, setPendingResumeVideoId] = useState<string | null>(null);
   const [episodeRangeStart, setEpisodeRangeStart] = useState<number>(0);
   const [showBuyPassModal, setShowBuyPassModal] = useState<boolean>(false);
@@ -1059,11 +1067,15 @@ const App: React.FC = () => {
       }
 
       const lowerPath = window.location.pathname.toLowerCase();
-      if (lowerPath === '/movies' || lowerPath === '/cinema' || lowerPath === '/long-format') {
+      const matchedCategoryRoute = categoryRouteFromPath(lowerPath);
+      if (matchedCategoryRoute) {
+        setCurrentView(matchedCategoryRoute.view);
+      } else if (lowerPath === '/movies' || lowerPath === '/cinema' || lowerPath === '/long-format') {
         setLandingMode('cinema');
         setCurrentView(ViewState.HOME);
       } else if (lowerPath === '/micro-dramas' || lowerPath === '/') {
         setLandingMode('micro-dramas');
+        setCurrentView(ViewState.HOME);
       }
 
       const match = window.location.pathname.match(/^\/watch\/([^/]+)$/);
@@ -1139,10 +1151,15 @@ const App: React.FC = () => {
     if (pathname === '/privacy' || pathname === '/terms') return;
     if (activeHeroVideo) {
       setVideoMetadata(activeHeroVideo);
+      return;
+    }
+    const catRoute = categoryRouteFromView(currentView);
+    if (catRoute) {
+      setCategoryMetadata(catRoute);
     } else {
       setLandingMetadata(landingMode);
     }
-  }, [activeHeroVideo, landingMode]);
+  }, [activeHeroVideo, landingMode, currentView]);
 
   useEffect(() => {
     if (!activeHeroVideo) return;
@@ -1362,7 +1379,17 @@ const App: React.FC = () => {
       }
       setSearchQuery('');
       setCurrentView(view);
-      if (window.location.search) {
+      const nextCategoryRoute = categoryRouteFromView(view);
+      if (nextCategoryRoute) {
+        if (window.location.pathname !== nextCategoryRoute.path) {
+          window.history.pushState({}, '', nextCategoryRoute.path);
+        }
+      } else if (view === ViewState.HOME) {
+        const homePath = landingMode === 'cinema' ? '/movies' : '/';
+        if (window.location.pathname !== homePath) {
+          window.history.pushState({}, '', homePath);
+        }
+      } else if (window.location.search) {
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
@@ -1862,12 +1889,24 @@ const App: React.FC = () => {
               const fraction =
                 prog && prog.durationSeconds > 0 ? Math.min(1, Math.max(0, prog.positionSeconds / prog.durationSeconds)) : 0;
               const upcoming = nextEpisode(ratingFilteredVideos, resumeItem.id);
+              const nextLocked = upcoming ? isItemLocked(upcoming) : isItemLocked(resumeItem);
+              const recentlyExpiredDaily = !hasActivePass && Boolean(getRecentlyExpiredDailyPass());
+              const showWeeklyNudge = !hasActivePass && (nextLocked || recentlyExpiredDaily);
               return (
                 <ContinueBingeBar
                   video={resumeItem}
                   nextVideo={upcoming}
                   progressFraction={fraction}
                   isNextLocked={upcoming ? isItemLocked(upcoming) : false}
+                  upgradeWeeklyLabel={showWeeklyNudge ? regionalPassCopy.weeklyUpgradeCta : undefined}
+                  onUpgradeWeekly={
+                    showWeeklyNudge
+                      ? () => {
+                          setPaywallInitialPlan('weekly');
+                          openPaywallForVideo(upcoming || resumeItem);
+                        }
+                      : undefined
+                  }
                   language={language}
                   onResume={(target) => openVideo(target, { autoPlay: true, strictEpisode: true })}
                 />
@@ -2405,6 +2444,7 @@ const App: React.FC = () => {
               <PaywallModal
                 video={paywallVideo}
                 seriesEpisodeCount={paywallVideo ? getSeriesEpisodeCount(paywallVideo) : undefined}
+                initialPlan={paywallInitialPlan}
                 onSuccess={() => {
                   let storedTargetId: string | null = null;
                   try {
@@ -2415,6 +2455,7 @@ const App: React.FC = () => {
                   const returnId = paywallVideo?.id || storedTargetId;
                   const target = paywallVideo || (returnId ? videos.find((v) => v.id === returnId) : null);
                   setPaywallVideo(null);
+                  setPaywallInitialPlan(undefined);
                   setShowBuyPassModal(false);
                   const latestUnlockedIds = getRewardUnlockedVideoIds();
                   setRewardUnlockedIds(latestUnlockedIds);
@@ -2447,6 +2488,7 @@ const App: React.FC = () => {
                 }}
                 onClose={() => {
                   setPaywallVideo(null);
+                  setPaywallInitialPlan(undefined);
                   setShowBuyPassModal(false);
                 }}
               />

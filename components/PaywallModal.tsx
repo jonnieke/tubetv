@@ -73,6 +73,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 interface PaywallModalProps {
   video?: Video | null;
   seriesEpisodeCount?: number;
+  initialPlan?: SubscriptionPlanCode;
   onSuccess: () => void;
   onClose: () => void;
 }
@@ -142,6 +143,7 @@ function formatMpesaFailureMessage(raw?: string): string {
 export const PaywallModal: React.FC<PaywallModalProps> = ({
   video,
   seriesEpisodeCount,
+  initialPlan,
   onSuccess,
   onClose,
 }) => {
@@ -151,7 +153,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   const [mode, setMode] = useState<'buy' | 'restore'>('buy');
   const [regionCode, setRegionCode] = useState<RegionCode>(() => detectDefaultRegion());
   const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'mpesa'>('mpesa');
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanCode>('daily');
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanCode>(() => initialPlan || 'daily');
   const [phone, setPhone] = useState(() => {
     try {
       return localStorage.getItem('tubetv_user_phone') || localStorage.getItem('tubetv_saved_phone') || '';

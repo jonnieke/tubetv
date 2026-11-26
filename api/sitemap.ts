@@ -46,6 +46,15 @@ export default async function handler(_req: IncomingMessage, res: ServerResponse
   const entries: SitemapEntry[] = [
     { loc: `${siteUrl}/`, changefreq: 'daily', priority: '1.0' },
     { loc: `${siteUrl}/movies`, changefreq: 'daily', priority: '0.95' },
+    { loc: `${siteUrl}/school-flix`, changefreq: 'daily', priority: '0.85' },
+    { loc: `${siteUrl}/kids`, changefreq: 'daily', priority: '0.85' },
+    { loc: `${siteUrl}/diaspora`, changefreq: 'daily', priority: '0.85' },
+    { loc: `${siteUrl}/shorts`, changefreq: 'daily', priority: '0.85' },
+    { loc: `${siteUrl}/education`, changefreq: 'daily', priority: '0.85' },
+    { loc: `${siteUrl}/farmers`, changefreq: 'daily', priority: '0.85' },
+    { loc: `${siteUrl}/faith`, changefreq: 'daily', priority: '0.85' },
+    { loc: `${siteUrl}/live`, changefreq: 'daily', priority: '0.85' },
+    { loc: `${siteUrl}/genres`, changefreq: 'weekly', priority: '0.8' },
     { loc: `${siteUrl}/privacy`, changefreq: 'monthly', priority: '0.4' },
     { loc: `${siteUrl}/terms`, changefreq: 'monthly', priority: '0.4' },
   ];

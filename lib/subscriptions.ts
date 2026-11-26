@@ -161,6 +161,8 @@ export function savePreferredRegion(region: RegionCode) {
 export interface RegionalPassCopy {
   code: RegionCode;
   entryPrice: string;
+  weeklyPrice: string;
+  weeklyUpgradeCta: string;
   navPill: string;
   navPillTitle: string;
   heroBadge: string;
@@ -173,11 +175,16 @@ export function getRegionalPassCopy(regionCode: RegionCode = detectDefaultRegion
   const region = REGIONAL_PRICING[regionCode] || REGIONAL_PRICING.KE;
   const isSw = language === 'sw';
   const entryPrice = region.prices.daily;
+  const weeklyPrice = region.prices.weekly;
 
   if (region.supportsMpesaStk) {
     return {
       code: region.code,
       entryPrice,
+      weeklyPrice,
+      weeklyUpgradeCta: isSw
+        ? `Pasi ya Siku 7 (${weeklyPrice}) · Okoa 28%`
+        : `7-Day Pass (${weeklyPrice}) · Save 28%`,
       navPill: isSw ? `Pasi ya M-Pesa · ${entryPrice}` : `${entryPrice} M-Pesa Pass`,
       navPillTitle: `Get or restore your TubeTV M-Pesa Pass from ${entryPrice}`,
       heroBadge: isSw ? `Fungua yote kuanzia ${entryPrice} · M-Pesa` : `Unlock all from ${entryPrice} via M-Pesa`,
@@ -192,6 +199,10 @@ export function getRegionalPassCopy(regionCode: RegionCode = detectDefaultRegion
     return {
       code: region.code,
       entryPrice,
+      weeklyPrice,
+      weeklyUpgradeCta: isSw
+        ? `Pasi ya Siku 7 (${weeklyPrice}) · Thamani Bora`
+        : `7-Day Pass (${weeklyPrice}) · Save More`,
       navPill: `${region.flag} ${isSw ? `Pasi · ${entryPrice}` : `Pass · From ${entryPrice}`}`,
       navPillTitle: `Get or restore your TubeTV Pass from ${entryPrice} (Apple Pay, Google Pay & Card)`,
       heroBadge: isSw
@@ -210,6 +221,10 @@ export function getRegionalPassCopy(regionCode: RegionCode = detectDefaultRegion
   return {
     code: region.code,
     entryPrice,
+    weeklyPrice,
+    weeklyUpgradeCta: isSw
+      ? `Pasi ya Siku 7 (${weeklyPrice}) · Okoa Zaidi`
+      : `7-Day Pass (${weeklyPrice}) · Save More`,
     navPill: `${region.flag} ${isSw ? `Pasi · ${entryPrice}` : `Pass · ${entryPrice}`}`,
     navPillTitle: `Get or restore your TubeTV Pass from ${entryPrice} (${region.paymentMethodsLabel})`,
     heroBadge: isSw
@@ -280,6 +295,7 @@ export function saveRememberedPhone(phone: string) {
 }
 
 const SIGNED_PASS_KEY = 'tube_pass_token';
+const LAST_EXPIRED_PASS_KEY = 'tube_last_expired_pass_v1';
 const LEGACY_GUEST_PASS_KEY = 'tube_guest_pass';
 const LEGACY_UNLOCKED_KEY = 'tube_unlocked_episodes';
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) || '';
@@ -322,6 +338,14 @@ export function getStoredPass(): StoredPass | null {
       typeof parsed.expiresAt !== 'number' ||
       parsed.expiresAt <= Date.now()
     ) {
+      if (typeof parsed.tier === 'string' && typeof parsed.expiresAt === 'number' && parsed.expiresAt <= Date.now()) {
+        try {
+          localStorage.setItem(
+            LAST_EXPIRED_PASS_KEY,
+            JSON.stringify({ tier: parsed.tier, expiredAt: parsed.expiresAt }),
+          );
+        } catch {}
+      }
       localStorage.removeItem(SIGNED_PASS_KEY);
       return null;
     }
@@ -331,6 +355,20 @@ export function getStoredPass(): StoredPass | null {
       expiresAt: parsed.expiresAt,
       mpesaReceipt: typeof parsed.mpesaReceipt === 'string' ? parsed.mpesaReceipt : undefined,
     };
+  } catch {
+    return null;
+  }
+}
+
+export function getRecentlyExpiredDailyPass(maxAgeDays = 7): { tier: string; expiredAt: number } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(LAST_EXPIRED_PASS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { tier?: string; expiredAt?: number };
+    if (parsed.tier !== 'daily' || typeof parsed.expiredAt !== 'number') return null;
+    if (Date.now() - parsed.expiredAt > maxAgeDays * 24 * 60 * 60 * 1000) return null;
+    return { tier: parsed.tier, expiredAt: parsed.expiredAt };
   } catch {
     return null;
   }

@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { videoPath, videoStructuredData } from './seo';
+import { categoryRouteFromPath, categoryRouteFromView } from './categoryRoutes';
+import { ViewState } from '../types';
 
 describe('video discovery metadata', () => {
   const video = {
@@ -36,5 +39,16 @@ describe('video discovery metadata', () => {
     expect(schema.name).toBe('The Dead Stay Dumb');
     expect(schema.description).toBe('A gritty thriller in Nairobi.');
     expect(schema.thumbnailUrl).toEqual(['https://vz-0fe79b1a-8ad.b-cdn.net/11b427fb-7a70-43ed-9f58-028053c8e75d/thumbnail.jpg']);
+  });
+
+  it('maps clean indexable category URLs to views and indexes them in sitemap.xml', () => {
+    expect(categoryRouteFromPath('/school-flix')?.view).toBe(ViewState.SCHOOL_FLIX);
+    expect(categoryRouteFromPath('/diaspora/')?.view).toBe(ViewState.DIASPORA);
+    expect(categoryRouteFromView(ViewState.KIDS)?.path).toBe('/kids');
+
+    const sitemapSource = readFileSync(new URL('../api/sitemap.ts', import.meta.url), 'utf8');
+    expect(sitemapSource).toContain('${siteUrl}/school-flix');
+    expect(sitemapSource).toContain('${siteUrl}/diaspora');
+    expect(sitemapSource).toContain('${siteUrl}/kids');
   });
 });
